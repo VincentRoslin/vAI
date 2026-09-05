@@ -1,6 +1,6 @@
 # ADR-0013 — Subprocess transport: loopback HTTP for servers, stdio for workers
 
-- **Status:** PROPOSED (Phase 3 draft) · **Date:** 2026-09-05
+- **Status:** ACCEPTED (Phase 5 freeze, 2026-09-05; superseding attacks folded in via Phase 4) · **Date:** 2026-09-05
 - **Research:** `docs/research/phase3/11_worker-protocol.md` (D-12)
 - **Supersedes** the "TBD — Phase 3" placeholder in `CLAUDE.md` Article I.
 

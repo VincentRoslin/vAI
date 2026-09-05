@@ -21,10 +21,14 @@ This file is loaded into every Claude Code session. It has two parts:
 | `CLAUDE.md` (this file) | Constitution + agent operating manual | Rules, ownership boundaries, how to work | Live |
 | `ROADMAP.md` | **State machine + phase index** — LocalAI course (Phase 0–40) | Current phase/stage, progress, gate summaries, open questions (§7) | Live. Mechanics fixed; per-phase detail lives in `docs/plan/` |
 | `docs/plan/NN_*.md` | Detailed, individually-verifiable steps for one phase | *How* to execute the current phase | Live. On phase entry read the file for that phase first; finalize its steps if the "finalized at phase entry" banner is still there |
-| `PROJECT.md` | Reserved for the officialized product + architecture definition | — | **Intentionally empty until Phase 5 (architecture freeze).** Do not populate without an explicit instruction. Constitution stays in `CLAUDE.md`. |
-| `docs/OVERVIEW.md` | Product & architecture overview — feature set, character system, runtime ownership, key technical areas | Understanding what LocalAI is and its intended shape | Live — **context, not authority**; repo docs win on conflict |
-| `docs/product/requirements.md` | Structured product requirements (functional / non-functional / ambiguities / research questions) | Product Definition output; input to Phase 3 | Created at the Product Definition step |
-| `ARCHITECTURE.md`, `AI_PIPELINES.md`, `PERFORMANCE.md`, `SECURITY.md`, `UI_GUIDELINES.md`, `DEVELOPMENT.md`, `README.md` | Subsystem / process docs | Their named topic | **Empty placeholders**, filled by their owning phases (most at Phase 5) |
+| `PROJECT.md` | **The officialized product definition** | What LocalAI is / does / is not; the binding FR/NFR summary | **Live — frozen at Phase 5.** Changes need STOP→propose→approve. Constitution stays here in `CLAUDE.md`. |
+| `ARCHITECTURE.md` | **The frozen system design** | Runtimes, boundaries, single-authority map, the VRAM constraint, cross-cutting flows | **Live — frozen at Phase 5.** |
+| `AI_PIPELINES.md` | Each AI pipeline end to end | LLM / STT / VAD / TTS / image / identity / memory / relationship | **Live — frozen at Phase 5.** |
+| `SECURITY.md` · `PERFORMANCE.md` · `UI_GUIDELINES.md` | Threat model + controls · perf budgets + method · UI bar | Their named topic | **Live — frozen at Phase 5.** |
+| `DEVELOPMENT.md` | Dev prerequisites, loop, check suite, git | Working in the repo | Live — updated as tooling is wired (Phase 6) |
+| `README.md` | Quickstart | clone → install → run | Empty until Phase 6.11 |
+| `docs/OVERVIEW.md` | Early product/architecture overview | historical context | Superseded by `PROJECT.md` + `ARCHITECTURE.md`; kept for history |
+| `docs/product/requirements.md` | Numbered product requirements (`FR-*`, `NFR-*`, `ARQ-*`) | The requirement IDs `PROJECT.md` summarizes | Live |
 | `docs/verification/` | Evidence logs (`NN_topic.md`) — what was physically run and observed | Verification history | Live — `01_env_audit.md` |
 | `docs/research/` | Pre-architecture technical research (`NN_topic.md` + `README.md`) | Options & trade-offs, **not decisions**; input to Phase 3 | Live |
 | `docs/decisions/` | ADRs — one ratified decision each (decision, context, options, choice, reason, consequences) | Decision record | Empty; starts at Phase 3/5 |
@@ -88,15 +92,16 @@ generation, embeddings. **These principles are fixed:**
 - **Backend-specific detail is confined to one adapter module** in Rust; the rest
   of the app sees a clean interface.
 
-**Transport is an open architecture-research question (Phase 3), not yet frozen.**
-Leading candidates to be confirmed and recorded as an ADR:
-- Workers we author (STT/TTS/image): **JSON-lines over stdin/stdout**, `stderr` for
-  logs only.
-- Upstream inference servers (`llama-server`): **managed child process reached over
-  a loopback-only (`127.0.0.1`) HTTP socket**, since they ship as HTTP services.
-- Fallback if a backend is unsafe as a child process: in-process FFI bindings.
-
-Until Phase 3 decides, do not write code that depends on a specific transport.
+**Transport — decided at Phase 5 (ADR-0013):**
+- **Model servers** (`llama-server`, the diffusers image server): Rust-supervised
+  child; **Windows named pipe preferred** (ACL-scoped), else `127.0.0.1:<free
+  port>` **+ a per-launch bearer token** (a bare loopback HTTP server is callable
+  by any local process).
+- **Stateless workers** (STT, TTS, face-embedder): **JSON-lines over
+  stdin/stdout**, `stderr` for logs only.
+- Every subprocess is launched with the offline / no-telemetry env (ADR-0015).
+- A loopback pipe/socket to a Rust-supervised child is **not** a "network call"
+  for Article II.
 
 ---
 

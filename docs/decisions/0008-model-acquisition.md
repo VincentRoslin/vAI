@@ -1,6 +1,6 @@
 # ADR-0008 — Model acquisition: hf-hub + downloads table
 
-- **Status:** PROPOSED (Phase 3 draft) · **Date:** 2026-09-05
+- **Status:** ACCEPTED (Phase 5 freeze, 2026-09-05; superseding attacks folded in via Phase 4) · **Date:** 2026-09-05
 - **Research:** `docs/research/phase3/06_model-acquisition.md` (D-7)
 
 ## Context

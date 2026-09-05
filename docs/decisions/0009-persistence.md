@@ -1,6 +1,6 @@
 # ADR-0009 — Persistence: rusqlite + dedicated writer + refinery + blob store
 
-- **Status:** PROPOSED (Phase 3 draft) · **Date:** 2026-09-05
+- **Status:** ACCEPTED (Phase 5 freeze, 2026-09-05; superseding attacks folded in via Phase 4) · **Date:** 2026-09-05
 - **Research:** `docs/research/phase3/07_persistence.md` (D-8)
 
 ## Context

@@ -1,6 +1,6 @@
 # ADR-0004 — Build llama.cpp from source, pinned, sm_120
 
-- **Status:** PROPOSED (Phase 3 draft) · **Date:** 2026-09-05
+- **Status:** ACCEPTED (Phase 5 freeze, 2026-09-05; superseding attacks folded in via Phase 4) · **Date:** 2026-09-05
 - **Research:** `docs/research/phase3/02_llm-runtime.md` (D-3b) · resolves part of **O5**
 
 ## Context

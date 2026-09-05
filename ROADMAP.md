@@ -25,12 +25,16 @@
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
 | **Phase**        | 5 — Project Documentation / Architecture Freeze         |
-| **Stage**        | 5.1 — write `PROJECT.md`                                |
-| **Status**       | `NOT STARTED`                                           |
+| **Stage**        | 5.9 — re-derive `docs/plan/06–40`, then 5.10 cross-check |
+| **Status**       | `IN PROGRESS`                                           |
 | **Blocked by**   | —                                                      |
 | **Plan doc**     | `docs/plan/05_architecture-freeze.md`                   |
 | **Last updated** | 2026-09-05                                              |
-| **Updated by**   | phase-4-review                                          |
+| **Updated by**   | phase-5-freeze                                          |
+
+**5.1–5.8 done:** `PROJECT.md`, `ARCHITECTURE.md`, `AI_PIPELINES.md`,
+`SECURITY.md`, `PERFORMANCE.md`, `UI_GUIDELINES.md`, `DEVELOPMENT.md` written;
+all 15 ADRs `ACCEPTED`; `CLAUDE.md` Article I transport + Document Map updated.
 
 **Completed:** Phase 0–2 · Product Definition · **Phase 3** (`docs/research/phase3/`
 + `docs/decisions/0001–0015`; probes `docs/verification/02_phase3_probes.md`) ·
@@ -389,6 +393,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-05 | Phase 5 `NOT STARTED` | Phase 5 `IN PROGRESS` (5.9) | phase-5 | 5.1–5.8: `PROJECT.md` + `ARCHITECTURE.md` + `AI_PIPELINES.md` + `SECURITY.md` + `PERFORMANCE.md` + `UI_GUIDELINES.md` + `DEVELOPMENT.md` written and frozen. **All 15 ADRs `PROPOSED` → `ACCEPTED`.** `CLAUDE.md` Article I transport ratified (ADR-0013); Document Map updated (`PROJECT.md` now the officialized definition). Remaining: 5.9 re-derive `docs/plan/06–40` against the frozen ADRs, 5.10 cross-check. |
 | 2026-09-05 | Phase 4 `NOT STARTED` | Phase 4 `VERIFIED` → Phase 5 / 5.1 `NOT STARTED` | phase-4 | `docs/verification/03_adversarial_review.md`: architecture assembled + attacked across 8 categories, ~40 risks. **4 critical → ADR changes**: loopback-server auth (ADR-0013, prefer named pipes), Python-worker telemetry lockdown (new ADR-0015), NF4 quant cache now *required* (ADR-0006/0008), GPU-mutex lock-ordering rule (ADR-0010). Also driver-TDR recovery + system-RAM tracking (ADR-0007), backup-before-migrate verify + blob write-order (ADR-0009). 7 risks `ACCEPTED` with rationale. No code. |
 | 2026-09-05 | Phase 3 `IN PROGRESS` | Phase 3 `VERIFIED` → Phase 4 / 4.1 `NOT STARTED` | phase-3 | Gate met: 16 decisions in 12 area writeups, 14 draft ADRs (`PROPOSED`), 3 probes run (`docs/verification/02_phase3_probes.md` — NVML per-process VRAM **unavailable** on WDDM/610.88 → ledger-based accounting confirmed; GGUF header parse **works** from a range request; WDDM-hang inconclusive → Phase 15 watch item). Owner: no LoRA trainer; portraits/selfies → prompt-based identity OK. No app code (probes were throwaway, deleted). ADRs ratified at Phase 5. |
 | 2026-09-05 | Phase 3 `IN PROGRESS` | Phase 3 `IN PROGRESS` (3.15) | phase-3 | All 12 research areas drafted (`docs/research/phase3/01–12`) + **14 draft ADRs** (`docs/decisions/0001–0014`, `PROPOSED`). Owner's Krea impl folded in (diffusers sidecar, NF4, ~11.4 GB peak). Transport resolved (ADR-0013: loopback HTTP for model servers, stdio for workers). **Biggest risk: character visual identity (ADR-0011) — Krea 2 is text-to-image only; needs per-character LoRA (~45–60 min/char background) → owner sign-off.** Exit items: 3 runnable probes (nvml per-process, GGUF header, WDDM) + owner sign-off, then Phase 4. |

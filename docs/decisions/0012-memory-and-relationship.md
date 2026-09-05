@@ -1,6 +1,6 @@
 # ADR-0012 — Memory (FTS5) + discrete relationship stages
 
-- **Status:** PROPOSED (Phase 3 draft) · **Date:** 2026-09-05
+- **Status:** ACCEPTED (Phase 5 freeze, 2026-09-05; superseding attacks folded in via Phase 4) · **Date:** 2026-09-05
 - **Research:** `docs/research/phase3/10_memory.md` (D-11, D-16)
 
 ## Context

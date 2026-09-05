@@ -1,6 +1,6 @@
 # ADR-0010 — Scheduler: priority queue, interactive LLM never preempted
 
-- **Status:** PROPOSED (Phase 3 draft) · **Date:** 2026-09-05
+- **Status:** ACCEPTED (Phase 5 freeze, 2026-09-05; superseding attacks folded in via Phase 4) · **Date:** 2026-09-05
 - **Research:** `docs/research/phase3/08_scheduler.md` (D-9)
 
 ## Context

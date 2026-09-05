@@ -1,6 +1,6 @@
 # ADR-0002 — IPC design: Channels, Events, one AppError, ts-rs
 
-- **Status:** PROPOSED (Phase 3 draft) · **Date:** 2026-09-05
+- **Status:** ACCEPTED (Phase 5 freeze, 2026-09-05; superseding attacks folded in via Phase 4) · **Date:** 2026-09-05
 - **Research:** `docs/research/phase3/01_desktop-ipc.md` (D-2, D-14)
 
 ## Context

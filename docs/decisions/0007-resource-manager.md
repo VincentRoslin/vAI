@@ -1,6 +1,6 @@
 # ADR-0007 — Resource manager: nvml + reservation ledger
 
-- **Status:** PROPOSED (Phase 3 draft) · **Date:** 2026-09-05
+- **Status:** ACCEPTED (Phase 5 freeze, 2026-09-05; superseding attacks folded in via Phase 4) · **Date:** 2026-09-05
 - **Research:** `docs/research/phase3/05_resource-vram.md` (D-6)
 
 ## Context

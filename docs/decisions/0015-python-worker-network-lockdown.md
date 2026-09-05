@@ -1,6 +1,6 @@
 # ADR-0015 — Python worker network lockdown
 
-- **Status:** PROPOSED (Phase 4) · **Date:** 2026-09-05
+- **Status:** ACCEPTED (Phase 5 freeze, 2026-09-05) · **Date:** 2026-09-05
 - **Research:** `docs/verification/03_adversarial_review.md` R-C2
 
 ## Context

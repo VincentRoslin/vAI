@@ -1,6 +1,6 @@
 # ADR-0001 — Single Rust crate with module boundaries
 
-- **Status:** PROPOSED (Phase 3 draft) · **Date:** 2026-09-05
+- **Status:** ACCEPTED (Phase 5 freeze, 2026-09-05; superseding attacks folded in via Phase 4) · **Date:** 2026-09-05
 - **Research:** `docs/research/phase3/01_desktop-ipc.md` (D-1) · relates to O4
 
 ## Context

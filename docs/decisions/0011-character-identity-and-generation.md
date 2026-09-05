@@ -1,6 +1,6 @@
 # ADR-0011 — Character identity + character generation
 
-- **Status:** PROPOSED (Phase 3 draft) · **Date:** 2026-09-05
+- **Status:** ACCEPTED (Phase 5 freeze, 2026-09-05; superseding attacks folded in via Phase 4) · **Date:** 2026-09-05
 - **Research:** `docs/research/phase3/09_character-identity.md` (D-10, D-15)
 - **Note:** contains the product's biggest open technical risk (FR-C90).
 
@@ -48,10 +48,11 @@ QuadView; LLM caption → canonical block. **Discovery feed**: pre-generated poo
 shown; feed state seen/kept/passed.
 
 ## Consequences
-- **FR-C90/C91 scoped to prompt-based quality for v1.** Owner confirmed
+- **FR-C90/C91 scoped to prompt-based quality for v1 — RESOLVED.** Owner confirmed
   2026-09-05: character images are **mostly portraits and selfies** → the
-  prompt-based approach is adequate for v1. Revisit (reference conditioning / a
-  second model) at a later stage if the image range widens.
+  prompt-based approach is adequate for v1. No `UNDECIDED` sub-point remains.
+  Revisit (reference conditioning / a second model) at a later stage if the image
+  range widens.
 - No LoRA trainer, no `lora_train` job kind (ADR-0010), no trainer in the venv
   (ADR-0014).
 - Adds a face-embedder worker (~100 MB) and the QuadView + realism LoRAs to the

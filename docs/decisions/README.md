@@ -11,28 +11,34 @@ Do not silently change an accepted decision through implementation. If
 implementation shows an ADR is wrong: stop → explain → propose → get approval →
 new/updated ADR → implement (`CLAUDE.md`).
 
-| ADR | Title | Status | Research |
-| --- | ----- | ------ | -------- |
-| 0001 | Single Rust crate with module boundaries | PROPOSED | `phase3/01` |
-| 0002 | IPC design: Channels, Events, one AppError, ts-rs | PROPOSED | `phase3/01` |
-| 0003 | LLM runtime: `llama-server` as a loopback-HTTP child | PROPOSED | `phase3/02` |
-| 0004 | Build llama.cpp from source, pinned, sm_120 | PROPOSED | `phase3/02` |
-| 0005 | Voice pipeline: faster-whisper fp16 / Silero / Chatterbox / cpal | PROPOSED | `phase3/03` |
-| 0006 | Image subsystem: diffusers sidecar, Krea 2 Turbo NF4, LoRA+preset | PROPOSED | `phase3/04` |
-| 0007 | Resource manager: nvml + reservation ledger | PROPOSED | `phase3/05` |
-| 0008 | Model acquisition: hf-hub + downloads table | PROPOSED | `phase3/06` |
-| 0009 | Persistence: rusqlite + dedicated writer + refinery + blob store | PROPOSED | `phase3/07` |
-| 0010 | Scheduler: priority queue, interactive LLM never preempted | PROPOSED | `phase3/08` |
-| 0011 | Character identity: prompt-based (reference sheet + canonical caption + seed + gate), no LoRA training | PROPOSED | `phase3/09` |
-| 0012 | Memory FTS5 + discrete relationship stages | PROPOSED | `phase3/10` |
-| 0013 | Subprocess transport: loopback HTTP for servers, stdio for workers | PROPOSED | `phase3/11` |
-| 0014 | Packaging: MSI, embedded CPython + shared venv | PROPOSED | `phase3/12` |
-| 0015 | Python worker network lockdown (offline + no-telemetry env) | PROPOSED | Phase 4 R-C2 |
+**All 15 ADRs are `ACCEPTED` (Phase 5 freeze, 2026-09-05).** Phase 4 attacks are
+folded in (0006, 0007, 0008, 0009, 0010, 0013 revised; 0015 added).
 
-Phase 4 (`docs/verification/03_adversarial_review.md`) revised ADRs
-0006, 0007, 0008, 0009, 0010, 0013 and added 0015. All still `PROPOSED`;
-ratified together at Phase 5.
+| ADR | Title | Status |
+| --- | ----- | ------ |
+| 0001 | Single Rust crate with module boundaries | ACCEPTED |
+| 0002 | IPC: Channels, Events, one AppError, ts-rs, 3-tab shell | ACCEPTED |
+| 0003 | LLM runtime: `llama-server` as a supervised child (loopback) | ACCEPTED |
+| 0004 | Build llama.cpp from source, pinned, sm_120 | ACCEPTED |
+| 0005 | Voice: faster-whisper fp16 / Silero / Chatterbox / cpal | ACCEPTED |
+| 0006 | Image subsystem: diffusers sidecar, Krea 2 Turbo NF4 (cache required) | ACCEPTED |
+| 0007 | Resource manager: nvml whole-GPU + ledger + RAM watch + TDR path | ACCEPTED |
+| 0008 | Model acquisition: hf-hub + downloads table + NF4 quant at acquisition | ACCEPTED |
+| 0009 | Persistence: rusqlite + dedicated writer + refinery + blob store | ACCEPTED |
+| 0010 | Scheduler: priority queue, lock-ordering rule, restore-on-crash | ACCEPTED |
+| 0011 | Character identity: prompt-based (sheet + canonical caption + seed + gate) | ACCEPTED |
+| 0012 | Memory FTS5 + discrete relationship stages | ACCEPTED |
+| 0013 | Transport: named-pipe/token'd loopback for servers, stdio for workers | ACCEPTED |
+| 0014 | Packaging: MSI, embedded CPython + shared venv | ACCEPTED |
+| 0015 | Python worker network lockdown | ACCEPTED |
 
-Open for Phase 5 / owner: NVFP4-vs-NF4 for Krea 2 (benchmark at Phase 22);
-`synchronous=FULL` on the DB writer (perf vs durability); named-pipe vs
-token'd-TCP for `llama-server` (confirm upstream supports pipe / `--api-key`).
+### Deferred / to decide during implementation (not blocking the freeze)
+
+- **NVFP4 vs NF4 for Krea 2** — benchmark at Phase 22; NF4 is the v1 baseline.
+- **`synchronous=FULL` on the DB writer** — perf vs durability; decide at Phase 9
+  with measurements.
+- **Named pipe vs token'd TCP for `llama-server`** — confirm upstream supports a
+  pipe / `--api-key` at Phase 15; named pipe preferred.
+- **npm vs pnpm** — Phase 6.
+- **At-rest encryption** for the DB + blob store — a later phase, if shared-machine
+  use is ever in scope.

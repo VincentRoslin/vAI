@@ -1,6 +1,6 @@
 # ADR-0014 — Packaging: MSI, embedded CPython + shared venv
 
-- **Status:** PROPOSED (Phase 3 draft) · **Date:** 2026-09-05
+- **Status:** ACCEPTED (Phase 5 freeze, 2026-09-05; superseding attacks folded in via Phase 4) · **Date:** 2026-09-05
 - **Research:** `docs/research/phase3/12_packaging.md` (D-13)
 
 ## Context
