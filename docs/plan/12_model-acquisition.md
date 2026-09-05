@@ -1,15 +1,17 @@
 # Phase 12 — Model Acquisition & Picker
 
-> **Architecture frozen at Phase 5.** Step detail **finalized at phase entry, 2026-09-06**. Governing: **ADR-0008** (`hf-hub` transfer + a SQLite `model_downloads` table, header-only GGUF parse, SHA-256 verify, pre-transfer budget guard, auto-register, same path for fixed models), **ADR-0009** (persistence), **ADR-0016** (config — model dir + budget), **ADR-0011** (image models come with the owner's impl — *not* this phase), `SECURITY.md` (HF token → OS credential store, path confinement), `CLAUDE.md` Art. II (fully skippable, offline after).
+> **Architecture frozen at Phase 5.** Step detail **finalized at phase entry, 2026-09-06**. Governing: **ADR-0008** (*amended 2026-09-06*: `reqwest` transfer, not `hf-hub`; + a SQLite `model_downloads` table, header-only GGUF parse, SHA-256 verify, pre-transfer budget guard, auto-register, same path for fixed models), **ADR-0009** (persistence), **ADR-0016** (config — model dir + budget), **ADR-0011** (image models come with the owner's impl — *not* this phase), `SECURITY.md` (HF token → OS credential store, path confinement), `CLAUDE.md` Art. II (fully skippable, offline after).
 
-## ⚠ Owner sign-off required before any real download
-`CLAUDE.md` → "Model / asset downloads — always ask first". Before running the
-gate items that need a real HuggingFace transfer (1, 5, 8 partly), the owner is
-asked whether they already have the specific files (a small test GGUF; the pinned
-faster-whisper + Chatterbox files) and whether to do a live test download now or
-record those gate items as `NOT EXECUTED — pending owner sign-off`. Everything
-offline-testable (engine, resume, checksum, budget, GGUF parse, registration,
-controls, UI) is verified regardless against a **local mock HTTP server**.
+## Owner sign-off (2026-09-06)
+`CLAUDE.md` → "Model / asset downloads — always ask first". Owner answered:
+- **Engine tests: local mock HTTP server only** (deterministic, offline) — resume,
+  checksum, budget, register, control all run against a `tiny_http` fixture server.
+- **Gate 1 (a real HF GGUF): a small one is fine** — Claude names the exact
+  repo/file and waits for a final yes before fetching (~a few hundred MB).
+- **Fixed models (12.8): download now** — **faster-whisper** (size is nominally a
+  Phase 18 call — use `large-v3` CT2 as the default, revisitable) and
+  **Chatterbox Turbo** (the build the owner uses). Exact repos/files listed and
+  confirmed at 12.8 before the transfer.
 
 ## Objective
 An in-app HuggingFace picker + one-shot **resumable** download for **LLM GGUF**
@@ -35,12 +37,14 @@ possible HF token), Phase 7 (`DownloadId`, `TaskId`, `AppError`).
   transfer, `gguf.rs` — header parser, `download.rs` — the engine + state,
   `tests.rs`). The **only** runtime network egress in the app lives here, behind
   an explicit user action.
-- **Crates:** `hf-hub` 1.0 (transfer — resume, auth, Xet), `reqwest` (HF search
-  API + GGUF header range request; JSON), `sha2` (streaming SHA-256). GGUF header
-  is **hand-parsed** (~120 lines — the format is stable; the two crates on
-  crates.io are immature and want a full file). *If `hf-hub` 1.0 forces a
-  `reqwest` version split or has an unworkable API → STOP → propose → ADR update
-  (do not silently swap to hand-rolled `reqwest` resume).*
+- **Crates (ADR-0008 amended):** `reqwest` (`json`, `rustls-tls`, `stream` — 0
+  net crates, whole tree already present via Tauri) for **all** HF traffic —
+  search API, GGUF header range, and the file transfer; `sha2` (streaming
+  SHA-256). **No `hf-hub`.** Resume = a `Range: bytes=<downloaded_bytes>-` header
+  from the persisted `model_downloads` row, appending to `.part`; on resume the
+  digest is recomputed over the whole `.part` before the final verify. GGUF
+  header is **hand-parsed** (~120 lines — stable format; the crates.io options
+  are immature and want a full file).
 - **`model_downloads` table** (migration `V0003`): `id` (`DownloadId`), `repo`,
   `filename`, `kind`, `dest_path`, `total_bytes`, `downloaded_bytes`, `sha256_expected`,
   `etag`, `state` (Queued/Downloading/Paused/Verifying/Failed/Complete),
@@ -68,11 +72,12 @@ possible HF token), Phase 7 (`DownloadId`, `TaskId`, `AppError`).
 ## Steps
 
 **12.1 — Deps + module skeleton + `V0003` migration**
-    Do:     Add `hf-hub` 1.0, `reqwest` (features `json`, `rustls-tls`, `stream`),
-            `sha2`. `acquisition/` skeleton. `V0003__model_downloads.sql` +
-            config schema **v3** (`models.min_free_gb`, `ConfigKey::ModelsMinFreeGb`,
-            `step_forward` handles it). Register in `lib.rs`, `README`s, `ARCHITECTURE`.
-    Verify: `cargo build`; `cargo tree -d` — no `reqwest` split; `cargo test` —
+    Do:     Add `reqwest` (features `json`, `rustls-tls`, `stream`), `sha2`,
+            `tiny_http` (dev-dep). `acquisition/` skeleton. `V0003__model_downloads.sql`
+            + config schema **v3** (`models.min_free_gb` default 20,
+            `ConfigKey::ModelsMinFreeGb`, `step_forward` handles it). Register in
+            `lib.rs`, `README`s, `ARCHITECTURE`.
+    Verify: `cargo build`; `cargo tree -d` — no new duplicate; `cargo test` —
             `V0003` applies, config v2→v3 migration test passes.
 
 **12.2 — GGUF header parser (`gguf.rs`)**
@@ -101,10 +106,10 @@ possible HF token), Phase 7 (`DownloadId`, `TaskId`, `AppError`).
 
 **12.4 — Download engine (`download.rs`) against a local mock server**
     Do:     `DownloadEngine` — `start(spec) -> DownloadId` (writes a `Queued`
-            row), a worker that streams `hf-hub` (or, for the mock, a `reqwest`
-            range GET) → `<dest>.part`, updating `downloaded_bytes` + a progress
-            Channel; `resume(id)` picks up from `downloaded_bytes` via a `Range`
-            header; SHA-256 updated per chunk; on completion verify the digest,
+            row), a worker that streams a `reqwest` GET (`Range: bytes=<off>-`
+            when `off > 0`) → append to `<dest>.part`, updating `downloaded_bytes`
+            + a progress Channel; `resume(id)` re-issues from the persisted offset;
+            on completion recompute SHA-256 over the `.part`, verify the digest,
             atomic-rename, set `Complete`. Transient errors → bounded backoff.
     Verify: `cargo test acquisition::download_*` — a `tiny_http` (dev-dep) server
             serving a fixture with `Range` support: full download → byte-identical
@@ -141,12 +146,16 @@ possible HF token), Phase 7 (`DownloadId`, `TaskId`, `AppError`).
             removes file + registry entry.
 
 **12.8 — Fixed STT/TTS acquisition**
-    Do:     `acquire_fixed(FixedModel::Stt | Tts)` — pinned `{repo, files[],
-            kind}` constants (per ADR-0005; the exact repo/revision **confirmed
-            with the owner**), through the 12.4–12.6 path (no picker, no GGUF
-            parse — a fixed `ModelDraft` per model). Idempotent when present.
-    Verify: gate item 5 — owner-gated (real files) or `NOT EXECUTED` with reason;
-            the *code path* is unit-tested with the mock server + fake fixed specs.
+    Do:     `acquire_fixed(FixedModel::Stt | Tts)` — pinned `{repo, revision,
+            files[], kind, backend}` constants: **faster-whisper `large-v3` CT2**
+            (`model.bin` + `config.json` + `tokenizer.json` + `vocabulary.*`;
+            size revisitable at Phase 18) and **Chatterbox Turbo** (the owner's
+            build — exact repo confirmed at this step). Through the 12.4–12.6 path
+            (no picker, no GGUF parse — a fixed `ModelDraft` per model, multi-file).
+            Idempotent when all files present.
+    Verify: gate item 5 — run **live** once the owner confirms the exact repos
+            (see below); the *code path* is unit-tested first with the mock server
+            + fake fixed specs.
 
 **12.9 — Typed IPC + picker UI**
     Do:     Commands: `hf_search`, `hf_list_files`, `download_start`,
@@ -175,22 +184,23 @@ possible HF token), Phase 7 (`DownloadId`, `TaskId`, `AppError`).
     Verify: check suite green; verification doc complete + honest about NOT-EXECUTED.
 
 ## Verification gate
-1. Pick + download + verify + register a small real GGUF from HF — **owner-gated**
-   (live) or `NOT EXECUTED` with reason; the full path is proven offline in 12.4/12.6.
-2. Resume an interrupted download to a byte-identical result. *(12.4 mock — CAN run)*
-3. Checksum mismatch is rejected and cleaned up. *(12.4 mock — CAN run)*
-4. Insufficient disk / over-budget is refused **before** transfer. *(12.5 — CAN run)*
-5. faster-whisper + Chatterbox acquired via the same path — **owner-gated** (real
-   files); code path unit-tested with fakes.
+1. Pick + download + verify + register a small real GGUF from HF — **live**
+   (owner OK'd a small file; exact repo/file confirmed just before fetching).
+2. Resume an interrupted download to a byte-identical result. *(12.4 mock)*
+3. Checksum mismatch is rejected and cleaned up. *(12.4 mock)*
+4. Insufficient disk / over-budget is refused **before** transfer. *(12.5)*
+5. faster-whisper + Chatterbox Turbo acquired via the same path — **live**
+   (owner: "download them now"; repos confirmed at 12.8).
 6. A downloaded model appears in the registry, metadata correct, path confined.
-   *(12.6 mock — CAN run)*
+   *(12.6 mock + the live download from gate 1)*
 7. Picker UI works read-only with the network disabled; local models stay usable.
-   *(12.10 — CAN run)*
-8. Download throughput recorded (MB/s). *(mock-server floor always; real number
-   owner-gated)*
+   *(12.10)*
+8. Download throughput recorded (MB/s) from the live transfers. *(gates 1, 5)*
 9. Full check suite green; `src/bindings` regenerated + committed. *(12.11)*
 
 ## ADRs / open questions
-- Confirms ADR-0008 in practice. Raises an ADR only if `hf-hub` 1.0 is
-  unworkable, or if throughput needs parallel-range (unlikely for GGUF sizes).
-- The exact pinned STT/TTS repos + revisions are confirmed with the owner at 12.8.
+- **ADR-0008 amended 2026-09-06** (owner-approved): transfer client `hf-hub` →
+  hand-rolled `reqwest`. Xet dropped for v1.
+- Raise a further ADR only if throughput needs parallel-range (unlikely for GGUF).
+- faster-whisper model *size* stays a Phase 18 decision; `large-v3` CT2 is the
+  Phase 12 default.

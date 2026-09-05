@@ -24,7 +24,7 @@ added at Phase 8** to close a question Phase 3 deferred (config format).
 | 0005 | Voice: faster-whisper fp16 / Silero / Chatterbox / cpal | ACCEPTED |
 | 0006 | Image subsystem: diffusers sidecar, Krea 2 Turbo NF4 (cache required) | ACCEPTED |
 | 0007 | Resource manager: nvml whole-GPU + ledger + RAM watch + TDR path | ACCEPTED |
-| 0008 | Model acquisition: hf-hub + downloads table + NF4 quant at acquisition | ACCEPTED |
+| 0008 | Model acquisition: reqwest transfer + downloads table + NF4 quant at acquisition | ACCEPTED (transfer client amended `hf-hub`→`reqwest` at Phase 12, 2026-09-06) |
 | 0009 | Persistence: rusqlite + dedicated writer + refinery + blob store | ACCEPTED |
 | 0010 | Scheduler: priority queue, lock-ordering rule, restore-on-crash | ACCEPTED |
 | 0011 | Character identity: prompt-based (sheet + canonical caption + seed + gate) | ACCEPTED |

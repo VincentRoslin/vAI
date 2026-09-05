@@ -1,6 +1,9 @@
-# ADR-0008 — Model acquisition: hf-hub + downloads table
+# ADR-0008 — Model acquisition: reqwest transfer + downloads table
 
-- **Status:** ACCEPTED (Phase 5 freeze, 2026-09-05; superseding attacks folded in via Phase 4) · **Date:** 2026-09-05
+- **Status:** ACCEPTED (Phase 5 freeze, 2026-09-05; superseding attacks folded in via Phase 4)
+- **Amended:** 2026-09-06 (Phase 12 entry, owner-approved) — **transfer client
+  changed from `hf-hub` to hand-rolled `reqwest` range requests.** Everything else
+  stands.
 - **Research:** `docs/research/phase3/06_model-acquisition.md` (D-7)
 
 ## Context
@@ -12,9 +15,20 @@ fixed STT/TTS/image models acquired once via the same path; fully offline after.
 - GGUF metadata: header-only range request vs full download.
 
 ## Decision
-- **`hf-hub`** for transfers (async, automatic resume, desktop-friendly chunking)
-  **+ a SQLite `model_downloads` table** for queue/pause/resume/cancel UI state
-  that survives a hard kill.
+- **Transfer: hand-rolled `reqwest` range requests** + a SQLite `model_downloads`
+  table for queue/pause/resume/cancel state that survives a hard kill.
+  - *Amendment rationale (2026-09-06):* `hf-hub` 1.0 pulls **+121 transitive
+    crates** (incl. `aws-lc-sys` — a C build needing cmake — and `hf-xet`);
+    `hf-hub` 0.3 pulls +66. `reqwest` adds **0 net crates** (its whole tree is
+    already present via Tauri). We need `reqwest` regardless for the HF search API
+    and the GGUF header range request, so `hf-hub` would mean two HTTP stacks. The
+    resume logic it provides is ~30 lines given the `model_downloads` state table
+    we build anyway (`Range` header from the persisted `downloaded_bytes`). This
+    was the ADR's own documented runner-up; Article IV (fewer deps) decides it.
+  - `reqwest` features: `json`, `rustls-tls` (ring, **not** aws-lc), `stream`.
+  - HF **Xet** transfer is dropped for v1 (it rode on `hf-hub`/`hf-xet`); plain
+    LFS range requests over the `resolve` URL. Revisit only if large-file
+    throughput is measured as inadequate.
 - **GGUF picker**: parse the **header only** via a range request to show quant /
   context / size. **Probe-confirmed** (2026-09-05): GGUF v3 header parses fine
   from a range request; architecture / file_type (quant) / context_length /
@@ -42,8 +56,11 @@ fixed STT/TTS/image models acquired once via the same path; fully offline after.
   LoRA, or cache** — they have pre-downloaded files in related projects. The
   shipped app's first-run flow also offers a "point at an existing models folder"
   option (R also covered by FR-77 / packaging). `CLAUDE.md` has the standing rule.
-- Minimal download code (hf-hub does resume); our table adds the UI/restart story.
-- Evaluate HF **Xet** transfer + a content-addressed local model store as
-  optimizations (research file §Optimizations).
+- Resume is our code: `Range: bytes=<downloaded_bytes>-` on relaunch, append to
+  `.part`, streaming SHA-256 continued from a persisted mid-state is *not* done —
+  on resume the digest is recomputed over the whole `.part` before the final
+  verify (a `.part` is at most one model file; a full re-hash is seconds).
+- A content-addressed local model store stays a possible optimization (research
+  file §Optimizations); **Xet is out for v1** (see amendment).
 - Krea 2 first-run acquisition is ~34 GB + a one-time quant — explicit, with clear
   progress.
