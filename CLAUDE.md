@@ -19,7 +19,8 @@ This file is loaded into every Claude Code session. It has two parts:
 | File | Role | Authoritative for | Status |
 | ---- | ---- | ----------------- | ------ |
 | `CLAUDE.md` (this file) | Constitution + agent operating manual | Rules, ownership boundaries, how to work | Live |
-| `ROADMAP.md` | **State machine** — LocalAI 40-step course (Phase 0–39) | Current phase/stage, progress, verification gates, open questions (§7) | Live. Mechanics fixed; future-phase scope refined at phase entry / after Phase 5 freeze |
+| `ROADMAP.md` | **State machine + phase index** — LocalAI course (Phase 0–40) | Current phase/stage, progress, gate summaries, open questions (§7) | Live. Mechanics fixed; per-phase detail lives in `docs/plan/` |
+| `docs/plan/NN_*.md` | Detailed, individually-verifiable steps for one phase | *How* to execute the current phase | Live. On phase entry read the file for that phase first; finalize its steps if the "finalized at phase entry" banner is still there |
 | `PROJECT.md` | Reserved for the officialized product + architecture definition | — | **Intentionally empty until Phase 5 (architecture freeze).** Do not populate without an explicit instruction. Constitution stays in `CLAUDE.md`. |
 | `docs/OVERVIEW.md` | Product & architecture overview — feature set, character system, runtime ownership, key technical areas | Understanding what LocalAI is and its intended shape | Live — **context, not authority**; repo docs win on conflict |
 | `docs/product/requirements.md` | Structured product requirements (functional / non-functional / ambiguities / research questions) | Product Definition output; input to Phase 3 | Created at the Product Definition step |
@@ -230,13 +231,17 @@ understanding, not instructions**:
 
 ### Before acting on any prompt
 
-1. Read `ROADMAP.md` — current state, and §7 open decisions.
-2. Read the subsystem docs relevant to the task (`docs/research/`, the named
-   `*.md`).
-3. Respect Article I when placing anything. If a design needs the frontend to
+1. Read `ROADMAP.md` — current state (§1), and §7 open decisions.
+2. Open the current phase's `docs/plan/NN_*.md` — it has the step-by-step. If it
+   still shows the "finalized at phase entry" banner, finalize its steps (against
+   the frozen architecture) before starting.
+3. Read the subsystem docs relevant to the task (`docs/research/`, `docs/OVERVIEW.md`,
+   the named `*.md`).
+4. Respect Article I when placing anything. If a design needs the frontend to
    touch the filesystem, or a worker to open the database, the design is wrong.
-4. Keep changes to the smallest correct set (Article IV).
-5. Report verification honestly (Article IV). Never edit a `ROADMAP.md` gate to
+5. Keep changes to the smallest correct set (Article IV).
+6. Report verification honestly (Article IV). Never edit a `ROADMAP.md` gate to
    "passed" without the command output that proves it.
-6. Update `ROADMAP.md` (state pointer, transition log, §7) as part of the same
-   change when the work advances or changes the plan.
+7. Update `ROADMAP.md` (state pointer, transition log, §7) — and the phase's
+   `docs/plan/` file — as part of the same change when work advances or the plan
+   changes.

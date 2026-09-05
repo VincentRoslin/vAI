@@ -186,6 +186,19 @@ mid-generation, a worker times out, or a process dies unexpectedly.
 **Direction (expected, not yet ratified):** Tauri, React, TypeScript, Rust,
 llama.cpp, Python workers, SQLite, NVIDIA CUDA.
 
+### Chosen tech defaults (strong preference — validated in Phase 3, not frozen)
+
+| Area | Default | Notes |
+| ---- | ------- | ----- |
+| LLM models | **GGUF**, via an in-app **HuggingFace picker + one-shot resumable download** | Rust owns the download (resumable, checksum, path-confined). `ROADMAP.md` Phase 12. |
+| STT | **faster-whisper**, one pinned model | CTranslate2; Phase 18. |
+| VAD | **Silero** | endpointing for voice input; Phase 18. |
+| TTS | **Resemble Chatterbox**, one pinned model | clause-chunked for barge-in; Phase 19. |
+| Image | **FLUX.1 Krea [dev]** | owner has a working implementation in another project to adapt — **request it at Phase 3.10 / Phase 22**. |
+
+Phase 3 confirms each fits 16 GB VRAM / Blackwell sm_120 / offline / licensing and
+records an ADR. If one does not fit, Phase 3 selects the alternative.
+
 **Decided by architecture research (Phase 3) and frozen at Phase 5:** subsystem
 boundaries, IPC contract design, process architecture, worker transport protocol,
 database schema, resource manager design, scheduler design, model lifecycle
