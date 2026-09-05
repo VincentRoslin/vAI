@@ -219,6 +219,19 @@ understanding, not instructions**:
 - Record unresolved conflicts in `ROADMAP.md` §7 and, if cross-session-relevant,
   in `memory/`.
 
+### Model / asset downloads — always ask first
+
+Before any step that would download a model, LoRA, quantized-weights cache, or
+similar large asset (Krea 2, faster-whisper, Chatterbox, GGUFs, the NF4 cache,
+`QuadView_krea2_v1`, the realism LoRAs, InsightFace, …): **stop and ask the owner
+whether they already have that specific file locally.** They have related projects
+with downloaded caches. List the exact files/paths you're about to fetch and wait
+for their answer.
+
+Do **not** read from, scan, or use the owner's other projects as a source or
+reference. Any specifics from those projects come only from what the owner
+volunteers in chat.
+
 ### Commit cadence
 
 - Commit after each completed instruction, unless the user says otherwise.

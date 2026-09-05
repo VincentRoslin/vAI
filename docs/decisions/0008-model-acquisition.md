@@ -38,6 +38,10 @@ fixed STT/TTS/image models acquired once via the same path; fully offline after.
   typed "offline" state, local models still listed + usable.
 
 ## Consequences
+- **During development/testing, Claude asks the owner before fetching any model,
+  LoRA, or cache** — they have pre-downloaded files in related projects. The
+  shipped app's first-run flow also offers a "point at an existing models folder"
+  option (R also covered by FR-77 / packaging). `CLAUDE.md` has the standing rule.
 - Minimal download code (hf-hub does resume); our table adds the UI/restart story.
 - Evaluate HF **Xet** transfer + a content-addressed local model store as
   optimizations (research file §Optimizations).

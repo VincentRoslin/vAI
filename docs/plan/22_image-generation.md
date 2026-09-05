@@ -1,9 +1,12 @@
 # Phase 22 — Image Generation (FLUX.1 Krea)
 
 > ⚠ Step detail finalized at phase entry (after Phase 5).
-> **At phase entry, request the owner's existing FLUX.1 Krea implementation from
-> their other project.** The plan below is the adaptation frame; the concrete
-> steps depend on what that code provides.
+> Phase 3 (`docs/research/phase3/04`) + ADR-0006 have the design. The owner
+> supplied the reference implementation's specifics in chat (2026-09-05) — do
+> **not** read their other project directly.
+> **Before downloading Krea 2 / any LoRA / the NF4 cache: ask the owner whether
+> they already have the specific files locally** (`CLAUDE.md` → "Model / asset
+> downloads — always ask first").
 
 ## Objective
 Local image generation as a resource-managed workload: an isolated worker running

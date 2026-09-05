@@ -14,6 +14,11 @@ Phase 11 (Model Registry — an acquired model is registered), Phase 9 (persiste
 for download state), Phase 8 (config: model dir, disk budget), Phase 10
 (observability).
 
+> **Before triggering any download at phase entry / testing:** ask the owner
+> whether they already have the specific file locally (Krea 2, LoRAs, NF4 cache,
+> STT/TTS models, test GGUFs). List exact files/paths, wait for their answer.
+> `CLAUDE.md` → "Model / asset downloads — always ask first".
+
 ## Not in this phase
 - Loading or running models (Phase 14/15).
 - A picker for STT/TTS/image models — those are fixed single models.
