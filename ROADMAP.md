@@ -25,12 +25,12 @@
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
 | **Phase**        | 3 — Architecture Research                               |
-| **Stage**        | 3.1 — frame the decisions                               |
-| **Status**       | `NOT STARTED`                                           |
-| **Blocked by**   | —  (3.10 needs the owner's FLUX.1 Krea implementation)  |
+| **Stage**        | 3.4 done · 3.5–3.14 in progress → `docs/research/phase3/` |
+| **Status**       | `IN PROGRESS`                                           |
+| **Blocked by**   | —  (3.10 needs specifics on the owner's Krea 2 setup — see `docs/research/phase3/04_image-generation.md`) |
 | **Plan doc**     | `docs/plan/03_architecture-research.md`                 |
 | **Last updated** | 2026-09-05                                              |
-| **Updated by**   | product-definition                                      |
+| **Updated by**   | phase-3-research                                        |
 
 **Completed:** Phase 0 (process) · Phase 1 (Project Foundation) · Phase 2
 (Environment Audit) · **Product Definition** (`docs/product/requirements.md`,
@@ -387,7 +387,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
-| 2026-09-05 | Product Definition `IN PROGRESS` | Phase 3 / 3.1 `NOT STARTED` | owner-confirmed | `docs/product/vision.md` (owner draft) → `docs/product/requirements.md` (PD.2): 3-tab structure (Chat/Voice · Image Generator · Discovery), Persona vs Character split, ~95 FR / ~40 NFR / 20 ARQ / 7 non-goals. Open points A1–A11 resolved; owner confirmed. Product Definition `COMPLETE`. Pointer → Phase 3. |
+| 2026-09-05 | Phase 3 `NOT STARTED` | Phase 3 `IN PROGRESS` | phase-3 | Research started. `docs/research/phase3/` — README (decision table + VRAM budget) + 5 areas drafted: desktop/IPC (D-1,2,14), LLM runtime (D-3, resolves O3→`llama-server` loopback + O5 CUDA build-from-source), voice (D-4), image gen (D-5, Krea 2 Turbo NVFP4), resource/VRAM (D-6). **Key finding: image gen ⟂ LLM on 16 GB — hot-swap is on the critical path.** Remaining: acquisition, persistence, scheduler, identity, memory, worker protocol, packaging, then ADRs. | `docs/product/vision.md` (owner draft) → `docs/product/requirements.md` (PD.2): 3-tab structure (Chat/Voice · Image Generator · Discovery), Persona vs Character split, ~95 FR / ~40 NFR / 20 ARQ / 7 non-goals. Open points A1–A11 resolved; owner confirmed. Product Definition `COMPLETE`. Pointer → Phase 3. |
 | 2026-09-05 | 40-step course (0–39) | 41-step course (0–40) + detailed `docs/plan/` | owner-approved | Full implementation plan written. Inserted **Phase 12 Model Acquisition & Picker**; split Voice → 18/19 and Character System → 25/26; moved Scheduler → 24; merged old 37–39 → Phase 40. `ROADMAP.md` §4 slimmed to an index; per-phase detail now in `docs/plan/NN_*.md`. Tech defaults recorded in §7 + `docs/OVERVIEW.md`. Pointer unchanged (Product Definition). |
 | 2026-09-05 | 32-phase working-draft ledger | 40-phase course (0–39) + Product Definition step | owner-delegated | §4 replaced with the LocalAI phase structure from the owner's ChatGPT planning chat. Old Phase 1 → Phase 1 (Project Foundation); old Phase 0 (env audit) → Phase 2. |
 | 2026-09-05 | Article I amended | Article I reverted | owner-delegated | Subprocess transport is a Phase 3 architecture-research question, not a Phase 0 decision. §7 O3 reopened. |
