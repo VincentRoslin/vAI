@@ -24,16 +24,17 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | Product Definition (between Phase 2 and Phase 3)        |
-| **Stage**        | PD.1 — owner provides the LocalAI product vision        |
+| **Phase**        | 3 — Architecture Research                               |
+| **Stage**        | 3.1 — frame the decisions                               |
 | **Status**       | `NOT STARTED`                                           |
-| **Blocked by**   | Owner input (the product description)                   |
-| **Plan doc**     | `docs/plan/pd_product-definition.md`                    |
+| **Blocked by**   | —  (3.10 needs the owner's FLUX.1 Krea implementation)  |
+| **Plan doc**     | `docs/plan/03_architecture-research.md`                 |
 | **Last updated** | 2026-09-05                                              |
-| **Updated by**   | plan-authoring                                          |
+| **Updated by**   | product-definition                                      |
 
-**Completed:** Phase 0 (process established) · Phase 1 (Project Foundation) ·
-Phase 2 (Environment Audit — `docs/verification/01_env_audit.md`).
+**Completed:** Phase 0 (process) · Phase 1 (Project Foundation) · Phase 2
+(Environment Audit) · **Product Definition** (`docs/product/requirements.md`,
+owner-confirmed 2026-09-05).
 
 **Only one `(Phase, Stage)` pair is ever `IN PROGRESS`.** Advancing the pointer is
 itself a state transition and MUST follow §3.
@@ -103,14 +104,12 @@ Know the dev machine before choosing an architecture.
 Gate: toolchains + build tools + GPU/VRAM recorded; Rust→MSVC link chain built an
 exe. Non-blocking gaps (CUDA toolkit, pnpm, Python env, autocrlf) → Phase 3 / O5.
 
-### ▶ Product Definition *(step — current pointer)* — `NOT STARTED` — `docs/plan/pd_product-definition.md`
-Owner describes the product; Claude captures structured requirements
-(`docs/product/requirements.md`: FR / NFR / character-system / ambiguities /
-architecture-research-questions). No technology choices here.
-Gate: requirements file with FR/NFR separated; every named feature present, none
-invented; dated `ARQ` list; owner confirmation logged in §5.
+### ▶ Product Definition *(step)* — `COMPLETE` — `docs/product/requirements.md`
+Owner draft (`docs/product/vision.md`) → confirmed requirements: 3-tab structure
+(Chat/Voice · Image Generator · Discovery), Persona vs Character split, ~95 FR /
+~40 NFR / 20 ARQ / 7 non-goals. A1–A11 resolved. Owner-confirmed 2026-09-05 (§5).
 
-### Phase 3 — Architecture Research — `NOT STARTED` — `docs/plan/03_architecture-research.md`
+### Phase 3 — Architecture Research *(current pointer)* — `NOT STARTED` — `docs/plan/03_architecture-research.md`
 Research *how* to build the confirmed product; every technology and boundary
 questioned against performance, Windows, offline, failure modes. Research stays
 open. Input: `docs/research/01–06`, `ARQ-*`, O3/O5.
@@ -388,6 +387,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-05 | Product Definition `IN PROGRESS` | Phase 3 / 3.1 `NOT STARTED` | owner-confirmed | `docs/product/vision.md` (owner draft) → `docs/product/requirements.md` (PD.2): 3-tab structure (Chat/Voice · Image Generator · Discovery), Persona vs Character split, ~95 FR / ~40 NFR / 20 ARQ / 7 non-goals. Open points A1–A11 resolved; owner confirmed. Product Definition `COMPLETE`. Pointer → Phase 3. |
 | 2026-09-05 | 40-step course (0–39) | 41-step course (0–40) + detailed `docs/plan/` | owner-approved | Full implementation plan written. Inserted **Phase 12 Model Acquisition & Picker**; split Voice → 18/19 and Character System → 25/26; moved Scheduler → 24; merged old 37–39 → Phase 40. `ROADMAP.md` §4 slimmed to an index; per-phase detail now in `docs/plan/NN_*.md`. Tech defaults recorded in §7 + `docs/OVERVIEW.md`. Pointer unchanged (Product Definition). |
 | 2026-09-05 | 32-phase working-draft ledger | 40-phase course (0–39) + Product Definition step | owner-delegated | §4 replaced with the LocalAI phase structure from the owner's ChatGPT planning chat. Old Phase 1 → Phase 1 (Project Foundation); old Phase 0 (env audit) → Phase 2. |
 | 2026-09-05 | Article I amended | Article I reverted | owner-delegated | Subprocess transport is a Phase 3 architecture-research question, not a Phase 0 decision. §7 O3 reopened. |
@@ -401,8 +401,9 @@ Newest first. One line per state transition (§3 rule 6).
 
 ## 6. Open Blockers
 
-- **Product Definition / PD.1** — waiting on the owner's product description. This
-  is the current pointer; nothing else proceeds until PD is `COMPLETE`.
+- **Phase 3.10 (image-generation research)** needs the owner's existing FLUX.1
+  Krea implementation from their other project. Not blocking 3.1–3.9; request it
+  before starting 3.10.
 
 Phase 6 carries forward Phase 1's deferred formatter/linter/hook/README tooling —
 tracked, not blocking.
