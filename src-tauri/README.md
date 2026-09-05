@@ -11,7 +11,7 @@ process supervision, and IPC. Single crate, one module per subsystem
 | ------ | ---- | --- |
 | `lib.rs` | The Tauri builder + `run()`; `setup()` loads config + opens/migrates the DB into managed state; exit hook checkpoints the WAL | — |
 | `main.rs` | Thin bin entry | — |
-| `logging.rs` | `tracing` JSON logging; `LOCALAI_LOG` env filter (the one pre-config env read); no network sink | observability → Phase 10 |
+| `logging/` | Observability — JSON stdout via a non-blocking lossy writer; boundary **secret redaction**; in-memory ring buffer (`recent_lines`); hot-reloadable filter (`set_level` from config / `LOCALAI_LOG`); `operation()` span helper. No network sink. | `docs/plan/10_observability.md` |
 | `ipc/` | Typed IPC boundary — `commands` (`app_*`, `frontend_log`, `config_*`), `error::{AppError, ErrorEnvelope}` | `docs/decisions/0002-ipc-design.md` |
 | `contracts/` | The serializable vocabulary for **both** the IPC and worker boundaries — `ids`, `task`, `model`, `generation`, `conversation`, `resource`, `worker`. No behaviour. | `docs/contracts.md` |
 | `config/` | The settings authority — one JSON file (`<app_config_dir>/config.json`), layered defaults ← file ← session, schema `version` + forward migrations, atomic write | `docs/decisions/0016-configuration.md` |

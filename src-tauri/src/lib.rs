@@ -39,9 +39,13 @@ pub fn run() {
             let manager = config::ConfigManager::load(&config_dir, &data_root)
                 .map_err(|err| format!("load configuration: {err}"))?;
             let effective = manager.effective();
+            if let Err(err) = logging::set_level(&effective.logging.level) {
+                tracing::warn!(%err, "could not apply configured logging.level");
+            }
             tracing::info!(
                 models_dir = %effective.models.dir.display(),
                 models_budget_gb = effective.models.budget_gb,
+                logging_level = %effective.logging.level,
                 recovered = manager.recovered(),
                 load_ms = config_started.elapsed().as_secs_f64() * 1000.0,
                 "configuration loaded"

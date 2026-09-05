@@ -32,11 +32,12 @@ use crate::ipc::{AppError, AppResult};
 
 /// Schema version this binary understands. A file with a higher version is
 /// refused; a lower (or absent) version is migrated forward on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 const FILE_NAME: &str = "config.json";
 const TMP_NAME: &str = "config.json.tmp";
 const DEFAULT_MODEL_BUDGET_GB: u32 = 100;
+const DEFAULT_LOG_LEVEL: &str = "info";
 
 // ---------------------------------------------------------------- schema
 
@@ -48,6 +49,17 @@ pub struct AppConfig {
     pub version: u32,
     /// Model storage + budget.
     pub models: ModelsConfig,
+    /// Logging.
+    pub logging: LoggingConfig,
+}
+
+/// Logging configuration (schema v2).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct LoggingConfig {
+    /// A `tracing` filter directive (`info`, `warn`, `warn,localai=debug`, …).
+    /// The `LOCALAI_LOG` env var, when set, overrides this.
+    pub level: String,
 }
 
 /// Where downloaded models live and how much disk they may use.
@@ -70,6 +82,9 @@ impl AppConfig {
             models: ModelsConfig {
                 dir: app_data_root.join("models"),
                 budget_gb: DEFAULT_MODEL_BUDGET_GB,
+            },
+            logging: LoggingConfig {
+                level: DEFAULT_LOG_LEVEL.to_owned(),
             },
         }
     }
@@ -101,6 +116,7 @@ impl AppConfig {
                 "models.dir must be an absolute path".to_owned(),
             ));
         }
+        crate::logging::validate_directive(&self.logging.level)?;
         Ok(())
     }
 }
@@ -124,20 +140,17 @@ fn deep_merge(base: &mut Value, overlay: Value) {
     }
 }
 
-/// v0 (no `version` field, possibly missing keys) → v1: layer the document onto
-/// the current defaults and stamp the version.
-fn step_0_to_1(raw: Value, app_data_root: &Path) -> Value {
+/// Migrate a version-`from` document one step forward. The schema is
+/// **additive-only** (ADR-0016), so every step is the same: fill any keys the
+/// newer version introduced from the defaults, then stamp the new version. A
+/// non-additive change (rename / remove) would need a bespoke arm here.
+fn step_forward(raw: Value, app_data_root: &Path, from: u32) -> Value {
     let mut base = serde_json::to_value(AppConfig::defaults(app_data_root))
         .expect("defaults always serialize");
     deep_merge(&mut base, raw);
-    base["version"] = Value::from(1u32);
+    base["version"] = Value::from(from + 1);
     base
 }
-
-type MigrationStep = fn(Value, &Path) -> Value;
-
-/// Ordered steps; index `i` migrates a version-`i` document to version `i + 1`.
-const STEPS: &[MigrationStep] = &[step_0_to_1];
 
 fn migrate(raw: Value, app_data_root: &Path) -> AppResult<Value> {
     let start = detect_version(&raw);
@@ -150,9 +163,8 @@ fn migrate(raw: Value, app_data_root: &Path) -> AppResult<Value> {
     let mut value = raw;
     let mut v = start;
     while v < current {
-        let idx = usize::try_from(v).map_err(|_| AppError::Internal)?;
-        let step = STEPS.get(idx).ok_or(AppError::Internal)?;
-        value = step(value, app_data_root);
+        let from = u32::try_from(v).map_err(|_| AppError::Internal)?;
+        value = step_forward(value, app_data_root, from);
         v += 1;
     }
     Ok(value)
@@ -164,11 +176,12 @@ fn migrate(raw: Value, app_data_root: &Path) -> AppResult<Value> {
 struct SessionOverrides {
     models_dir: Option<PathBuf>,
     models_budget_gb: Option<u32>,
+    logging_level: Option<String>,
 }
 
 impl SessionOverrides {
     fn is_empty(&self) -> bool {
-        self.models_dir.is_none() && self.models_budget_gb.is_none()
+        self.models_dir.is_none() && self.models_budget_gb.is_none() && self.logging_level.is_none()
     }
 
     fn apply(&self, cfg: &mut AppConfig) {
@@ -177,6 +190,9 @@ impl SessionOverrides {
         }
         if let Some(budget) = self.models_budget_gb {
             cfg.models.budget_gb = budget;
+        }
+        if let Some(level) = &self.logging_level {
+            cfg.logging.level.clone_from(level);
         }
     }
 }
@@ -192,17 +208,20 @@ pub enum ConfigKey {
     ModelsDir,
     /// `models.budget_gb` — integer `>= 1`.
     ModelsBudgetGb,
+    /// `logging.level` — a `tracing` filter directive.
+    LoggingLevel,
 }
 
 impl ConfigKey {
     /// Every overridable key.
-    pub const ALL: [Self; 2] = [Self::ModelsDir, Self::ModelsBudgetGb];
+    pub const ALL: [Self; 3] = [Self::ModelsDir, Self::ModelsBudgetGb, Self::LoggingLevel];
 
     #[must_use]
     fn dotted(self) -> &'static str {
         match self {
             Self::ModelsDir => "models.dir",
             Self::ModelsBudgetGb => "models.budget_gb",
+            Self::LoggingLevel => "logging.level",
         }
     }
 
@@ -211,6 +230,7 @@ impl ConfigKey {
         match self {
             Self::ModelsDir => "path",
             Self::ModelsBudgetGb => "integer",
+            Self::LoggingLevel => "log-directive",
         }
     }
 
@@ -218,6 +238,7 @@ impl ConfigKey {
         match self {
             Self::ModelsDir => cfg.models.dir.display().to_string(),
             Self::ModelsBudgetGb => cfg.models.budget_gb.to_string(),
+            Self::LoggingLevel => cfg.logging.level.clone(),
         }
     }
 }
@@ -232,6 +253,7 @@ fn apply_kv(cfg: &mut AppConfig, key: ConfigKey, raw: &str) -> AppResult<()> {
                 AppError::Validation(format!("models.budget_gb must be an integer, got {raw:?}"))
             })?;
         }
+        ConfigKey::LoggingLevel => raw.trim().clone_into(&mut cfg.logging.level),
     }
     Ok(())
 }
@@ -391,6 +413,9 @@ impl ConfigManager {
             ConfigKey::ModelsDir => state.session.models_dir = Some(PathBuf::from(raw)),
             ConfigKey::ModelsBudgetGb => {
                 state.session.models_budget_gb = Some(probe.models.budget_gb);
+            }
+            ConfigKey::LoggingLevel => {
+                state.session.logging_level = Some(probe.logging.level.clone());
             }
         }
         Ok(())

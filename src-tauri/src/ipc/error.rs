@@ -78,6 +78,29 @@ pub enum AppError {
 }
 
 impl AppError {
+    /// The stable machine-readable discriminant, as a `&'static str`.
+    #[must_use]
+    pub fn kind_str(&self) -> &'static str {
+        match self {
+            Self::NotFound(_) => "NotFound",
+            Self::Validation(_) => "Validation",
+            Self::Conflict(_) => "Conflict",
+            Self::ResourceExhausted(_) => "ResourceExhausted",
+            Self::Timeout(_) => "Timeout",
+            Self::Cancelled => "Cancelled",
+            Self::BackendUnavailable(_) => "BackendUnavailable",
+            Self::WorkerCrashed(_) => "WorkerCrashed",
+            Self::Internal => "Internal",
+        }
+    }
+
+    /// Emit a structured `error!` line for this error with a `context` tag. Use
+    /// at the point a fallible operation fails, before the error crosses the IPC
+    /// boundary (`Internal`'s real cause is already logged at its source).
+    pub fn log(&self, context: &str) {
+        tracing::error!(kind = self.kind_str(), context, error = %self, "operation failed");
+    }
+
     /// Log the full context and return an opaque [`AppError::Internal`].
     pub fn internal(context: &str, source: impl std::fmt::Display) -> Self {
         tracing::error!(context, %source, "internal error");

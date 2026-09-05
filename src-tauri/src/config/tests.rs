@@ -62,6 +62,22 @@ fn apply_kv_rejects_non_integer_budget() {
     assert!(matches!(err, AppError::Validation(_)));
 }
 
+#[test]
+fn validation_rejects_a_bad_logging_level() {
+    let mut cfg = AppConfig::defaults(&root());
+    cfg.logging.level = "extremely-verbose".to_owned();
+    let err = cfg.validate().unwrap_err();
+    assert!(matches!(&err, AppError::Validation(m) if m.contains("logging.level")));
+}
+
+#[test]
+fn apply_kv_sets_logging_level() {
+    let mut cfg = AppConfig::defaults(&root());
+    apply_kv(&mut cfg, ConfigKey::LoggingLevel, " warn ").unwrap();
+    assert_eq!(cfg.logging.level, "warn");
+    cfg.validate().expect("valid");
+}
+
 // ---------------------------------------------------------------- migration
 
 #[test]
@@ -72,6 +88,22 @@ fn migration_upgrades_a_versionless_file() {
     assert_eq!(migrated["models"]["budget_gb"], json!(42));
     // A field the old file omitted is filled from defaults.
     assert!(migrated["models"]["dir"].is_string());
+}
+
+#[test]
+fn migration_v1_to_v2_adds_logging_defaults() {
+    // A complete v1 document — no `logging` section.
+    let v1 = json!({
+        "version": 1,
+        "models": { "dir": if cfg!(windows) { r"C:\m" } else { "/m" }, "budget_gb": 7 },
+    });
+    let migrated = migrate(v1, &root()).expect("migrates");
+    assert_eq!(migrated["version"], json!(2));
+    assert_eq!(migrated["models"]["budget_gb"], json!(7));
+    assert_eq!(migrated["logging"]["level"], json!("info"));
+
+    let cfg: AppConfig = serde_json::from_value(migrated).expect("deserializes");
+    cfg.validate().expect("valid after migration");
 }
 
 #[test]

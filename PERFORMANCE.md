@@ -39,6 +39,7 @@ targets, validated per hardware+model combination.
 | Krea 2 NF4 re-quantization (~90 s) + 24 GB bf16 in RAM | **NF4 quant cached once at acquisition** (ADR-0006/0008); NF4 loaded directly (~6 GB) after |
 | LLM ↔ image swap thrash (chat + image alternating) | scheduler **batches** queued image jobs behind one eviction; "image/discovery mode" keeps the LLM unloaded while in those tabs; predictive eviction on tab open |
 | Token-stream IPC overhead | Tauri **Channels** + coalesce deltas (~2–4 tokens / ~16 ms per message) |
+| Logging on the hot path | non-blocking, bounded, **lossy** writer (Phase 10) — a log burst drops lines with a count, never blocks generation; token-throughput comparison at Phase 16 |
 | STT int8 unavailable on Blackwell | faster-whisper `float16`; VAD-gated (transcribe speech only) |
 | Voice perceived latency | pipeline overlap — synthesize clause 1 while the LLM generates clause 2; play chunk 1 while chunk 2 synthesizes |
 | KV-cache VRAM pressure | flash-attention; optional `q8_0` KV-cache quantization; `-ngl` auto-tuned from measured free VRAM |

@@ -34,6 +34,14 @@ added at Phase 8** to close a question Phase 3 deferred (config format).
 | 0015 | Python worker network lockdown | ACCEPTED |
 | 0016 | Configuration: one JSON file, layered, versioned, Rust-owned | ACCEPTED (Phase 8) |
 
+### Decided during implementation (no ADR — implements frozen policy)
+
+- **Config format** → ADR-0016 (Phase 8).
+- **Log retention / rotation + persistent file sink + diagnostics bundle** →
+  **Phase 37** (packaging), when a windowed build with no terminal makes a file
+  sink necessary. Phase 10 ships structured logging + redaction + an in-memory
+  ring buffer; the file/rotation/bundle is a small addition on top.
+
 ### Deferred / to decide during implementation (not blocking the freeze)
 
 - **NVFP4 vs NF4 for Krea 2** — benchmark at Phase 22; NF4 is the v1 baseline.

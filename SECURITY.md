@@ -90,7 +90,12 @@ the user's system or exfiltrate their data* — not moderation of generated cont
 ### C7 — Secrets
 - No secrets in source (history scanned, Phase 34).
 - No secrets in logs (redaction at the logging boundary; workers log operation
-  metadata, not payloads).
+  metadata, not payloads). **Mechanism (Phase 10):** the `logging` module's write
+  boundary runs a regex redaction pass on **every** line — `hf_…` tokens,
+  `Bearer …` credentials, and secret-ish JSON fields / `key=value` pairs
+  (`token`, `secret`, `password`, `api_key`, `authorization`) → `***`. Message /
+  prompt / transcript text is logged only at `trace!`; `info`-level breadcrumbs
+  use `logging::content_preview` (length + hash, never the text).
 - No secrets in the frontend bundle (inspected, Phase 34).
 - A HuggingFace token (if provided) is stored in the **OS credential store**,
   never in `config` or logs; passed to `hf-hub` only.

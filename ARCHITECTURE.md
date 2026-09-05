@@ -50,9 +50,10 @@ blob store, model lifecycle, resource/VRAM/RAM management, scheduling, task
 management, process supervision, IPC, security-sensitive operations, business
 logic. Single crate (`src-tauri/`); modules interact through defined interfaces.
 
-Modules (see `src-tauri/README.md` for the live list): **as of Phase 9** —
-`lib.rs` (Tauri builder + config/DB wiring in `setup()`, WAL checkpoint on exit),
-`logging` (`tracing` JSON, no network sink), `ipc` (`commands`,
+Modules (see `src-tauri/README.md` for the live list): **as of Phase 10** —
+`lib.rs` (Tauri builder + config/DB/logging wiring in `setup()`, WAL checkpoint
+on exit), `logging` (JSON stdout, non-blocking lossy, boundary secret redaction,
+ring buffer, config-driven reloadable level — no network sink), `ipc` (`commands`,
 `error::{AppError, ErrorEnvelope}`), `contracts` (the serializable vocabulary for
 the IPC **and** worker boundaries — `docs/contracts.md`; no behaviour), `config`
 (the settings authority — one JSON file, layered defaults/file/session, ADR-0016),

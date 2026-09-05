@@ -24,11 +24,11 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 10 — Observability                                     |
-| **Stage**        | 10.1 — deps                                            |
-| **Status**       | `IN PROGRESS`                                           |
+| **Phase**        | 11 — Model Registry                                    |
+| **Stage**        | 11.1 — (finalize at phase entry)                       |
+| **Status**       | `NOT STARTED`                                           |
 | **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/10_observability.md` (finalized 2026-09-06)  |
+| **Plan doc**     | `docs/plan/11_model-registry.md`                        |
 | **Last updated** | 2026-09-06                                              |
 | **Updated by**   | phase-10-observability                                  |
 
@@ -42,6 +42,8 @@
 `docs/verification/07_phase8_config.md`).
 **Phase 9 done** — SQLite persistence (`db/` module, ADR-0009,
 `docs/verification/08_phase9_persistence.md`).
+**Phase 10 done** — observability (`logging/` module,
+`docs/verification/09_phase10_observability.md`).
 
 **Completed:** Phase 0–2 · Product Definition · Phase 3 (research + ADRs + probes)
 · Phase 4 (adversarial review, `03_adversarial_review.md`) · **Phase 5**
@@ -171,14 +173,14 @@ repositories, structured errors. Minimum schema. Frontend/workers never touch DB
 Gate: create from empty; migrate up/down + idempotent; commit + rollback; survives
 restart; migration failure rolls back + backup; lock contention handled.
 
-### Phase 10 — Observability *(current pointer)* — `NOT STARTED` — `docs/plan/10_observability.md`
+### Phase 10 — Observability — `COMPLETE` — `docs/verification/09_phase10_observability.md`
 Local structured logging + diagnostics (levels, task id, model id, duration,
 status, structured errors). No secrets, no conversation content by default, no
 cloud telemetry.
 Gate: an operation's log lines all carry its task id; redaction test passes;
 level filtering works; no network egress from the logging path.
 
-### Phase 11 — Model Registry — `NOT STARTED` — `docs/plan/11_model-registry.md`
+### Phase 11 — Model Registry *(current pointer)* — `NOT STARTED` — `docs/plan/11_model-registry.md`
 Model metadata as data (stable id, name, type, backend, path, capabilities,
 context, quant, estimated resource need, devices, model config). No loading.
 Gate: register a test model; find + read; missing file represented not crashed;
@@ -401,6 +403,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 10 / 10.1 `IN PROGRESS` | Phase 10 `COMPLETE` → Phase 11 / 11.1 `NOT STARTED` | phase-10 | Observability landed: `logging/` — non-blocking lossy JSON writer, **boundary secret redaction** (regex: `hf_`, `Bearer`, secret JSON keys / `key=value`), 256-line in-memory ring buffer, hot-reloadable `EnvFilter` (`set_level` from config), `operation()` span helper (`task_id` + `elapsed_ms` + `status`), `content_preview`, `AppError::log`. Config **schema v2**: `logging.level` (+ `ConfigKey::LoggingLevel`, session override, migration generalised to `step_forward`). Deps: `tracing-appender`, `regex` (already in tree). Gate: op lines carry task_id ✓ · seeded secrets redacted ✓ · no content at info ✓ · config level + reload ✓ · no network symbol in `logging/` ✓ · non-blocking lossy writer ✓ · check suite green. 113 rust tests (+14). **Deferred to Phase 37:** persistent file sink + rotation + diagnostics-bundle command. Evidence `docs/verification/09_phase10_observability.md`. |
 | 2026-09-06 | Phase 10 `NOT STARTED` | Phase 10 / 10.1 `IN PROGRESS` | phase-10 | Phase entry: `docs/plan/10_observability.md` finalized (10 steps). Scope: reloadable filter + config `logging.level` (schema **v2**), boundary redaction (regex — `hf_`, `Bearer`, secret JSON keys), non-blocking lossy writer, in-memory ring buffer, `operation()` span helper. **Deferred to Phase 37:** persistent log file + rotation/retention + the diagnostics-bundle IPC command (no terminal-less build or Settings UI yet) — this closes the plan's "retention/rotation" open question. Hot-path throughput comparison → Phase 16. No new ADR (implements frozen `SECURITY.md`/`PERFORMANCE.md`). |
 | 2026-09-06 | Phase 9 / 9.1 `IN PROGRESS` | Phase 9 `COMPLETE` → Phase 10 / 10.1 `NOT STARTED` | phase-9 | SQLite persistence landed: `src-tauri/src/db/` — `Db` (writer pool 1 + reader pool 4, `deadpool-sqlite`), per-connection pragma hook (WAL, `busy_timeout`, `foreign_keys`, `synchronous=NORMAL`), `refinery` forward-only grouped migrations with verified `VACUUM INTO` backup (keep 5) + unknown-newer refusal, `write`/`read` helpers, `PRAGMA quick_check` on open, `DbError` + `From<DbError> for AppError`, `AppMetaRepo`, `V0001__init.sql` (`core_app_meta`). `lib.rs` opens+migrates at startup, checkpoints WAL on exit. Deps: `rusqlite 0.37` (bundled), `deadpool-sqlite 0.12`, `refinery 0.9`, `tokio 1`. Gate: create-from-empty ✓ · forward-only + idempotent ✓ · commit persists / error+panic roll back ✓ · survives restart ✓ · grouped rollback + verified backup ✓ · 24 concurrent writers, no `SQLITE_BUSY` ✓ · corrupt file → `DbError::Corruption` ✓ · no rusqlite version split ✓ · check suite green. 99 rust tests (+11). Baselines: insert ~0.12 ms, PK read ~0.05 ms, 100-row tx ~0.16 ms. Evidence `docs/verification/08_phase9_persistence.md`. Entry: gate-2 collision (plan said "migrate down") resolved to forward-only per ADR-0009; `synchronous=NORMAL` kept. |
 | 2026-09-06 | Phase 9 `NOT STARTED` | Phase 9 / 9.1 `IN PROGRESS` | phase-9 | Phase entry: `docs/plan/09_sqlite-persistence.md` finalized (11 steps). **Collision flagged + resolved:** the plan's original gate 2 ("migrate down") conflicts with ADR-0009's forward-only decision → reframed to forward-only + idempotent (ADR wins). `synchronous=FULL` deferred item decided: **keep `NORMAL`** (WAL+NORMAL is crash-safe; FULL only guards OS/power loss at a write cost). Topology: `deadpool-sqlite` writer pool (1) + reader pool (4), `refinery` grouped migrations with verified `VACUUM INTO` backup. Blob store explicitly **not** this phase. |
