@@ -10,6 +10,11 @@ const primary = [
   { to: '/discovery', label: 'Discovery', icon: 'compass' as const },
 ];
 
+const utility = [
+  { to: '/models', label: 'Models', icon: 'cube' as const },
+  { to: '/settings', label: 'Settings', icon: 'settings' as const },
+];
+
 // Placeholder until conversation history exists (Phase 17/24).
 const recent = ['Welcome Assistant', 'Ideas for UI', 'Explain React useEffect'];
 
@@ -82,10 +87,17 @@ export function AppShell(): React.JSX.Element {
         </div>
 
         <div className="nav__foot">
-          <NavLink to="/settings" className="nav__item" title={collapsed ? 'Settings' : undefined}>
-            <Icon name="settings" />
-            <span className="nav__item-label">Settings</span>
-          </NavLink>
+          {utility.map((t) => (
+            <NavLink
+              key={t.to}
+              to={t.to}
+              className="nav__item"
+              title={collapsed ? t.label : undefined}
+            >
+              <Icon name={t.icon} />
+              <span className="nav__item-label">{t.label}</span>
+            </NavLink>
+          ))}
         </div>
       </nav>
 

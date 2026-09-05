@@ -2,10 +2,16 @@
  * Minimal inline icon set (no dependency). 24×24, `currentColor` stroke.
  * A real icon library can replace this in the Phase 30 UI pass.
  */
-type Name = 'chat' | 'image' | 'compass' | 'settings' | 'chevron-left';
+type Name = 'chat' | 'image' | 'compass' | 'cube' | 'settings' | 'chevron-left';
 
 const paths: Record<Name, React.ReactNode> = {
   chat: <path d="M4 5h16v11H8l-4 4V5Z" />,
+  cube: (
+    <>
+      <path d="M12 3 3 7.5v9L12 21l9-4.5v-9L12 3Z" />
+      <path d="m3 7.5 9 4.5 9-4.5M12 12v9" />
+    </>
+  ),
   image: (
     <>
       <rect x="3" y="4" width="18" height="16" rx="2" />
