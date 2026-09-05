@@ -25,12 +25,12 @@
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
 | **Phase**        | 12 — Model Acquisition & Picker                         |
-| **Stage**        | 12.1 — (finalize at phase entry)                       |
-| **Status**       | `NOT STARTED`                                           |
-| **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/12_model-acquisition.md`                     |
+| **Stage**        | 12.1 — deps + skeleton + `V0003`                        |
+| **Status**       | `IN PROGRESS`                                           |
+| **Blocked by**   | owner sign-off for live-download gate items (1, 5, 8-real) |
+| **Plan doc**     | `docs/plan/12_model-acquisition.md` (finalized 2026-09-06) |
 | **Last updated** | 2026-09-06                                              |
-| **Updated by**   | phase-11-model-registry                                 |
+| **Updated by**   | phase-12-acquisition                                    |
 
 **Architecture frozen (Phase 5).** Binding: `PROJECT.md`, `ARCHITECTURE.md`,
 `AI_PIPELINES.md`, `SECURITY.md`, `PERFORMANCE.md`, `UI_GUIDELINES.md`,
@@ -405,6 +405,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 12 `NOT STARTED` | Phase 12 / 12.1 `IN PROGRESS` | phase-12 | Phase entry: `docs/plan/12_model-acquisition.md` finalized (11 steps). New `acquisition/` module (`hf.rs`, `gguf.rs`, `download.rs`); `V0003__model_downloads.sql`; config **v3** (`models.min_free_gb`). Crates: `hf-hub 1.0` (transfer), `reqwest` (HF API + header range), `sha2`; **hand-written GGUF header parser** (crates immature). **Owner sign-off pending** for the live-download gate items (1, 5, real-8) per `CLAUDE.md` — everything else verified offline against a local mock HTTP server. If `hf-hub` 1.0 is unworkable → STOP → ADR update, not a silent swap. |
 | 2026-09-06 | Phase 11 / 11.1 `IN PROGRESS` | Phase 11 `COMPLETE` → Phase 12 / 12.1 `NOT STARTED` | phase-11 | Model registry landed: `src-tauri/src/models/` — `V0002__model_registry.sql` (`model_entry` STRICT + kind index), `ModelRegistry` CRUD + capability `query`, `ModelDraft`/`ModelFilter`, `validate_model_path` (confine to model dir, reject `..`, require existence at register), **availability computed from `path.is_file()` at read** (never stored), `Arc<Vec<Model>>` cache cleared on write. Additive contracts (`RegisteredModel`, `RegistryAvailability`, `Device`). **ADR-0017**: UUIDv4 entity ids. `lib.rs` — `Db` → `Arc<Db>` managed, `ModelRegistry` managed. Gate: register→get round-trips ✓ · removed file → `Missing`, no crash ✓ · capability query ✓ · invalid metadata rejected naming the field ✓ · path outside dir / `..` refused ✓ · id stable across a registry rebuild ✓ · check suite green. 130 rust tests (+14). Warm `get` ~18 µs. The dev launch migrated the real DB v1→v2 (2nd backup). Evidence `docs/verification/10_phase11_registry.md`. |
 | 2026-09-06 | Phase 11 `NOT STARTED` | Phase 11 / 11.1 `IN PROGRESS` | phase-11 | Phase entry: `docs/plan/11_model-registry.md` finalized (12 steps). New `models/` module + `V0002__model_registry.sql` (`model_entry` STRICT table). Availability (`Ready`/`Missing`) **computed from `path.exists()` at read**, never stored. Path confinement to the model dir at register/update. Whole-list in-memory cache, cleared on write. Additive contracts (`RegisteredModel`, `RegistryAvailability`, `Device`). **ADR-0017** (this phase): entity IDs = UUIDv4 (`uuid` already in the tree). Capability-schema open question resolved: small typed set on `ModelCapabilities`, not free-form flags. LoRAs/presets stay Phase 22. |
 | 2026-09-06 | Phase 10 / 10.1 `IN PROGRESS` | Phase 10 `COMPLETE` → Phase 11 / 11.1 `NOT STARTED` | phase-10 | Observability landed: `logging/` — non-blocking lossy JSON writer, **boundary secret redaction** (regex: `hf_`, `Bearer`, secret JSON keys / `key=value`), 256-line in-memory ring buffer, hot-reloadable `EnvFilter` (`set_level` from config), `operation()` span helper (`task_id` + `elapsed_ms` + `status`), `content_preview`, `AppError::log`. Config **schema v2**: `logging.level` (+ `ConfigKey::LoggingLevel`, session override, migration generalised to `step_forward`). Deps: `tracing-appender`, `regex` (already in tree). Gate: op lines carry task_id ✓ · seeded secrets redacted ✓ · no content at info ✓ · config level + reload ✓ · no network symbol in `logging/` ✓ · non-blocking lossy writer ✓ · check suite green. 113 rust tests (+14). **Deferred to Phase 37:** persistent file sink + rotation + diagnostics-bundle command. Evidence `docs/verification/09_phase10_observability.md`. |
