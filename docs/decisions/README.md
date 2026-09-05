@@ -11,8 +11,9 @@ Do not silently change an accepted decision through implementation. If
 implementation shows an ADR is wrong: stop → explain → propose → get approval →
 new/updated ADR → implement (`CLAUDE.md`).
 
-**All 15 ADRs are `ACCEPTED` (Phase 5 freeze, 2026-09-05).** Phase 4 attacks are
-folded in (0006, 0007, 0008, 0009, 0010, 0013 revised; 0015 added).
+**ADR-0001…0015 `ACCEPTED` at the Phase 5 freeze (2026-09-05)**; Phase 4 attacks
+folded in (0006, 0007, 0008, 0009, 0010, 0013 revised; 0015 added). **ADR-0016
+added at Phase 8** to close a question Phase 3 deferred (config format).
 
 | ADR | Title | Status |
 | --- | ----- | ------ |
@@ -31,6 +32,7 @@ folded in (0006, 0007, 0008, 0009, 0010, 0013 revised; 0015 added).
 | 0013 | Transport: named-pipe/token'd loopback for servers, stdio for workers | ACCEPTED |
 | 0014 | Packaging: MSI, embedded CPython + shared venv | ACCEPTED |
 | 0015 | Python worker network lockdown | ACCEPTED |
+| 0016 | Configuration: one JSON file, layered, versioned, Rust-owned | ACCEPTED (Phase 8) |
 
 ### Deferred / to decide during implementation (not blocking the freeze)
 

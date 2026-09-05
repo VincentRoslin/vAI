@@ -25,12 +25,12 @@
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
 | **Phase**        | 8 — Configuration                                       |
-| **Stage**        | 8.1 — (finalize at phase entry)                         |
-| **Status**       | `NOT STARTED`                                           |
+| **Stage**        | 8.1 — ADR-0016                                          |
+| **Status**       | `IN PROGRESS`                                           |
 | **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/08_configuration.md`                         |
+| **Plan doc**     | `docs/plan/08_configuration.md` (finalized 2026-09-06)  |
 | **Last updated** | 2026-09-06                                              |
-| **Updated by**   | phase-7-contracts                                       |
+| **Updated by**   | phase-8-configuration                                   |
 
 **Architecture frozen (Phase 5).** Binding: `PROJECT.md`, `ARCHITECTURE.md`,
 `AI_PIPELINES.md`, `SECURITY.md`, `PERFORMANCE.md`, `UI_GUIDELINES.md`,
@@ -397,6 +397,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 8 `NOT STARTED` | Phase 8 / 8.1 `IN PROGRESS` | phase-8 | Phase entry: `docs/plan/08_configuration.md` finalized (11 steps). Format decision (`ADR-0016`: JSON, `<app_config_dir>/config.json`, layered defaults/file/session, `version` + forward migrations, atomic write, no secrets) closes the plan's open question. Minimal schema — `version` + `models.{dir, budget_gb}` — grown additively by later phases. |
 | 2026-09-06 | Phase 7 / 7.1 `IN PROGRESS` | Phase 7 `COMPLETE` → Phase 8 / 8.1 `NOT STARTED` | phase-7 | Application contracts landed: `src-tauri/src/contracts/` (`ids` · `task` · `model` · `generation` · `conversation` · `resource` · `worker`) + `ipc::error` extended to 9 `kind`s + `ErrorEnvelope`. 42 `ts-rs` bindings (was 5); `src/lib/contracts.ts` import surface; `docs/contracts.md` (evolution rules). Gate: `cargo build`+`tsc` clean, zero warnings ✓ · 66 rust tests (round-trip every type + rejection: unknown variant/tag, missing field, out-of-range `validate()`) ✓ · no model-name literals outside `contracts/` ✓ · bindings committed + in sync ✓ · `TokenDelta` round-trip ~3.3 µs ✓ · no behaviour / handler change ✓. Evidence `docs/verification/06_phase7_contracts.md`. Entry note: plan finalized to 12 steps (ADR-0002 + ADR-0013); scope held to the plan's list — character/persona/config/registry contracts stay with their phases. |
 | 2026-09-06 | (no state change) | — | phase-7 | **Phase 6 polish** (`main` `HEAD`): replaced the `app://ready` **event** with an `app_ready` **command** — the event fired in `.setup()` before the webview subscribed, and `listen()` at module-eval threw an unhandled `transformCallback` rejection every launch. Readiness now a command the shell calls once on mount; Phase 6 `app_ping` probe guarded against StrictMode/HMR re-fire (log went from ~14 lines/session → 1). Fresh `tauri dev` verified clean. `docs/verification/05_phase6_bootstrap.md` follow-up resolved. Check suite green. |
 | 2026-09-05 | (no state change) | — | owner-agreed | Visual **soft lock** added: `docs/design/visual-language.md` (from an owner reference screenshot) — firm on the shell (left nav ~260px, Settings a plain bottom item), chat geometry (user-right/assistant-left + avatars, ~14px bubbles, 680px text cap), and the radius/spacing scale; the right panel + per-tab layouts left flexible per feature phase. Geometry tokens added to `src/styles/theme.css`. `UI_GUIDELINES.md` §1: **a UI/CSS change never alters behaviour** — check suite must still pass. |
