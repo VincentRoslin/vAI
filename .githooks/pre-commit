@@ -1,0 +1,21 @@
+#!/bin/sh
+# LocalAI pre-commit hook. Enable once with:  git config core.hooksPath .githooks
+#
+# Fast checks only — the full suite is `npm run check` (CI runs that).
+set -e
+
+# Rust: format staged .rs files must be clean.
+if git diff --cached --name-only --diff-filter=ACM | grep -q '\.rs$'; then
+  echo "pre-commit: cargo fmt --check"
+  cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+fi
+
+# Frontend: prettier + eslint on staged ts/tsx/js.
+if git diff --cached --name-only --diff-filter=ACM | grep -qE '\.(ts|tsx|js|mjs|json|css|html)$'; then
+  echo "pre-commit: prettier --check"
+  npx prettier --check .
+  echo "pre-commit: eslint"
+  npx eslint .
+fi
+
+echo "pre-commit: ok"

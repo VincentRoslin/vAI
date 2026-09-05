@@ -1,0 +1,19 @@
+import process from 'node:process';
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+const host = process.env.TAURI_DEV_HOST;
+
+// https://vite.dev/config/ — options tailored for Tauri.
+export default defineConfig(() => ({
+  plugins: [react()],
+  // Don't let Vite clear Rust errors from the terminal.
+  clearScreen: false,
+  server: {
+    port: 1420,
+    strictPort: true,
+    host: host || false,
+    hmr: host ? { protocol: 'ws', host, port: 1421 } : undefined,
+    watch: { ignored: ['**/src-tauri/**'] },
+  },
+}));

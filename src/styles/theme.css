@@ -1,0 +1,51 @@
+/*
+ * Theme tokens (`UI_GUIDELINES.md` §4). Light palette on bare :root; dark
+ * palette redefines the same tokens. Follows the OS setting by default; a
+ * `data-theme` attribute on <html> overrides it (added in Phase 30).
+ * No hard-coded colours in components — always a token.
+ */
+
+:root {
+  --bg: #ffffff;
+  --bg-elevated: #f4f5f7;
+  --bg-sunken: #eaecef;
+  --border: #d8dce2;
+  --text: #14171a;
+  --text-muted: #5b636e;
+  --accent: #3b6cf0;
+  --accent-text: #ffffff;
+  --danger: #c02636;
+  --ok: #1f8a4c;
+
+  --radius: 8px;
+  --gap: 12px;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #14171a;
+    --bg-elevated: #1e2226;
+    --bg-sunken: #0f1214;
+    --border: #2c333a;
+    --text: #e6e9ec;
+    --text-muted: #9aa4af;
+    --accent: #5b86f5;
+    --accent-text: #0b0d0f;
+    --danger: #ef6b76;
+    --ok: #4cc47f;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #14171a;
+  --bg-elevated: #1e2226;
+  --bg-sunken: #0f1214;
+  --border: #2c333a;
+  --text: #e6e9ec;
+  --text-muted: #9aa4af;
+  --accent: #5b86f5;
+  --accent-text: #0b0d0f;
+  --danger: #ef6b76;
+  --ok: #4cc47f;
+}
