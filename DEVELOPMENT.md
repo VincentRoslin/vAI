@@ -108,7 +108,27 @@ the file already exists locally** — he has pre-downloaded caches in related
 projects (`CLAUDE.md` → "Model / asset downloads"). Do not read from his other
 projects.
 
-## 9. Verification honesty
+## 9. Keep it traceable (applies to code too)
+
+The repo must stay navigable without scanning it. When you add anything:
+
+- **A new Rust module / subsystem** → add or update its entry in
+  `ARCHITECTURE.md` (§2/§3 single-authority map) and, if it's a new top-level
+  concern, the `CLAUDE.md` Document Map.
+- **A new directory** (`workers/`, `scripts/`, a crate) → give it a short
+  `README.md` naming what's inside and pointing at the governing doc/ADR.
+- **A new ADR** → add the row to `docs/decisions/README.md`.
+- **A new gate-evidence or research file** → add the row to that directory's
+  `README.md`.
+- **A module that owns a concern** → it appears exactly once in the
+  `ARCHITECTURE.md` single-authority map.
+
+The Phase 36 audit gate is "a trace of each subsystem vs `ARCHITECTURE.md` — no
+undocumented component"; the Phase 40 gate is "a fresh session states status +
+next action from the repo alone". Don't let those find gaps — close them as you
+go.
+
+## 10. Verification honesty
 
 `CLAUDE.md` Article IV. "Passed" means a command was run and its output observed.
 A `ROADMAP.md` gate is met only when every check ran with recorded evidence. If a

@@ -277,3 +277,7 @@ volunteers in chat.
 7. Update `ROADMAP.md` (state pointer, transition log, §7) — and the phase's
    `docs/plan/` file — as part of the same change when work advances or the plan
    changes.
+8. **Keep it traceable.** Adding a module, directory, ADR, or evidence file? Add
+   its index entry in the same change (`ARCHITECTURE.md` map / a local `README.md`
+   / the relevant `docs/*/README.md`). See `DEVELOPMENT.md` §9. The repo must stay
+   navigable index → file, never by scanning.
