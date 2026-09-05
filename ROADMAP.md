@@ -25,12 +25,12 @@
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
 | **Phase**        | 7 — Application Contracts                               |
-| **Stage**        | 7.1 — define the ID newtypes + serialization           |
-| **Status**       | `NOT STARTED`                                           |
+| **Stage**        | 7.1 — ID newtypes                                       |
+| **Status**       | `IN PROGRESS`                                           |
 | **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/07_application-contracts.md`                 |
-| **Last updated** | 2026-09-05                                              |
-| **Updated by**   | phase-6-bootstrap                                       |
+| **Plan doc**     | `docs/plan/07_application-contracts.md` (finalized 2026-09-06) |
+| **Last updated** | 2026-09-06                                              |
+| **Updated by**   | phase-7-contracts                                       |
 
 **Architecture frozen (Phase 5).** Binding: `PROJECT.md`, `ARCHITECTURE.md`,
 `AI_PIPELINES.md`, `SECURITY.md`, `PERFORMANCE.md`, `UI_GUIDELINES.md`,
@@ -395,6 +395,8 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 7 `NOT STARTED` | Phase 7 / 7.1 `IN PROGRESS` | phase-7 | Phase entry: `docs/plan/07_application-contracts.md` step detail finalized against the freeze (12 steps, governing ADR-0002 + ADR-0013). Contracts land in a new top-level `src-tauri/src/contracts/` module (shared across IPC **and** worker boundaries). Scope held to the plan's list — character/persona/relationship/config/registry contracts stay with their own phases. |
+| 2026-09-06 | (no state change) | — | phase-7 | **Phase 6 polish** (`main` `HEAD`): replaced the `app://ready` **event** with an `app_ready` **command** — the event fired in `.setup()` before the webview subscribed, and `listen()` at module-eval threw an unhandled `transformCallback` rejection every launch. Readiness now a command the shell calls once on mount; Phase 6 `app_ping` probe guarded against StrictMode/HMR re-fire (log went from ~14 lines/session → 1). Fresh `tauri dev` verified clean. `docs/verification/05_phase6_bootstrap.md` follow-up resolved. Check suite green. |
 | 2026-09-05 | (no state change) | — | owner-agreed | Visual **soft lock** added: `docs/design/visual-language.md` (from an owner reference screenshot) — firm on the shell (left nav ~260px, Settings a plain bottom item), chat geometry (user-right/assistant-left + avatars, ~14px bubbles, 680px text cap), and the radius/spacing scale; the right panel + per-tab layouts left flexible per feature phase. Geometry tokens added to `src/styles/theme.css`. `UI_GUIDELINES.md` §1: **a UI/CSS change never alters behaviour** — check suite must still pass. |
 | 2026-09-05 | Phase 6 `NOT STARTED` | Phase 6 `VERIFIED` → Phase 7 / 7.1 `NOT STARTED` | phase-6 | Tauri v2 + React/TS + Rust scaffold (branch `phase-6-bootstrap` → `main` `1f6c6a1`). Single Rust crate (`ipc` + `logging`); typed IPC with `ts-rs` bindings; 3-tab hash-routed shell + error boundary + theme tokens; ESLint/Prettier/rustfmt/clippy/Vitest wired; `.gitattributes` + `.githooks`. Gate: `cargo fmt`/`clippy`/`test` (8) ✓ · `tsc`/`eslint`/`prettier`/`vitest`(2)/`vite build` ✓ · `tauri dev` launches, `app_ping` round-trip observed in the structured log ✓ · no AI/model/network code ✓. Evidence `docs/verification/05_phase6_bootstrap.md`. |
 | 2026-09-05 | Phase 5 `IN PROGRESS` | Phase 5 `VERIFIED` → Phase 6 / 6.1 `NOT STARTED` | phase-5 | Architecture **frozen**. 5.9: all `docs/plan/06–40` re-aligned (frozen-architecture banner + governing ADRs). 5.10 cross-check `docs/verification/04_phase5_crosscheck.md` — no contradictions. §7 rewritten (O1–O7 resolved). Nav-efficiency: `CLAUDE.md` "looking for X → go to Y" table + a `README.md` in every `docs/` subdir. |
