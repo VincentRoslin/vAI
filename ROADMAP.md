@@ -24,17 +24,19 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 3 — Architecture Research                               |
-| **Stage**        | 3.15 — all 12 areas + 14 draft ADRs done; exit items remain |
-| **Status**       | `IN PROGRESS`                                           |
-| **Blocked by**   | Owner sign-off on ADR-0011 (per-character LoRA scope); 3 runnable probes (nvml per-process, GGUF header, WDDM) |
-| **Plan doc**     | `docs/plan/03_architecture-research.md`                 |
+| **Phase**        | 4 — Adversarial Architecture Review                     |
+| **Stage**        | 4.1 — assemble the proposed architecture                |
+| **Status**       | `NOT STARTED`                                           |
+| **Blocked by**   | —                                                      |
+| **Plan doc**     | `docs/plan/04_adversarial-review.md`                    |
 | **Last updated** | 2026-09-05                                              |
 | **Updated by**   | phase-3-research                                        |
 
 **Completed:** Phase 0 (process) · Phase 1 (Project Foundation) · Phase 2
-(Environment Audit) · **Product Definition** (`docs/product/requirements.md`,
-owner-confirmed 2026-09-05).
+(Environment Audit) · **Product Definition** (`docs/product/requirements.md`) ·
+**Phase 3 Architecture Research** (`docs/research/phase3/` + `docs/decisions/`
+0001–0014 `PROPOSED`; probes in `docs/verification/02_phase3_probes.md`).
+ADRs ratified at Phase 5; Phase 4 attacks them first.
 
 **Only one `(Phase, Stage)` pair is ever `IN PROGRESS`.** Advancing the pointer is
 itself a state transition and MUST follow §3.
@@ -387,6 +389,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-05 | Phase 3 `IN PROGRESS` | Phase 3 `VERIFIED` → Phase 4 / 4.1 `NOT STARTED` | phase-3 | Gate met: 16 decisions in 12 area writeups, 14 draft ADRs (`PROPOSED`), 3 probes run (`docs/verification/02_phase3_probes.md` — NVML per-process VRAM **unavailable** on WDDM/610.88 → ledger-based accounting confirmed; GGUF header parse **works** from a range request; WDDM-hang inconclusive → Phase 15 watch item). Owner: no LoRA trainer; portraits/selfies → prompt-based identity OK. No app code (probes were throwaway, deleted). ADRs ratified at Phase 5. |
 | 2026-09-05 | Phase 3 `IN PROGRESS` | Phase 3 `IN PROGRESS` (3.15) | phase-3 | All 12 research areas drafted (`docs/research/phase3/01–12`) + **14 draft ADRs** (`docs/decisions/0001–0014`, `PROPOSED`). Owner's Krea impl folded in (diffusers sidecar, NF4, ~11.4 GB peak). Transport resolved (ADR-0013: loopback HTTP for model servers, stdio for workers). **Biggest risk: character visual identity (ADR-0011) — Krea 2 is text-to-image only; needs per-character LoRA (~45–60 min/char background) → owner sign-off.** Exit items: 3 runnable probes (nvml per-process, GGUF header, WDDM) + owner sign-off, then Phase 4. |
 | 2026-09-05 | Phase 3 `NOT STARTED` | Phase 3 `IN PROGRESS` | phase-3 | Research started. First 5 areas + README. Key finding: image gen ⟂ LLM on 16 GB. | `docs/product/vision.md` (owner draft) → `docs/product/requirements.md` (PD.2): 3-tab structure (Chat/Voice · Image Generator · Discovery), Persona vs Character split, ~95 FR / ~40 NFR / 20 ARQ / 7 non-goals. Open points A1–A11 resolved; owner confirmed. Product Definition `COMPLETE`. Pointer → Phase 3. |
 | 2026-09-05 | 40-step course (0–39) | 41-step course (0–40) + detailed `docs/plan/` | owner-approved | Full implementation plan written. Inserted **Phase 12 Model Acquisition & Picker**; split Voice → 18/19 and Character System → 25/26; moved Scheduler → 24; merged old 37–39 → Phase 40. `ROADMAP.md` §4 slimmed to an index; per-phase detail now in `docs/plan/NN_*.md`. Tech defaults recorded in §7 + `docs/OVERVIEW.md`. Pointer unchanged (Product Definition). |
@@ -402,12 +405,13 @@ Newest first. One line per state transition (§3 rule 6).
 
 ## 6. Open Blockers
 
-- **Phase 3.10 (image-generation research)** needs the owner's existing FLUX.1
-  Krea implementation from their other project. Not blocking 3.1–3.9; request it
-  before starting 3.10.
+_None._
 
-Phase 6 carries forward Phase 1's deferred formatter/linter/hook/README tooling —
-tracked, not blocking.
+- **Phase 15 watch item**: WDDM hang risk on the first sustained `llama-server`
+  generation (Hyper-V enabled on host — inconclusive from inspection). Mitigations
+  in `docs/verification/02_phase3_probes.md`.
+- Phase 6 carries forward Phase 1's deferred formatter/linter/hook/README tooling —
+  tracked, not blocking.
 
 ---
 

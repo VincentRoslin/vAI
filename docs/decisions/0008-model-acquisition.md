@@ -15,8 +15,13 @@ fixed STT/TTS/image models acquired once via the same path; fully offline after.
 - **`hf-hub`** for transfers (async, automatic resume, desktop-friendly chunking)
   **+ a SQLite `model_downloads` table** for queue/pause/resume/cancel UI state
   that survives a hard kill.
-- **GGUF picker**: parse the **header only** via a ~1–2 MB range request to show
-  quant / context / size (verify a real GGUF header in Phase 3).
+- **GGUF picker**: parse the **header only** via a range request to show quant /
+  context / size. **Probe-confirmed** (2026-09-05): GGUF v3 header parses fine
+  from a range request; architecture / file_type (quant) / context_length /
+  layer & head counts all appear before the big tokenizer arrays. Use an **~8 MiB
+  range** (or adaptive: stop once the needed keys are seen), since a large
+  tokenizer vocab can push the KV block past 2 MiB. HF `resolve` URLs return
+  HTTP 206 → resumable downloads confirmed.
 - **Integrity**: stream SHA256 during write, compare to HF's LFS hash, reject +
   delete on mismatch.
 - **Disk budget**: pre-transfer check `file + margin <= free` **and**

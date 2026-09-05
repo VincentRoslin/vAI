@@ -41,17 +41,17 @@ Blackwell **sm_120**).
 **All 12 area files drafted. 14 draft ADRs in `docs/decisions/` (ADR-0001..0014,
 all `PROPOSED`).**
 
-### Remaining Phase 3 exit items (before the gate passes)
-1. **Runnable `nvml-wrapper` probe** — does per-process VRAM work on driver
-   610.88 / sm_120? (throwaway Rust bin, like the env-audit link test)
-2. **GGUF header parse** verified against a real `.gguf` file's first ~1–2 MB.
-3. **Confirm no WDDM hang** on the 5080 bare-metal compute path (spawn
-   `llama-server`, hold VRAM, observe).
-4. **Owner input on ADR-0011 open question** — the expected *range* of character
-   images (portraits/selfies → prompt-based is adequate; full-body across varied
-   scenes → visible drift, no in-scope fix). FR-C90 scoped to prompt-based quality
-   for v1 (owner ruled out LoRA training 2026-09-05).
-5. Phase 4 (adversarial review) then Phase 5 (ratify ADRs, freeze).
+### Phase 3 exit items — status (`docs/verification/02_phase3_probes.md`)
+1. **`nvml-wrapper` probe** — ✅ DONE. Per-process VRAM **unavailable** on driver
+   610.88/WDDM (every process `Unavailable`); whole-GPU `memory_info` works.
+   ADR-0007 confirmed (ledger-based, not per-process).
+2. **GGUF header parse** — ✅ DONE. Parses from a range request; all picker/estimator
+   fields present before the tokenizer arrays. ADR-0008 confirmed (use ~8 MiB).
+3. **WDDM hang** — ⚠ inconclusive (Hyper-V enabled on host). Carried to a
+   **Phase 15 watch item** + Phase 4 risk; mitigations documented.
+4. **ADR-0011 image range** — ✅ RESOLVED. Owner: portraits/selfies mostly →
+   prompt-based identity adequate for v1; revisit later.
+5. Next: **Phase 4** (adversarial review) → **Phase 5** (ratify ADRs, freeze).
 
 ---
 

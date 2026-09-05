@@ -48,9 +48,10 @@ QuadView; LLM caption → canonical block. **Discovery feed**: pre-generated poo
 shown; feed state seen/kept/passed.
 
 ## Consequences
-- **FR-C90/C91 scoped to prompt-based quality for v1.** Owner to confirm the
-  expected *range* of character images (mostly portraits/selfies → adequate;
-  full-body across varied scenes → visible drift, no in-scope fix).
+- **FR-C90/C91 scoped to prompt-based quality for v1.** Owner confirmed
+  2026-09-05: character images are **mostly portraits and selfies** → the
+  prompt-based approach is adequate for v1. Revisit (reference conditioning / a
+  second model) at a later stage if the image range widens.
 - No LoRA trainer, no `lora_train` job kind (ADR-0010), no trainer in the venv
   (ADR-0014).
 - Adds a face-embedder worker (~100 MB) and the QuadView + realism LoRAs to the
