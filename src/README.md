@@ -8,7 +8,8 @@ goes through typed IPC in `lib/ipc.ts`.
 | ---- | ---- |
 | `main.tsx` | Entry — mounts the router inside the error boundary; subscribes to `app://ready` |
 | `router.tsx` | Hash routes: 3 primary tabs (`/chat` `/images` `/discovery`) + `/models` + `/settings` + 404 |
-| `components/AppShell.tsx` | Top nav + routed `<Outlet/>` |
+| `components/AppShell.tsx` + `.css` | Left nav (collapsible) + center workspace (`docs/design/visual-language.md` §1) |
+| `components/Icon.tsx` | Minimal inline icon set (no dependency) |
 | `components/ErrorBoundary.tsx` | Top-level render-error recovery panel |
 | `components/Placeholder.tsx` | "not built yet — Phase N" stub for unbuilt surfaces |
 | `pages/*.tsx` | One per route (placeholders until their phase) |

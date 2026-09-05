@@ -10,7 +10,7 @@ interface Props {
  */
 export function Placeholder({ title, phase, children }: Props): React.JSX.Element {
   return (
-    <section>
+    <section style={{ padding: 'var(--space-6)' }}>
       <h1 style={{ marginTop: 0 }}>{title}</h1>
       <p style={{ color: 'var(--text-muted)' }}>
         Not built yet — arrives in <code>{phase}</code>.

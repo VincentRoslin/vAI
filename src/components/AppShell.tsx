@@ -1,57 +1,95 @@
+import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 
+import { Icon } from './Icon';
+import './AppShell.css';
+
 const primary = [
-  { to: '/chat', label: 'Chat / Voice' },
-  { to: '/images', label: 'Image Generator' },
-  { to: '/discovery', label: 'Discovery' },
-];
-const utility = [
-  { to: '/models', label: 'Models' },
-  { to: '/settings', label: 'Settings' },
+  { to: '/chat', label: 'Chat', icon: 'chat' as const },
+  { to: '/images', label: 'Image', icon: 'image' as const },
+  { to: '/discovery', label: 'Discovery', icon: 'compass' as const },
 ];
 
-function tabStyle({ isActive }: { isActive: boolean }): React.CSSProperties {
-  return {
-    padding: '6px 12px',
-    borderRadius: 'var(--radius)',
-    textDecoration: 'none',
-    color: isActive ? 'var(--accent-text)' : 'var(--text)',
-    background: isActive ? 'var(--accent)' : 'transparent',
-  };
+// Placeholder until conversation history exists (Phase 17/24).
+const recent = ['Welcome Assistant', 'Ideas for UI', 'Explain React useEffect'];
+
+const COLLAPSE_KEY = 'localai.nav.collapsed';
+
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSE_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
-/** Frame: a top nav (3 primary tabs + Models + Settings) and the routed page. */
+/**
+ * Three-zone-capable shell (`docs/design/visual-language.md` §1). Left nav +
+ * center workspace. The right panel is per-surface and not rendered here yet.
+ */
 export function AppShell(): React.JSX.Element {
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+
+  function toggle(): void {
+    setCollapsed((c) => {
+      const next = !c;
+      try {
+        localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
+      } catch {
+        /* per-viewer convenience only */
+      }
+      return next;
+    });
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--gap)',
-          padding: '8px 12px',
-          borderBottom: '1px solid var(--border)',
-          background: 'var(--bg-elevated)',
-        }}
-      >
-        <strong style={{ marginRight: 8 }}>LocalAI</strong>
-        <nav style={{ display: 'flex', gap: 4 }}>
+    <div className="shell">
+      <nav className="nav" data-collapsed={collapsed} aria-label="Primary">
+        <div className="nav__head">
+          <Icon name="compass" size={22} />
+          <span className="nav__brand">LocalAI</span>
+          <button
+            className="nav__collapse"
+            onClick={toggle}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-pressed={collapsed}
+          >
+            <Icon name="chevron-left" size={18} />
+          </button>
+        </div>
+
+        <div className="nav__group">
           {primary.map((t) => (
-            <NavLink key={t.to} to={t.to} style={tabStyle}>
-              {t.label}
+            <NavLink
+              key={t.to}
+              to={t.to}
+              className="nav__item"
+              title={collapsed ? t.label : undefined}
+            >
+              <Icon name={t.icon} />
+              <span className="nav__item-label">{t.label}</span>
             </NavLink>
           ))}
-        </nav>
-        <div style={{ flex: 1 }} />
-        <nav style={{ display: 'flex', gap: 4 }}>
-          {utility.map((t) => (
-            <NavLink key={t.to} to={t.to} style={tabStyle}>
-              {t.label}
-            </NavLink>
+        </div>
+
+        <div className="nav__section-label">Recent</div>
+        <div className="nav__recent">
+          {recent.map((title) => (
+            <a key={title} className="nav__recent-item" href="#" aria-disabled="true">
+              {title}
+            </a>
           ))}
-        </nav>
-      </header>
-      <main style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+        </div>
+
+        <div className="nav__foot">
+          <NavLink to="/settings" className="nav__item" title={collapsed ? 'Settings' : undefined}>
+            <Icon name="settings" />
+            <span className="nav__item-label">Settings</span>
+          </NavLink>
+        </div>
+      </nav>
+
+      <main className="workspace">
         <Outlet />
       </main>
     </div>

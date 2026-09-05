@@ -23,11 +23,19 @@ function renderAt(path: string) {
 }
 
 describe('AppShell', () => {
-  it('renders the three primary tabs', () => {
+  it('renders the primary nav + Settings', () => {
     renderAt('/chat');
-    expect(screen.getByRole('link', { name: 'Chat / Voice' })).not.toBeNull();
-    expect(screen.getByRole('link', { name: 'Image Generator' })).not.toBeNull();
+    expect(screen.getByRole('link', { name: 'Chat' })).not.toBeNull();
+    expect(screen.getByRole('link', { name: 'Image' })).not.toBeNull();
     expect(screen.getByRole('link', { name: 'Discovery' })).not.toBeNull();
+    expect(screen.getByRole('link', { name: 'Settings' })).not.toBeNull();
+    // Settings is a plain nav item, not a collapsible — no such control.
+    expect(screen.queryByRole('button', { name: /collapse settings/i })).toBeNull();
+  });
+
+  it('has a working sidebar collapse toggle', () => {
+    renderAt('/chat');
+    expect(screen.getByRole('button', { name: /collapse sidebar/i })).not.toBeNull();
   });
 
   it('shows a not-found view for an unknown route', () => {
