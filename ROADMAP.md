@@ -39,6 +39,11 @@ deviation note recording which gate checks were physically executed).
 **Only one `(Phase, Stage)` pair is ever `IN PROGRESS`.** Advancing the pointer
 is itself a state transition and MUST follow the rules in §3.
 
+**External-guide phase numbers are not these phases.** Prompts derived from the
+ChatGPT/Gemini guides say things like "we are in Phase 3" — that is the *guide's*
+numbering and does not map here. Slot the work where it fits this state machine;
+do not renumber or reorder to match a prompt. (See `CLAUDE.md` → Operating Manual.)
+
 ---
 
 ## 2. Status Vocabulary
@@ -839,6 +844,8 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From                | To                        | By        | Note |
 | ---------- | ------------------- | ------------------------- | --------- | ---- |
+| 2026-09-05 | (no state change) | — | owner-delegated | `CLAUDE.md` restructured: added Document Map + Operating Manual (external-guide handling, commit cadence, docs-only era, collision protocol). **Article I amended** — subprocesses split into stateless workers (stdio) vs managed model backends (localhost socket); resolves §7 O3. Added external-guide phase-numbering caveat to §1. Owner may veto the Article I change. |
+| 2026-09-05 | (no state change) | — | research | Pre-architecture technical research added: `docs/research/` (01 Tauri IPC, 02 llama-server supervision, 03 Python workers, 04 SQLite, 05 VRAM coordination, 06 voice interruption). Not a phase. Surfaces a Constitution collision (managed HTTP backend vs stdio-only workers) — see `docs/research/README.md` and §7. Pointer unchanged (Phase 2 / 2.1). |
 | 2026-09-05 | Phase 0 `NOT STARTED` | Phase 0 `COMPLETE` | audit | Dev-environment audit run; evidence `docs/verification/01_env_audit.md`. Gate checks 1–5 physically executed. Phase inserted ahead of Epoch A to fill the §7 gap. Pointer stays at Phase 2 / 2.1. |
 | 2026-09-05 | Phase 1 `IN PROGRESS` | Phase 2 / 2.1 `NOT STARTED` | owner | Pointer advanced. Phase 1 closed (see below). |
 | 2026-09-05 | 1.4–1.6 (`COMPLETE` by directive) | Phase 6.1 (carry-forward) | owner | Tooling/hook/README-quickstart work not physically verified; re-covered by Phase 6.1's gate. Deviation recorded in §4 Phase 1. |
@@ -898,7 +905,13 @@ physically-executable verification gate per phase.** Known corrections to fold i
   with a note and re-point dependents.
 - **O2. Multi-user vs single-user** (affects Phases 7, 8, 24, 27).
 
-### Closed
+### Resolved / closed
 
-- ~~Missing: a dev-machine/environment inspection gate~~ → **added as Phase 0**,
-  completed 2026-09-05 (`docs/verification/01_env_audit.md`).
+- **O3. "Managed model backend" category** — `docs/research/02` needs
+  `llama-server` over localhost HTTP, which the initial `CLAUDE.md` Article I
+  forbade for subprocesses. **Resolved 2026-09-05:** Article I amended to split
+  subprocesses into *stateless workers* (stdio JSON-lines only) and *managed model
+  backends* (localhost socket allowed, all other constraints identical). Owner may
+  still veto — FFI-bindings fallback (no socket) documented in `docs/research/02` §7.
+- **Environment-inspection gap** → added as **Phase 0**, completed 2026-09-05
+  (`docs/verification/01_env_audit.md`).
