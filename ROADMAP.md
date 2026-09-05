@@ -28,6 +28,11 @@
 | **Last updated** | 2026-09-05                                                  |
 | **Updated by**   | bootstrap                                                   |
 
+**Phase 0 — Development Environment Audit: `COMPLETE`** — evidence
+`docs/verification/01_env_audit.md` (2026-09-05). Machine is READY for the
+desktop-app bootstrap; open decisions (CUDA build strategy, Python env, package
+manager, model storage) captured for the architecture phase.
+
 **Phase 1 — Repository & Tooling Bootstrap: `COMPLETE`** (see §4, incl. the
 deviation note recording which gate checks were physically executed).
 
@@ -86,7 +91,42 @@ slot to be filled at gate time.
 
 ---
 
+### Phase 0 — Development Environment Audit
+- **Objective**: Know the actual dev machine (toolchains, GPU/VRAM, build tools,
+  disk) before committing to an architecture that depends on them.
+- **Depends on**: —
+- **Status**: `COMPLETE`
+
+| Stage | Description | Status | Entry | Evidence |
+| ----- | ----------- | ------ | ----- | -------- |
+| 0.1 | Audit OS, CPU, RAM, GPU/VRAM, driver/CUDA, disk | `COMPLETE` | — | `docs/verification/01_env_audit.md` §Findings |
+| 0.2 | Audit toolchains: Rust, Node/npm, Python, Git, CMake | `COMPLETE` | — | same doc §Toolchains |
+| 0.3 | Audit native build tooling + Tauri prereqs; verify Rust↔MSVC link chain | `COMPLETE` | 0.2 | same doc — `cargo build` scratch test, exit 0 |
+| 0.4 | Record open decisions (CUDA strategy, Python env, pkg manager, model storage) | `COMPLETE` | 0.1–0.3 | same doc §"Open decisions surfaced" |
+
+- **Verification Gate** — execution record (Article IV of `CLAUDE.md`):
+  1. Rust / Node / Python / Git present with versions. — **EXECUTED, PASS**
+     (rustc 1.98.0, node 24.19.0, python 3.11.9, git 2.52.0).
+  2. MSVC build tools + Windows SDK + WebView2 present. — **EXECUTED, PASS**
+     (VS Build Tools 2022 17.14, MSVC 14.44, SDK 10.0.26100, WebView2 152.x).
+  3. GPU + NVIDIA driver detected; VRAM known. — **EXECUTED, PASS**
+     (RTX 5080, 16 GB, driver 610.88, CUDA runtime 13.3, sm_120).
+  4. Rust → MSVC → linker chain actually builds+runs an exe. — **EXECUTED, PASS**
+     (throwaway `cargo new`/`cargo build`, exit 0, ran "Hello, world!").
+  5. Disk headroom recorded. — **EXECUTED** (C: 215 GB free — noted as a planning
+     constraint, not a blocker).
+- **Non-blocking gaps** (decisions, not prerequisites): CUDA Toolkit / `nvcc` not
+  installed; no pnpm; no Python venv/uv tooling; `git core.autocrlf=true`; RAM
+  under rated speed; PowerShell 5.1 only.
+- **Exit Criteria**: Machine confirmed READY for the desktop bootstrap; gaps
+  triaged. **Met** 2026-09-05.
+
+---
+
 ### EPOCH A — Foundation (Phases 1–6)
+
+> Note: **Phase 0** (above) precedes this epoch — it was added after the initial
+> ledger draft to fill the environment-audit gap noted in §7.
 
 ---
 
@@ -799,6 +839,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From                | To                        | By        | Note |
 | ---------- | ------------------- | ------------------------- | --------- | ---- |
+| 2026-09-05 | Phase 0 `NOT STARTED` | Phase 0 `COMPLETE` | audit | Dev-environment audit run; evidence `docs/verification/01_env_audit.md`. Gate checks 1–5 physically executed. Phase inserted ahead of Epoch A to fill the §7 gap. Pointer stays at Phase 2 / 2.1. |
 | 2026-09-05 | Phase 1 `IN PROGRESS` | Phase 2 / 2.1 `NOT STARTED` | owner | Pointer advanced. Phase 1 closed (see below). |
 | 2026-09-05 | 1.4–1.6 (`COMPLETE` by directive) | Phase 6.1 (carry-forward) | owner | Tooling/hook/README-quickstart work not physically verified; re-covered by Phase 6.1's gate. Deviation recorded in §4 Phase 1. |
 | 2026-09-05 | Phase 1 stages 1.1–1.6 | Phase 1 `COMPLETE` | owner | Marked complete by project-owner directive. Gate check 1 EXECUTED/PASS; checks 2–6 NOT EXECUTED (no code/tooling yet). |
@@ -856,3 +897,8 @@ physically-executable verification gate per phase.** Known corrections to fold i
 - **O1. Retrieval/RAG in scope?** (Phase 17). If not, mark it `COMPLETE` as N/A
   with a note and re-point dependents.
 - **O2. Multi-user vs single-user** (affects Phases 7, 8, 24, 27).
+
+### Closed
+
+- ~~Missing: a dev-machine/environment inspection gate~~ → **added as Phase 0**,
+  completed 2026-09-05 (`docs/verification/01_env_audit.md`).
