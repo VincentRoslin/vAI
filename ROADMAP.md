@@ -25,9 +25,9 @@
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
 | **Phase**        | 3 — Architecture Research                               |
-| **Stage**        | 3.4 done · 3.5–3.14 in progress → `docs/research/phase3/` |
+| **Stage**        | 3.15 — all 12 areas + 14 draft ADRs done; exit items remain |
 | **Status**       | `IN PROGRESS`                                           |
-| **Blocked by**   | —  (3.10 needs specifics on the owner's Krea 2 setup — see `docs/research/phase3/04_image-generation.md`) |
+| **Blocked by**   | Owner sign-off on ADR-0011 (per-character LoRA scope); 3 runnable probes (nvml per-process, GGUF header, WDDM) |
 | **Plan doc**     | `docs/plan/03_architecture-research.md`                 |
 | **Last updated** | 2026-09-05                                              |
 | **Updated by**   | phase-3-research                                        |
@@ -387,7 +387,8 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
-| 2026-09-05 | Phase 3 `NOT STARTED` | Phase 3 `IN PROGRESS` | phase-3 | Research started. `docs/research/phase3/` — README (decision table + VRAM budget) + 5 areas drafted: desktop/IPC (D-1,2,14), LLM runtime (D-3, resolves O3→`llama-server` loopback + O5 CUDA build-from-source), voice (D-4), image gen (D-5, Krea 2 Turbo NVFP4), resource/VRAM (D-6). **Key finding: image gen ⟂ LLM on 16 GB — hot-swap is on the critical path.** Remaining: acquisition, persistence, scheduler, identity, memory, worker protocol, packaging, then ADRs. | `docs/product/vision.md` (owner draft) → `docs/product/requirements.md` (PD.2): 3-tab structure (Chat/Voice · Image Generator · Discovery), Persona vs Character split, ~95 FR / ~40 NFR / 20 ARQ / 7 non-goals. Open points A1–A11 resolved; owner confirmed. Product Definition `COMPLETE`. Pointer → Phase 3. |
+| 2026-09-05 | Phase 3 `IN PROGRESS` | Phase 3 `IN PROGRESS` (3.15) | phase-3 | All 12 research areas drafted (`docs/research/phase3/01–12`) + **14 draft ADRs** (`docs/decisions/0001–0014`, `PROPOSED`). Owner's Krea impl folded in (diffusers sidecar, NF4, ~11.4 GB peak). Transport resolved (ADR-0013: loopback HTTP for model servers, stdio for workers). **Biggest risk: character visual identity (ADR-0011) — Krea 2 is text-to-image only; needs per-character LoRA (~45–60 min/char background) → owner sign-off.** Exit items: 3 runnable probes (nvml per-process, GGUF header, WDDM) + owner sign-off, then Phase 4. |
+| 2026-09-05 | Phase 3 `NOT STARTED` | Phase 3 `IN PROGRESS` | phase-3 | Research started. First 5 areas + README. Key finding: image gen ⟂ LLM on 16 GB. | `docs/product/vision.md` (owner draft) → `docs/product/requirements.md` (PD.2): 3-tab structure (Chat/Voice · Image Generator · Discovery), Persona vs Character split, ~95 FR / ~40 NFR / 20 ARQ / 7 non-goals. Open points A1–A11 resolved; owner confirmed. Product Definition `COMPLETE`. Pointer → Phase 3. |
 | 2026-09-05 | 40-step course (0–39) | 41-step course (0–40) + detailed `docs/plan/` | owner-approved | Full implementation plan written. Inserted **Phase 12 Model Acquisition & Picker**; split Voice → 18/19 and Character System → 25/26; moved Scheduler → 24; merged old 37–39 → Phase 40. `ROADMAP.md` §4 slimmed to an index; per-phase detail now in `docs/plan/NN_*.md`. Tech defaults recorded in §7 + `docs/OVERVIEW.md`. Pointer unchanged (Product Definition). |
 | 2026-09-05 | 32-phase working-draft ledger | 40-phase course (0–39) + Product Definition step | owner-delegated | §4 replaced with the LocalAI phase structure from the owner's ChatGPT planning chat. Old Phase 1 → Phase 1 (Project Foundation); old Phase 0 (env audit) → Phase 2. |
 | 2026-09-05 | Article I amended | Article I reverted | owner-delegated | Subprocess transport is a Phase 3 architecture-research question, not a Phase 0 decision. §7 O3 reopened. |
@@ -444,13 +445,24 @@ tracked, not blocking.
   if measured need (Phase 21). Confirm scope in Product Definition.
 - **O2. Single-user vs multi-user** — working assumption **single-user, local
   profile**. Confirm in Product Definition.
-- **O3. Subprocess transport** — stdio JSON-lines (authored workers) vs loopback
-  HTTP (`llama-server`) vs in-process FFI. Decide in Phase 3.4, record as an ADR.
-  No code depends on a transport until then.
-- **O4. Rust structure** — single Tauri crate vs Cargo workspace. Default single
-  crate; split only with a concrete reason (Phase 3.2 / Phase 6).
-- **O5. Environment gaps** — CUDA build strategy, Python env strategy, npm vs
-  pnpm, model storage location + disk budget. Resolve in Phase 3; some become ADRs.
+- **O3. Subprocess transport** — **draft ADR-0013**: loopback HTTP for model
+  servers (`llama-server`, image), stdio JSON-lines for small workers (STT/TTS/
+  embedder/trainer). `CLAUDE.md` Art. I updated at Phase 5.
+- **O4. Rust structure** — **draft ADR-0001**: single Tauri crate, documented
+  split triggers.
+- **O5. Environment gaps** — **draft ADR-0004** (build llama.cpp from source,
+  CUDA Toolkit 13.x), **ADR-0014** (embedded CPython + shared venv; MSI). npm vs
+  pnpm + model storage default still to pin at Phase 5/6.
+
+### New open items from Phase 3 (for Phase 4 / owner)
+
+- **O6. Character visual identity bar (FR-C90).** Krea 2 is text-to-image only;
+  ADR-0011 proposes per-character LoRA (~45–60 min/char, background) as the path
+  to "high visual continuity". **Needs owner sign-off** on that cost, or FR-C90 is
+  scoped to seed+prompt quality for v1. Also: confirm Krea 2 LoRA-training is
+  feasible in a local trainer (ai-toolkit-class) — Phase 27.
+- **O7. Krea 2 quant** — NF4 (bitsandbytes, proven) for v1; benchmark torchao
+  NVFP4 at Phase 22.
 
 ### Closed
 

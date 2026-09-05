@@ -30,13 +30,26 @@ Blackwell **sm_120**).
 | D-7 | Model acquisition (HF, GGUF) | `06_model-acquisition.md` | drafted | ADR-0008 |
 | D-8 | Persistence: driver, pool, schema groups, blob store | `07_persistence.md` | drafted | ADR-0009 |
 | D-9 | Scheduler / GPU arbitration | `08_scheduler.md` | drafted | ADR-0010 |
-| D-10 | Persistent character visual identity | `09_character-identity.md` | pending | ADR-0011 |
-| D-11 | Memory: schema + retrieval | `10_memory.md` | pending | ADR-0012 |
-| D-12 | Subprocess transport: loopback HTTP for model *servers* (LLM, image), stdio JSON-lines for small workers (STT/TTS) | `11_worker-protocol.md` | pending | ADR-0013 |
-| D-13 | Packaging (Windows, workers, native libs) | `12_packaging.md` | pending | ADR-0014 |
+| D-10 | Persistent character visual identity | `09_character-identity.md` | drafted | ADR-0011 |
+| D-11 | Memory: schema + retrieval | `10_memory.md` | drafted | ADR-0012 |
+| D-12 | Subprocess transport: loopback HTTP for model *servers* (LLM, image), stdio JSON-lines for small workers (STT/TTS) | `11_worker-protocol.md` | drafted | ADR-0013 |
+| D-13 | Packaging (Windows, workers, native libs) | `12_packaging.md` | drafted | ADR-0014 |
 | D-14 | App navigation / shell (3 tabs) (ARQ-16) | `01_desktop-ipc.md` | drafted | ADR-0002 |
-| D-15 | Character generation subsystem (ARQ-13/14) | `09_character-identity.md` | pending | ADR-0011 |
-| D-16 | Relationship progression model (ARQ-15) | `10_memory.md` | pending | ADR-0012 |
+| D-15 | Character generation subsystem (ARQ-13/14) | `09_character-identity.md` | drafted | ADR-0011 |
+| D-16 | Relationship progression model (ARQ-15) | `10_memory.md` | drafted | ADR-0012 |
+
+**All 12 area files drafted. 14 draft ADRs in `docs/decisions/` (ADR-0001..0014,
+all `PROPOSED`).**
+
+### Remaining Phase 3 exit items (before the gate passes)
+1. **Runnable `nvml-wrapper` probe** — does per-process VRAM work on driver
+   610.88 / sm_120? (throwaway Rust bin, like the env-audit link test)
+2. **GGUF header parse** verified against a real `.gguf` file's first ~1–2 MB.
+3. **Confirm no WDDM hang** on the 5080 bare-metal compute path (spawn
+   `llama-server`, hold VRAM, observe).
+4. **Owner sign-off on ADR-0011** — per-character LoRA (option B) cost/feasibility,
+   or scope FR-C90 to option-A quality for v1.
+5. Phase 4 (adversarial review) then Phase 5 (ratify ADRs, freeze).
 
 ---
 

@@ -1,0 +1,37 @@
+# ADR-0008 — Model acquisition: hf-hub + downloads table
+
+- **Status:** PROPOSED (Phase 3 draft) · **Date:** 2026-09-05
+- **Research:** `docs/research/phase3/06_model-acquisition.md` (D-7)
+
+## Context
+FR-70..77: in-app HuggingFace picker + one-shot resumable download for LLM GGUF;
+fixed STT/TTS/image models acquired once via the same path; fully offline after.
+
+## Options considered
+- Transfer: `hf-hub` (official Rust crate) vs hand-rolled `reqwest` range requests.
+- GGUF metadata: header-only range request vs full download.
+
+## Decision
+- **`hf-hub`** for transfers (async, automatic resume, desktop-friendly chunking)
+  **+ a SQLite `model_downloads` table** for queue/pause/resume/cancel UI state
+  that survives a hard kill.
+- **GGUF picker**: parse the **header only** via a ~1–2 MB range request to show
+  quant / context / size (verify a real GGUF header in Phase 3).
+- **Integrity**: stream SHA256 during write, compare to HF's LFS hash, reject +
+  delete on mismatch.
+- **Disk budget**: pre-transfer check `file + margin <= free` **and**
+  `dir_usage + file <= budget` (config); refuse with a typed error.
+- **Register on completion**: Model Registry row, path confined to `model_dir`.
+- **Fixed models** (faster-whisper, Chatterbox, `unsloth/Krea-2-Turbo`): same
+  path, triggered from Settings, no picker. After Krea 2 downloads, **run the
+  one-time NF4 quantization and cache it** (ADR-0006).
+- **Optional HF token** (Settings, OS credential store) for gated repos.
+- HF calls are the only egress here, behind explicit user action; offline →
+  typed "offline" state, local models still listed + usable.
+
+## Consequences
+- Minimal download code (hf-hub does resume); our table adds the UI/restart story.
+- Evaluate HF **Xet** transfer + a content-addressed local model store as
+  optimizations (research file §Optimizations).
+- Krea 2 first-run acquisition is ~34 GB + a one-time quant — explicit, with clear
+  progress.
