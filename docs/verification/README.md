@@ -10,6 +10,7 @@ numbered file per verification event.
 | 03 | `03_adversarial_review.md` | Phase 4 — assembled architecture + ~40-risk register + ADR changes |
 | 04 | `04_phase5_crosscheck.md` | Phase 5.10 — binding docs ↔ ADRs ↔ plan ↔ ROADMAP consistency |
 | 05 | `05_phase6_bootstrap.md` | Phase 6 — Tauri/React/Rust scaffold: check suite + app launch + IPC round-trip; startup baseline |
+| 06 | `06_phase7_contracts.md` | Phase 7 — application contracts: `contracts/` module, `ts-rs` regen, round-trip + rejection sweep, `TokenDelta` perf probe |
 
 Later phases add their gate evidence here (the performance/offline/fault/security/
 dependency/maintainability audits, etc.).

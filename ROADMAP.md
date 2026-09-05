@@ -24,11 +24,11 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 7 — Application Contracts                               |
-| **Stage**        | 7.1 — ID newtypes                                       |
-| **Status**       | `IN PROGRESS`                                           |
+| **Phase**        | 8 — Configuration                                       |
+| **Stage**        | 8.1 — (finalize at phase entry)                         |
+| **Status**       | `NOT STARTED`                                           |
 | **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/07_application-contracts.md` (finalized 2026-09-06) |
+| **Plan doc**     | `docs/plan/08_configuration.md`                         |
 | **Last updated** | 2026-09-06                                              |
 | **Updated by**   | phase-7-contracts                                       |
 
@@ -36,6 +36,8 @@
 `AI_PIPELINES.md`, `SECURITY.md`, `PERFORMANCE.md`, `UI_GUIDELINES.md`,
 `DEVELOPMENT.md`, `docs/decisions/0001–0015` (all `ACCEPTED`).
 **Phase 6 done** — the app scaffold runs (`docs/verification/05_phase6_bootstrap.md`).
+**Phase 7 done** — typed contract vocabulary + `ts-rs` bindings
+(`docs/verification/06_phase7_contracts.md`, `docs/contracts.md`).
 
 **Completed:** Phase 0–2 · Product Definition · Phase 3 (research + ADRs + probes)
 · Phase 4 (adversarial review, `03_adversarial_review.md`) · **Phase 5**
@@ -117,20 +119,20 @@ Owner draft (`docs/product/vision.md`) → confirmed requirements: 3-tab structu
 (Chat/Voice · Image Generator · Discovery), Persona vs Character split, ~95 FR /
 ~40 NFR / 20 ARQ / 7 non-goals. A1–A11 resolved. Owner-confirmed 2026-09-05 (§5).
 
-### Phase 3 — Architecture Research *(current pointer)* — `NOT STARTED` — `docs/plan/03_architecture-research.md`
+### Phase 3 — Architecture Research — `COMPLETE` — `docs/verification/02_phase3_probes.md`
 Research *how* to build the confirmed product; every technology and boundary
 questioned against performance, Windows, offline, failure modes. Research stays
 open. Input: `docs/research/01–06`, `ARQ-*`, O3/O5.
 Gate: every `ARQ` answered or deferred with reason; every decision has a written
 comparison + recommendation; draft ADRs in `docs/decisions/`; no code.
 
-### Phase 4 — Adversarial Architecture Review — `NOT STARTED` — `docs/plan/04_adversarial-review.md`
+### Phase 4 — Adversarial Architecture Review — `COMPLETE` — `docs/verification/03_adversarial_review.md`
 Try to break the proposed architecture before committing.
 Gate: prioritized risk register (`docs/verification/02_adversarial_review.md`)
 covering the mandated failure categories; every high risk mitigated or accepted
 with rationale; architecture + ADRs updated.
 
-### Phase 5 — Project Documentation / Architecture Freeze — `NOT STARTED` — `docs/plan/05_architecture-freeze.md`
+### Phase 5 — Project Documentation / Architecture Freeze — `COMPLETE` — `docs/verification/04_phase5_crosscheck.md`
 Officialize product + architecture: `PROJECT.md`, `ARCHITECTURE.md`,
 `AI_PIPELINES.md`, `SECURITY.md`, `PERFORMANCE.md`, `UI_GUIDELINES.md`,
 `DEVELOPMENT.md`; final ADRs; **re-derive `docs/plan/06–40`** against the freeze.
@@ -141,19 +143,19 @@ Gate: all docs present + mutually consistent; ADRs complete; plan docs finalized
 
 ### EPOCH 1 — Core Platform (Phases 6–15)
 
-### Phase 6 — Tauri + React + Rust Bootstrap — `NOT STARTED` — `docs/plan/06_bootstrap.md`
+### Phase 6 — Tauri + React + Rust Bootstrap — `COMPLETE` — `docs/verification/05_phase6_bootstrap.md`
 App launches to a placeholder UI; typed IPC works; fmt/lint/typecheck/test/logging
 wired; deferred Phase 1 tooling + `.gitattributes` landed. No AI.
 Gate: full verification run green; app launches; IPC round-trip; no model code.
 
-### Phase 7 — Application Contracts — `NOT STARTED` — `docs/plan/07_application-contracts.md`
+### Phase 7 — Application Contracts — `COMPLETE` — `docs/verification/06_phase7_contracts.md`
 Typed serializable contracts (tasks, model metadata/state, generation
 requests/events, streaming, cancellation, errors, conversations, messages,
 resource reservations, worker jobs). No model names in logic.
 Gate: compile; serialize/deserialize round-trip; invalid rejected; documented;
 `git grep` finds no model-name literals in logic.
 
-### Phase 8 — Configuration — `NOT STARTED` — `docs/plan/08_configuration.md`
+### Phase 8 — Configuration *(current pointer)* — `NOT STARTED` — `docs/plan/08_configuration.md`
 One typed, validated, versioned config (defaults → user → session). No subsystem
 invents its own storage. No secrets in source.
 Gate: defaults load; invalid rejected with a named error; persists across restart;
@@ -395,7 +397,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
-| 2026-09-06 | Phase 7 `NOT STARTED` | Phase 7 / 7.1 `IN PROGRESS` | phase-7 | Phase entry: `docs/plan/07_application-contracts.md` step detail finalized against the freeze (12 steps, governing ADR-0002 + ADR-0013). Contracts land in a new top-level `src-tauri/src/contracts/` module (shared across IPC **and** worker boundaries). Scope held to the plan's list — character/persona/relationship/config/registry contracts stay with their own phases. |
+| 2026-09-06 | Phase 7 / 7.1 `IN PROGRESS` | Phase 7 `COMPLETE` → Phase 8 / 8.1 `NOT STARTED` | phase-7 | Application contracts landed: `src-tauri/src/contracts/` (`ids` · `task` · `model` · `generation` · `conversation` · `resource` · `worker`) + `ipc::error` extended to 9 `kind`s + `ErrorEnvelope`. 42 `ts-rs` bindings (was 5); `src/lib/contracts.ts` import surface; `docs/contracts.md` (evolution rules). Gate: `cargo build`+`tsc` clean, zero warnings ✓ · 66 rust tests (round-trip every type + rejection: unknown variant/tag, missing field, out-of-range `validate()`) ✓ · no model-name literals outside `contracts/` ✓ · bindings committed + in sync ✓ · `TokenDelta` round-trip ~3.3 µs ✓ · no behaviour / handler change ✓. Evidence `docs/verification/06_phase7_contracts.md`. Entry note: plan finalized to 12 steps (ADR-0002 + ADR-0013); scope held to the plan's list — character/persona/config/registry contracts stay with their phases. |
 | 2026-09-06 | (no state change) | — | phase-7 | **Phase 6 polish** (`main` `HEAD`): replaced the `app://ready` **event** with an `app_ready` **command** — the event fired in `.setup()` before the webview subscribed, and `listen()` at module-eval threw an unhandled `transformCallback` rejection every launch. Readiness now a command the shell calls once on mount; Phase 6 `app_ping` probe guarded against StrictMode/HMR re-fire (log went from ~14 lines/session → 1). Fresh `tauri dev` verified clean. `docs/verification/05_phase6_bootstrap.md` follow-up resolved. Check suite green. |
 | 2026-09-05 | (no state change) | — | owner-agreed | Visual **soft lock** added: `docs/design/visual-language.md` (from an owner reference screenshot) — firm on the shell (left nav ~260px, Settings a plain bottom item), chat geometry (user-right/assistant-left + avatars, ~14px bubbles, 680px text cap), and the radius/spacing scale; the right panel + per-tab layouts left flexible per feature phase. Geometry tokens added to `src/styles/theme.css`. `UI_GUIDELINES.md` §1: **a UI/CSS change never alters behaviour** — check suite must still pass. |
 | 2026-09-05 | Phase 6 `NOT STARTED` | Phase 6 `VERIFIED` → Phase 7 / 7.1 `NOT STARTED` | phase-6 | Tauri v2 + React/TS + Rust scaffold (branch `phase-6-bootstrap` → `main` `1f6c6a1`). Single Rust crate (`ipc` + `logging`); typed IPC with `ts-rs` bindings; 3-tab hash-routed shell + error boundary + theme tokens; ESLint/Prettier/rustfmt/clippy/Vitest wired; `.gitattributes` + `.githooks`. Gate: `cargo fmt`/`clippy`/`test` (8) ✓ · `tsc`/`eslint`/`prettier`/`vitest`(2)/`vite build` ✓ · `tauri dev` launches, `app_ping` round-trip observed in the structured log ✓ · no AI/model/network code ✓. Evidence `docs/verification/05_phase6_bootstrap.md`. |

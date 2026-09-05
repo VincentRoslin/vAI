@@ -5,14 +5,15 @@ application state, persistence, model lifecycle, resource management, scheduling
 process supervision, and IPC. Single crate, one module per subsystem
 (`docs/decisions/0001-single-rust-crate.md`).
 
-## Current modules (Phase 6)
+## Current modules (Phase 7)
 
 | Module | What | Doc |
 | ------ | ---- | --- |
 | `lib.rs` | The Tauri builder + `run()` | — |
 | `main.rs` | Thin bin entry | — |
 | `logging.rs` | `tracing` JSON logging; `LOCALAI_LOG` env filter; no network sink | observability → Phase 10 |
-| `ipc/` | Typed IPC boundary — `commands` (`app_ready`, `app_ping`, `frontend_log`), `error::AppError` | `docs/decisions/0002-ipc-design.md` |
+| `ipc/` | Typed IPC boundary — `commands` (`app_ready`, `app_ping`, `frontend_log`), `error::{AppError, ErrorEnvelope}` | `docs/decisions/0002-ipc-design.md` |
+| `contracts/` | The serializable vocabulary for **both** the IPC and worker boundaries — `ids`, `task`, `model`, `generation`, `conversation`, `resource`, `worker`. No behaviour. | `docs/contracts.md` |
 
 ## Modules added by later phases
 

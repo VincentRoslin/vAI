@@ -13,7 +13,8 @@ goes through typed IPC in `lib/ipc.ts`.
 | `components/ErrorBoundary.tsx` | Top-level render-error recovery panel |
 | `components/Placeholder.tsx` | "not built yet — Phase N" stub for unbuilt surfaces |
 | `pages/*.tsx` | One per route (placeholders until their phase) |
-| `lib/ipc.ts` | **Typed wrappers over Tauri IPC** — the only place `invoke`/`listen` is called |
+| `lib/ipc.ts` | **Typed wrappers over Tauri IPC** — the only place `invoke` is called |
+| `lib/contracts.ts` | Single import surface for the generated contract types (`docs/contracts.md`) |
 | `lib/log.ts` | Frontend logger → forwards to the Rust structured log via `frontend_log` |
 | `styles/theme.css` | Colour tokens (light/dark, OS-following) — no hard-coded colours in components |
 | `bindings/` | Types generated from Rust by `ts-rs` — **do not hand-edit**; `cargo test` regenerates |

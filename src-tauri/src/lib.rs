@@ -10,6 +10,7 @@
 //! `resources`, `scheduler`, `conversation`, …) are added by their own phases,
 //! each registering itself in `ARCHITECTURE.md`.
 
+pub mod contracts;
 pub mod ipc;
 pub mod logging;
 

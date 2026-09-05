@@ -2,6 +2,7 @@
 
 /**
  * Error returned across the IPC boundary. Serialized as
- * `{ "kind": "...", "message": "..." }` for the frontend to switch on.
+ * `{ "kind": "...", "message": "..." }` (the `message` key is absent for the
+ * unit variants `Cancelled` and `Internal`).
  */
-export type AppError = { "kind": "NotFound", "message": string } | { "kind": "Validation", "message": string } | { "kind": "Backend", "message": string } | { "kind": "Cancelled" } | { "kind": "Internal" };
+export type AppError = { "kind": "NotFound", "message": string } | { "kind": "Validation", "message": string } | { "kind": "Conflict", "message": string } | { "kind": "ResourceExhausted", "message": string } | { "kind": "Timeout", "message": string } | { "kind": "Cancelled" } | { "kind": "BackendUnavailable", "message": string } | { "kind": "WorkerCrashed", "message": string } | { "kind": "Internal" };

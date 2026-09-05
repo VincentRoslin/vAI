@@ -50,10 +50,12 @@ blob store, model lifecycle, resource/VRAM/RAM management, scheduling, task
 management, process supervision, IPC, security-sensitive operations, business
 logic. Single crate (`src-tauri/`); modules interact through defined interfaces.
 
-Modules (see `src-tauri/README.md` for the live list): **as of Phase 6** —
+Modules (see `src-tauri/README.md` for the live list): **as of Phase 7** —
 `lib.rs` (Tauri builder), `logging` (`tracing` JSON, no network sink), `ipc`
-(`commands`, `error::AppError`, events). Each later phase adds its module and
-registers it in `src-tauri/README.md` and §3 here.
+(`commands`, `error::{AppError, ErrorEnvelope}`), `contracts` (the serializable
+vocabulary for the IPC **and** worker boundaries — `docs/contracts.md`; no
+behaviour). Each later phase adds its module and registers it in
+`src-tauri/README.md` and §3 here.
 
 ### React / TypeScript — presentation only
 Owns: rendering, UI, interaction, transient view state. Never accesses SQLite, AI

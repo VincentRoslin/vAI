@@ -24,6 +24,7 @@ index. Read the index, then the one file you need.**
 | Current phase + what to do next | `ROADMAP.md` §1 → the linked `docs/plan/NN` |
 | How a subsystem works / a decision's rationale | `ARCHITECTURE.md` / `AI_PIPELINES.md` → `docs/decisions/README.md` → the ADR |
 | A product requirement | `PROJECT.md` (summary) or `docs/product/requirements.md` (`FR-*`/`NFR-*` by number) |
+| A wire/IPC/worker contract type | `docs/contracts.md` → `src-tauri/src/contracts/` → `src/lib/contracts.ts` |
 | A per-phase step plan | `docs/plan/README.md` → `docs/plan/NN_*.md` |
 | UI rules / visual baseline | `UI_GUIDELINES.md` → `docs/design/visual-language.md` |
 | What was tested / verified | `docs/verification/README.md` |
@@ -44,6 +45,7 @@ index. Read the index, then the one file you need.**
 | `README.md` | Quickstart | clone → install → run | Empty until Phase 6.11 |
 | `docs/OVERVIEW.md` | Early product/architecture overview | historical context | Superseded by `PROJECT.md` + `ARCHITECTURE.md`; kept for history |
 | `docs/product/requirements.md` | Numbered product requirements (`FR-*`, `NFR-*`, `ARQ-*`) | The requirement IDs `PROJECT.md` summarizes | Live |
+| `docs/contracts.md` | The typed contract vocabulary + evolution rules | `src-tauri/src/contracts/` (IPC **and** worker boundary types) | Live — from Phase 7 |
 | `docs/verification/` | Gate evidence (`README.md` + `NN_topic.md`) — what was physically run/observed | Verification history | Live |
 | `docs/research/phase3/` | Pre-architecture research (`README.md` + 12 files) | Options & trade-offs — **superseded by the ADRs where they conflict** | Historical |
 | `docs/decisions/` | ADRs (`README.md` + `NNNN-*.md`) — one decision each | The frozen architecture decisions | Live — ADR-0001…0015 all `ACCEPTED` |
