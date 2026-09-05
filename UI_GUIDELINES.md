@@ -10,6 +10,11 @@ across all flows; Phase 30's gate is the check.
 
 - **The frontend is presentation only.** It renders Rust-owned state and sends
   typed IPC. It never owns domain data, never blocks on heavy work.
+- **A UI or CSS change never alters behaviour, state, or IPC.** Styling and
+  layout edits touch markup + CSS only. The check suite — Vitest, and from
+  Phase 30 the keyboard + a11y tests — must still pass after any visual change.
+- **Visual baseline:** `docs/design/visual-language.md` (soft lock — shell,
+  chat geometry, the radius/spacing scale).
 - **Never look frozen.** Every operation over ~200 ms shows a state; long ones
   show progress and a way to cancel.
 - **Persistent, not disposable.** Conversations, characters, images always look

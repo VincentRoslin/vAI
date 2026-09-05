@@ -17,9 +17,25 @@
   --danger: #c02636;
   --ok: #1f8a4c;
 
-  --radius: 8px;
-  --gap: 12px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  /* Geometry scale — docs/design/visual-language.md §2 */
+  --radius-window: 14px;
+  --radius-card: 12px;
+  --radius-control: 9px;
+  --radius-bubble: 14px;
+  --radius: var(--radius-control); /* legacy alias */
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --gap: var(--space-3);
+
+  --content-max: 680px;
+  --nav-width: 260px;
 }
 
 @media (prefers-color-scheme: dark) {

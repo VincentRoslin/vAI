@@ -25,6 +25,7 @@ index. Read the index, then the one file you need.**
 | How a subsystem works / a decision's rationale | `ARCHITECTURE.md` / `AI_PIPELINES.md` → `docs/decisions/README.md` → the ADR |
 | A product requirement | `PROJECT.md` (summary) or `docs/product/requirements.md` (`FR-*`/`NFR-*` by number) |
 | A per-phase step plan | `docs/plan/README.md` → `docs/plan/NN_*.md` |
+| UI rules / visual baseline | `UI_GUIDELINES.md` → `docs/design/visual-language.md` |
 | What was tested / verified | `docs/verification/README.md` |
 | Pre-architecture research (historical) | `docs/research/phase3/README.md` |
 | Cross-session context / owner preferences | `memory/MEMORY.md` |
@@ -38,6 +39,7 @@ index. Read the index, then the one file you need.**
 | `ARCHITECTURE.md` | **The frozen system design** | Runtimes, boundaries, single-authority map, the VRAM constraint, cross-cutting flows | **Live — frozen at Phase 5.** |
 | `AI_PIPELINES.md` | Each AI pipeline end to end | LLM / STT / VAD / TTS / image / identity / memory / relationship | **Live — frozen at Phase 5.** |
 | `SECURITY.md` · `PERFORMANCE.md` · `UI_GUIDELINES.md` | Threat model + controls · perf budgets + method · UI bar | Their named topic | **Live — frozen at Phase 5.** |
+| `docs/design/` | Visual design (`README.md` + `visual-language.md`) | Shell layout, chat geometry, the radius/spacing scale (soft lock) | Live |
 | `DEVELOPMENT.md` | Dev prerequisites, loop, check suite, git | Working in the repo | Live — updated as tooling is wired (Phase 6) |
 | `README.md` | Quickstart | clone → install → run | Empty until Phase 6.11 |
 | `docs/OVERVIEW.md` | Early product/architecture overview | historical context | Superseded by `PROJECT.md` + `ARCHITECTURE.md`; kept for history |
