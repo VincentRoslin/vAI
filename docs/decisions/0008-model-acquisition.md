@@ -27,9 +27,12 @@ fixed STT/TTS/image models acquired once via the same path; fully offline after.
 - **Disk budget**: pre-transfer check `file + margin <= free` **and**
   `dir_usage + file <= budget` (config); refuse with a typed error.
 - **Register on completion**: Model Registry row, path confined to `model_dir`.
-- **Fixed models** (faster-whisper, Chatterbox, `unsloth/Krea-2-Turbo`): same
-  path, triggered from Settings, no picker. After Krea 2 downloads, **run the
-  one-time NF4 quantization and cache it** (ADR-0006).
+- **Fixed models** (faster-whisper, Chatterbox, `unsloth/Krea-2-Turbo`, the
+  `QuadView_krea2_v1` + realism LoRAs, the InsightFace embedder): same path,
+  triggered from Settings, no picker. After Krea 2 downloads, **run the one-time
+  NF4 quantization and persist the NF4 weights** — this is a **required** step of
+  acquisition, not deferred (Phase 4 R-C3); it is gated by a free-system-RAM
+  pre-check (~24 GB bf16 transient).
 - **Optional HF token** (Settings, OS credential store) for gated repos.
 - HF calls are the only egress here, behind explicit user action; offline →
   typed "offline" state, local models still listed + usable.

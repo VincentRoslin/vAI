@@ -27,8 +27,18 @@ Blackwell/WDDM is unconfirmed (env audit showed N/A in `nvidia-smi`).
 - **Estimate** = closed-form per model type (weights + KV cache + CUDA context +
   buffers + margin), with a **learned per-model correction factor** from stored
   `(estimated, measured)` pairs.
-- **One async mutex/actor** serializes every reserve/commit/release/swap.
+- **One async mutex/actor** serializes every reserve/commit/release/swap. Lock
+  ordering is explicit (ADR-0010, Phase 4 R-C4): the mutex holder performs the
+  whole transition; no worker or nested call re-enters it.
 - `vram_safety_margin_mb` is config (default ~1500).
+- **System RAM is a second tracked constraint** (Phase 4 R-C3): CPU-offloaded
+  models (Krea 2) live in RAM; a 32 GB machine can exhaust it. The resource
+  manager checks free system RAM before an image load and won't keep the sidecar
+  resident under RAM pressure.
+- **GPU-reset / driver-TDR path** (Phase 4 R-H1): if *all* GPU consumers' health
+  checks fail within a short window, treat it as a device reset → kill every GPU
+  subprocess, `reconcile` from zero, reload the last-known desired state, surface
+  one "graphics driver reset — recovering" notice.
 - The resource manager **accounts**; the scheduler (ADR-0010) **orders + evicts**.
 
 ## Consequences

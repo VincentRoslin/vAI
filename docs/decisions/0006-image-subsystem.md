@@ -19,16 +19,22 @@ Krea 2 is text-to-image only; no identity mechanism. Z-Image is out of scope.
 - **Reuse the diffusers FastAPI sidecar pattern**, adapted: Rust-supervised child,
   **loopback HTTP** (ADR-0013), `enable_model_cpu_offload()` kept.
 - **Krea 2 Turbo, 8 steps, guidance 0.0**, FlowMatch Euler; only image model.
-- **Quantization: bitsandbytes NF4 for v1** (proven), **cache the quantized
-  weights to disk** on acquisition so cold load drops ~90 s → ~15–25 s.
-  **Benchmark torchao NVFP4 in Phase 22**; adopt if stable on Krea 2 (faster
-  inference, Blackwell-native).
+- **Quantization: bitsandbytes NF4 for v1** (proven). **The NF4 quant cache is
+  REQUIRED, not an optimization** (Phase 4 R-C3): quantize the ~24 GB bf16 model
+  **once during acquisition**, persist the NF4 weights, load NF4 directly (~6 GB)
+  thereafter. The bf16 model is resident only during that one-time step, behind a
+  system-RAM pre-check. **Benchmark torchao NVFP4 in Phase 22**; adopt if stable
+  on Krea 2.
 - **LoRA registry** (SQLite: id → file, base compat, format, default weight,
   tags) + **preset registry** (named parameter sets). **Single-select LoRA in v1
   UI**; the request contract carries a list from day one (multi-LoRA is a
   non-breaking later add). Kohya→diffusers converter reused.
 - **Sidecar stays alive** (~1.6 GB) while the Image or Discovery tab is active;
   the scheduler evicts the LLM (+ TTS) only for the ~11.4 GB generation spike.
+- **The image server exposes `generate` only.** All load/unload/eviction
+  decisions belong to the Rust scheduler + resource manager (Phase 4 R-H8) — the
+  owner's `exclusive_vram` behaviour is reimplemented as a scheduler contract,
+  not kept in the Python server. No self-managed VRAM in the sidecar.
 - Output → content-addressed blob store; params + seed + hash + (identity score)
   → SQLite.
 

@@ -20,8 +20,12 @@ independent GPU management, adapter-confined, loopback-only:**
 
 | Category | Members | Transport |
 | -------- | ------- | --------- |
-| **Model server** | `llama-server`, `image-server` | loopback HTTP on `127.0.0.1:<free port>` (or a Windows named pipe — evaluate) |
+| **Model server** | `llama-server`, `image-server` | **Windows named pipe preferred** (ACL-scoped, no TCP port, no firewall prompt). If TCP loopback is required (`llama-server` upstream), bind `127.0.0.1:<free port>` **+ a per-launch bearer token** the Rust core generates and passes (`--api-key`); the server rejects unauthenticated requests. |
 | **Stateless worker** | STT, TTS, face-embedder | JSON-lines over stdin/stdout; `stderr` = logs only; binary audio as framed PCM or a short temp file |
+
+**Why the auth requirement (Phase 4 R-C1):** a bare loopback HTTP server is
+callable by *any* local process — it could trigger generation or read results.
+Named pipes carry ACLs; a bearer token closes the gap for TCP.
 
 Common: free-port selection (bind `:0`, read, drop, pass) or named pipe; Windows
 **Job Object** for orphan cleanup; `ready` handshake with a protocol/version

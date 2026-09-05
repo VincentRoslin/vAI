@@ -27,8 +27,12 @@ new/updated ADR → implement (`CLAUDE.md`).
 | 0012 | Memory FTS5 + discrete relationship stages | PROPOSED | `phase3/10` |
 | 0013 | Subprocess transport: loopback HTTP for servers, stdio for workers | PROPOSED | `phase3/11` |
 | 0014 | Packaging: MSI, embedded CPython + shared venv | PROPOSED | `phase3/12` |
+| 0015 | Python worker network lockdown (offline + no-telemetry env) | PROPOSED | Phase 4 R-C2 |
 
-Open items for Phase 4 / owner (not yet ADRs): character-identity quality bar
-(FR-C90 scoped to prompt-based v1; owner to confirm the expected image range);
-NVFP4-vs-NF4 for Krea 2 (benchmark at Phase 22); the 3 runnable probes
-(nvml per-process, GGUF header, WDDM).
+Phase 4 (`docs/verification/03_adversarial_review.md`) revised ADRs
+0006, 0007, 0008, 0009, 0010, 0013 and added 0015. All still `PROPOSED`;
+ratified together at Phase 5.
+
+Open for Phase 5 / owner: NVFP4-vs-NF4 for Krea 2 (benchmark at Phase 22);
+`synchronous=FULL` on the DB writer (perf vs durability); named-pipe vs
+token'd-TCP for `llama-server` (confirm upstream supports pipe / `--api-key`).

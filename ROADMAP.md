@@ -24,19 +24,19 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 4 — Adversarial Architecture Review                     |
-| **Stage**        | 4.1 — assemble the proposed architecture                |
+| **Phase**        | 5 — Project Documentation / Architecture Freeze         |
+| **Stage**        | 5.1 — write `PROJECT.md`                                |
 | **Status**       | `NOT STARTED`                                           |
 | **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/04_adversarial-review.md`                    |
+| **Plan doc**     | `docs/plan/05_architecture-freeze.md`                   |
 | **Last updated** | 2026-09-05                                              |
-| **Updated by**   | phase-3-research                                        |
+| **Updated by**   | phase-4-review                                          |
 
-**Completed:** Phase 0 (process) · Phase 1 (Project Foundation) · Phase 2
-(Environment Audit) · **Product Definition** (`docs/product/requirements.md`) ·
-**Phase 3 Architecture Research** (`docs/research/phase3/` + `docs/decisions/`
-0001–0014 `PROPOSED`; probes in `docs/verification/02_phase3_probes.md`).
-ADRs ratified at Phase 5; Phase 4 attacks them first.
+**Completed:** Phase 0–2 · Product Definition · **Phase 3** (`docs/research/phase3/`
++ `docs/decisions/0001–0015`; probes `docs/verification/02_phase3_probes.md`) ·
+**Phase 4 Adversarial Review** (`docs/verification/03_adversarial_review.md` —
+~40 risks; 4 critical → ADR changes; 7 accepted). ADRs still `PROPOSED`, ratified
+at Phase 5.
 
 **Only one `(Phase, Stage)` pair is ever `IN PROGRESS`.** Advancing the pointer is
 itself a state transition and MUST follow §3.
@@ -389,6 +389,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-05 | Phase 4 `NOT STARTED` | Phase 4 `VERIFIED` → Phase 5 / 5.1 `NOT STARTED` | phase-4 | `docs/verification/03_adversarial_review.md`: architecture assembled + attacked across 8 categories, ~40 risks. **4 critical → ADR changes**: loopback-server auth (ADR-0013, prefer named pipes), Python-worker telemetry lockdown (new ADR-0015), NF4 quant cache now *required* (ADR-0006/0008), GPU-mutex lock-ordering rule (ADR-0010). Also driver-TDR recovery + system-RAM tracking (ADR-0007), backup-before-migrate verify + blob write-order (ADR-0009). 7 risks `ACCEPTED` with rationale. No code. |
 | 2026-09-05 | Phase 3 `IN PROGRESS` | Phase 3 `VERIFIED` → Phase 4 / 4.1 `NOT STARTED` | phase-3 | Gate met: 16 decisions in 12 area writeups, 14 draft ADRs (`PROPOSED`), 3 probes run (`docs/verification/02_phase3_probes.md` — NVML per-process VRAM **unavailable** on WDDM/610.88 → ledger-based accounting confirmed; GGUF header parse **works** from a range request; WDDM-hang inconclusive → Phase 15 watch item). Owner: no LoRA trainer; portraits/selfies → prompt-based identity OK. No app code (probes were throwaway, deleted). ADRs ratified at Phase 5. |
 | 2026-09-05 | Phase 3 `IN PROGRESS` | Phase 3 `IN PROGRESS` (3.15) | phase-3 | All 12 research areas drafted (`docs/research/phase3/01–12`) + **14 draft ADRs** (`docs/decisions/0001–0014`, `PROPOSED`). Owner's Krea impl folded in (diffusers sidecar, NF4, ~11.4 GB peak). Transport resolved (ADR-0013: loopback HTTP for model servers, stdio for workers). **Biggest risk: character visual identity (ADR-0011) — Krea 2 is text-to-image only; needs per-character LoRA (~45–60 min/char background) → owner sign-off.** Exit items: 3 runnable probes (nvml per-process, GGUF header, WDDM) + owner sign-off, then Phase 4. |
 | 2026-09-05 | Phase 3 `NOT STARTED` | Phase 3 `IN PROGRESS` | phase-3 | Research started. First 5 areas + README. Key finding: image gen ⟂ LLM on 16 GB. | `docs/product/vision.md` (owner draft) → `docs/product/requirements.md` (PD.2): 3-tab structure (Chat/Voice · Image Generator · Discovery), Persona vs Character split, ~95 FR / ~40 NFR / 20 ARQ / 7 non-goals. Open points A1–A11 resolved; owner confirmed. Product Definition `COMPLETE`. Pointer → Phase 3. |

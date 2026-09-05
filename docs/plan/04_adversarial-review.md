@@ -92,13 +92,13 @@ Verify: no realistic risk is left "open"; every one is `mitigated` or
 `accepted (rationale)`.
 
 ### 4.11 — Write the register
-Do: `docs/verification/02_adversarial_review.md` — prioritized table: risk,
-category, likelihood, impact, disposition, owning subsystem, test approach, ADR
-reference.
+Do: `docs/verification/03_adversarial_review.md` (02 is the Phase 3 probes) —
+prioritized table: risk, category, likelihood, impact, disposition, owning
+subsystem, test approach, ADR reference.
 Verify: the file exists and covers every category in 4.2–4.9.
 
 ## Verification gate
-1. `docs/verification/02_adversarial_review.md` exists and covers all mandated
+1. `docs/verification/03_adversarial_review.md` exists and covers all mandated
    categories (4.2–4.9). — file check.
 2. Every risk has a disposition (`mitigated` / `accepted`), an owning subsystem,
    and a test approach. — reviewer check, no blanks.

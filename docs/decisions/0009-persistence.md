@@ -22,11 +22,16 @@ must not bloat SQLite.
 - Pragmas every connection: `WAL`, `busy_timeout=5000`, `foreign_keys=ON`,
   `synchronous=NORMAL`, tuned checkpointing.
 - **`refinery`** migrations, forward-only, transactional, with a **`VACUUM INTO`
-  backup before every migration** (keep last K). App refuses an unknown-newer DB.
+  backup before every migration** (keep last K). The runner **verifies the backup
+  file exists and is non-zero before applying any migration** — if the backup
+  fails (e.g. disk full), it refuses to migrate and surfaces the problem
+  (Phase 4 R-H7). App refuses an unknown-newer DB.
 - **One DB file**, table-name-prefixed groups: `core_ conv_ persona_ char_ mem_
   model_ asset_`.
 - **Content-addressed blob store** `app_data/blobs/<sha256[0:2]>/<sha256>` for
-  images/audio/reference sets; SQLite `asset_*` holds metadata + links; a
+  images/audio/reference sets; SQLite `asset_*` holds metadata + links.
+  **Write order: write blob → fsync → commit the row** (Phase 4 R-M8), so a crash
+  leaves at worst an orphan file (harmless, reclaimed) never a dangling link. A
   reconcile job finds orphans/dangling links. Threshold ~32 KB.
 - `rusqlite::Error` → structured `DbError`; `PRAGMA quick_check` on startup with a
   restore-from-backup path.

@@ -16,6 +16,14 @@ One GPU, 16 GB. LLM ⟂ active image generation. LLM reload after eviction costs
 - **Scheduler = a priority queue + dispatcher**, running behind the resource
   manager's single serialization mutex. Resource manager **accounts**; scheduler
   **orders and drives eviction/restore**.
+- **Lock ordering (Phase 4 R-C4):** the scheduler acquires the GPU mutex and
+  performs the *entire* transition — read resource-manager state via non-locking
+  reads, unload, wait for VRAM to settle, load, commit — then releases. Only the
+  mutex holder makes resource-manager mutating calls. Workers never call back into
+  the resource manager. The lock-ordering rule is documented in `ARCHITECTURE.md`.
+- **Restore-on-crash:** the LLM (+ TTS) restore after an image job runs in a
+  `finally`/guard so it executes even when the image job crashes mid-generation
+  (R-M3).
 - **Priority**: (1) interactive LLM generation — never preempted; (2) STT/TTS —
   coexist; (3) user-initiated image generation; (4) character/pool generation —
   idle-only.
