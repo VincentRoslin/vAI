@@ -80,8 +80,10 @@ CI runs the suite on every push; `main` stays releasable.
   Phase 15); the app spawns it — do not run it by hand.
 - **Python workers:** the app spawns them from the venv; for isolated testing,
   `uv run workers/<name>.py` with the offline env (ADR-0015) set.
-- **DB:** created on first run under the app data dir; `scripts/db-reset.ps1`
-  (Phase 14) wipes + re-migrates + seeds.
+- **DB:** `%APPDATA%\com.localai.app\localai.db` (+ `-wal` / `-shm`), created and
+  migrated on first run (ADR-0009). Pre-migration backups: `db-backups/`
+  (last 5). Delete `localai.db*` to reset. `scripts/db-reset.ps1` (Phase 14) will
+  wipe + re-migrate + seed.
 - **Config:** `%APPDATA%\com.localai.app\config.json` (ADR-0016). Absent on a
   fresh machine — the app runs on defaults and only writes the file when a value
   changes. Delete it to reset to defaults; an unparseable file is auto-backed-up

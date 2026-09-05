@@ -12,6 +12,7 @@ numbered file per verification event.
 | 05 | `05_phase6_bootstrap.md` | Phase 6 — Tauri/React/Rust scaffold: check suite + app launch + IPC round-trip; startup baseline |
 | 06 | `06_phase7_contracts.md` | Phase 7 — application contracts: `contracts/` module, `ts-rs` regen, round-trip + rejection sweep, `TokenDelta` perf probe |
 | 07 | `07_phase8_config.md` | Phase 8 — configuration: `config/` module, layered defaults/file/session, migration, corrupt recovery, `config_*` IPC; startup baseline |
+| 08 | `08_phase9_persistence.md` | Phase 9 — SQLite: `db/` module, writer/reader pools, `refinery` forward-only migrations + verified backup, transactions, `DbError`, corruption check; DB baselines |
 
 Later phases add their gate evidence here (the performance/offline/fault/security/
 dependency/maintainability audits, etc.).

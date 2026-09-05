@@ -24,11 +24,11 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 9 — SQLite Persistence                                  |
-| **Stage**        | 9.1 — deps + module skeleton                            |
-| **Status**       | `IN PROGRESS`                                           |
+| **Phase**        | 10 — Observability                                     |
+| **Stage**        | 10.1 — (finalize at phase entry)                       |
+| **Status**       | `NOT STARTED`                                           |
 | **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/09_sqlite-persistence.md` (finalized 2026-09-06) |
+| **Plan doc**     | `docs/plan/10_observability.md`                         |
 | **Last updated** | 2026-09-06                                              |
 | **Updated by**   | phase-9-persistence                                     |
 
@@ -40,6 +40,8 @@
 (`docs/verification/06_phase7_contracts.md`, `docs/contracts.md`).
 **Phase 8 done** — config system (`config/` module, ADR-0016,
 `docs/verification/07_phase8_config.md`).
+**Phase 9 done** — SQLite persistence (`db/` module, ADR-0009,
+`docs/verification/08_phase9_persistence.md`).
 
 **Completed:** Phase 0–2 · Product Definition · Phase 3 (research + ADRs + probes)
 · Phase 4 (adversarial review, `03_adversarial_review.md`) · **Phase 5**
@@ -163,13 +165,13 @@ invents its own storage. No secrets in source.
 Gate: defaults load; invalid rejected with a named error; persists across restart;
 migration works; session override works; corrupt/missing handled without crash.
 
-### Phase 9 — SQLite Persistence *(current pointer)* — `NOT STARTED` — `docs/plan/09_sqlite-persistence.md`
+### Phase 9 — SQLite Persistence — `COMPLETE` — `docs/verification/08_phase9_persistence.md`
 Rust-owned persistence: migrations, versioning, pooling, transactions,
 repositories, structured errors. Minimum schema. Frontend/workers never touch DB.
 Gate: create from empty; migrate up/down + idempotent; commit + rollback; survives
 restart; migration failure rolls back + backup; lock contention handled.
 
-### Phase 10 — Observability — `NOT STARTED` — `docs/plan/10_observability.md`
+### Phase 10 — Observability *(current pointer)* — `NOT STARTED` — `docs/plan/10_observability.md`
 Local structured logging + diagnostics (levels, task id, model id, duration,
 status, structured errors). No secrets, no conversation content by default, no
 cloud telemetry.
@@ -399,6 +401,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 9 / 9.1 `IN PROGRESS` | Phase 9 `COMPLETE` → Phase 10 / 10.1 `NOT STARTED` | phase-9 | SQLite persistence landed: `src-tauri/src/db/` — `Db` (writer pool 1 + reader pool 4, `deadpool-sqlite`), per-connection pragma hook (WAL, `busy_timeout`, `foreign_keys`, `synchronous=NORMAL`), `refinery` forward-only grouped migrations with verified `VACUUM INTO` backup (keep 5) + unknown-newer refusal, `write`/`read` helpers, `PRAGMA quick_check` on open, `DbError` + `From<DbError> for AppError`, `AppMetaRepo`, `V0001__init.sql` (`core_app_meta`). `lib.rs` opens+migrates at startup, checkpoints WAL on exit. Deps: `rusqlite 0.37` (bundled), `deadpool-sqlite 0.12`, `refinery 0.9`, `tokio 1`. Gate: create-from-empty ✓ · forward-only + idempotent ✓ · commit persists / error+panic roll back ✓ · survives restart ✓ · grouped rollback + verified backup ✓ · 24 concurrent writers, no `SQLITE_BUSY` ✓ · corrupt file → `DbError::Corruption` ✓ · no rusqlite version split ✓ · check suite green. 99 rust tests (+11). Baselines: insert ~0.12 ms, PK read ~0.05 ms, 100-row tx ~0.16 ms. Evidence `docs/verification/08_phase9_persistence.md`. Entry: gate-2 collision (plan said "migrate down") resolved to forward-only per ADR-0009; `synchronous=NORMAL` kept. |
 | 2026-09-06 | Phase 9 `NOT STARTED` | Phase 9 / 9.1 `IN PROGRESS` | phase-9 | Phase entry: `docs/plan/09_sqlite-persistence.md` finalized (11 steps). **Collision flagged + resolved:** the plan's original gate 2 ("migrate down") conflicts with ADR-0009's forward-only decision → reframed to forward-only + idempotent (ADR wins). `synchronous=FULL` deferred item decided: **keep `NORMAL`** (WAL+NORMAL is crash-safe; FULL only guards OS/power loss at a write cost). Topology: `deadpool-sqlite` writer pool (1) + reader pool (4), `refinery` grouped migrations with verified `VACUUM INTO` backup. Blob store explicitly **not** this phase. |
 | 2026-09-06 | Phase 8 / 8.1 `IN PROGRESS` | Phase 8 `COMPLETE` → Phase 9 / 9.1 `NOT STARTED` | phase-8 | Config system landed: `src-tauri/src/config/` — `AppConfig` (`version` + `models.{dir, budget_gb}`), forward migration runner, `ConfigManager` (layered defaults ← file ← session, atomic write, corrupt-file backup + recovery), `config_get`/`config_set`/`config_keys` IPC, `setup()` wiring. **ADR-0016** (JSON, `<app_config_dir>/config.json`) closes the format question. Gate: defaults w/o file ✓ · invalid value fails fast naming the key ✓ · out-of-range rejected ✓ · change persists across restart ✓ · versionless file migrates to v1 ✓ · session override non-persistent ✓ · corrupt file → defaults + `config.json.corrupt-*` + warn ✓ · no ad-hoc env/settings reads (bar `LOCALAI_LOG`) ✓ · check suite green ✓. 88 rust tests (+22), config load **~0.08 ms**. Evidence `docs/verification/07_phase8_config.md`. |
 | 2026-09-06 | Phase 8 `NOT STARTED` | Phase 8 / 8.1 `IN PROGRESS` | phase-8 | Phase entry: `docs/plan/08_configuration.md` finalized (11 steps). Format decision (`ADR-0016`: JSON, `<app_config_dir>/config.json`, layered defaults/file/session, `version` + forward migrations, atomic write, no secrets) closes the plan's open question. Minimal schema — `version` + `models.{dir, budget_gb}` — grown additively by later phases. |
