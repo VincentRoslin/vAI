@@ -1,8 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 
+import { appReady, toAppError } from '../lib/ipc';
+import { log } from '../lib/log';
 import { Icon } from './Icon';
 import './AppShell.css';
+
+// Startup handshake — run once per session, not per mount (StrictMode double-
+// invokes effects in dev and HMR remounts the tree).
+let handshakeDone = false;
 
 const primary = [
   { to: '/chat', label: 'Chat', icon: 'chat' as const },
@@ -34,6 +40,14 @@ function readCollapsed(): boolean {
  */
 export function AppShell(): React.JSX.Element {
   const [collapsed, setCollapsed] = useState(readCollapsed);
+
+  useEffect(() => {
+    if (handshakeDone) return;
+    handshakeDone = true;
+    appReady()
+      .then((ready) => log.info('app', `core ready (v${ready.version})`))
+      .catch((err) => log.warn('app', `app_ready failed: ${toAppError(err).kind}`));
+  }, []);
 
   function toggle(): void {
     setCollapsed((c) => {

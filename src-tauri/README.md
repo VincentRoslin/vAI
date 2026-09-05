@@ -12,7 +12,7 @@ process supervision, and IPC. Single crate, one module per subsystem
 | `lib.rs` | The Tauri builder + `run()` | — |
 | `main.rs` | Thin bin entry | — |
 | `logging.rs` | `tracing` JSON logging; `LOCALAI_LOG` env filter; no network sink | observability → Phase 10 |
-| `ipc/` | Typed IPC boundary — `commands`, `error::AppError`, events | `docs/decisions/0002-ipc-design.md` |
+| `ipc/` | Typed IPC boundary — `commands` (`app_ready`, `app_ping`, `frontend_log`), `error::AppError` | `docs/decisions/0002-ipc-design.md` |
 
 ## Modules added by later phases
 

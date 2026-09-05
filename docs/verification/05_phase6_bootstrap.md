@@ -43,10 +43,13 @@ Phase 31 — this is the dev-loop reference.
 
 ## Notes / small follow-ups (not blocking)
 
-- The `app://ready` event listener in `main.tsx` can miss the event if `listen()`
-  attaches after `.setup()` emits it (race). Harmless now; when the frontend needs
-  a reliable "core is ready" signal (Phase 7/16), emit it on a slight delay or
-  add an `is_ready` command.
+- ~~The `app://ready` event listener in `main.tsx` can miss the event if `listen()`
+  attaches after `.setup()` emits it (race).~~ **Resolved 2026-09-06:** replaced
+  the startup event with an `app_ready` command (`ipc/commands.rs`), called once
+  from `AppShell` (`src/components/AppShell.tsx`). This also removed a
+  `transformCallback` unhandled rejection (`listen()` ran at module-eval before
+  the Tauri bridge was injected) and the duplicated `app_ping` log lines (the
+  round-trip probe now runs once per session, not per mount / HMR reload).
 - A forced-render-error test for the `ErrorBoundary` is added in the Phase 30
   UI/UX pass.
 - `allowScripts` in `package.json` pins `esbuild@0.28.2` — bump the key when

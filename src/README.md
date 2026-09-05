@@ -6,7 +6,7 @@ goes through typed IPC in `lib/ipc.ts`.
 
 | Path | What |
 | ---- | ---- |
-| `main.tsx` | Entry — mounts the router inside the error boundary; subscribes to `app://ready` |
+| `main.tsx` | Entry — mounts the router inside the error boundary |
 | `router.tsx` | Hash routes: 3 primary tabs (`/chat` `/images` `/discovery`) + `/models` + `/settings` + 404 |
 | `components/AppShell.tsx` + `.css` | Left nav (collapsible) + center workspace (`docs/design/visual-language.md` §1) |
 | `components/Icon.tsx` | Minimal inline icon set (no dependency) |

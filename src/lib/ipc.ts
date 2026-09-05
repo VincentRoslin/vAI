@@ -6,7 +6,6 @@
  * `src/bindings/`. Rejected commands are normalized to a typed `AppError`.
  */
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 import type { AppError } from '../bindings/AppError';
 import type { AppReady } from '../bindings/AppReady';
@@ -23,6 +22,15 @@ export function toAppError(err: unknown): AppError {
   return { kind: 'Internal' };
 }
 
+/** Startup handshake — confirms the core is up and returns its version. */
+export async function appReady(): Promise<AppReady> {
+  try {
+    return await invoke<AppReady>('app_ready');
+  } catch (err) {
+    throw toAppError(err);
+  }
+}
+
 /** Round-trip no-op used to verify the IPC path. */
 export async function appPing(nonce: string): Promise<Pong> {
   try {
@@ -35,9 +43,4 @@ export async function appPing(nonce: string): Promise<Pong> {
 /** Forward a frontend log line to the Rust structured log stream. */
 export async function frontendLog(entry: FrontendLog): Promise<void> {
   await invoke('frontend_log', { entry });
-}
-
-/** Subscribe to the one-shot `app://ready` event. */
-export function listenAppReady(cb: (ready: AppReady) => void): Promise<UnlistenFn> {
-  return listen<AppReady>('app://ready', (e) => cb(e.payload));
 }

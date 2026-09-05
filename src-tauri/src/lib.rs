@@ -20,11 +20,8 @@ pub fn run() {
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "LocalAI core starting");
 
     tauri::Builder::default()
-        .setup(|app| {
-            ipc::emit_app_ready(app.handle());
-            Ok(())
-        })
         .invoke_handler(tauri::generate_handler![
+            ipc::commands::app_ready,
             ipc::commands::app_ping,
             ipc::commands::frontend_log,
         ])

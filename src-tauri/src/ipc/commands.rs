@@ -6,6 +6,26 @@ use ts_rs::TS;
 
 use super::error::{AppError, AppResult};
 
+/// Response for [`app_ready`] — the startup handshake.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct AppReady {
+    /// Core crate version.
+    pub version: String,
+}
+
+/// Startup handshake. The frontend calls this once the webview is live to
+/// confirm the core is up and learn its version. This is a command rather than
+/// an event because an event emitted during `.setup()` fires before the webview
+/// can subscribe.
+#[must_use]
+#[tauri::command]
+pub fn app_ready() -> AppReady {
+    AppReady {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    }
+}
+
 /// Response for [`app_ping`].
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
@@ -97,16 +117,21 @@ mod tests {
         assert!(matches!(err, AppError::Validation(_)));
     }
 
+    #[test]
+    fn app_ready_reports_version() {
+        assert_eq!(app_ready().version, env!("CARGO_PKG_VERSION"));
+    }
+
     /// Regenerates the TypeScript bindings from the Rust types. The check script
     /// runs this then fails if `git` reports a diff — keeping `src/bindings/` in
     /// sync with the contract.
     #[test]
     fn export_bindings() {
         use ts_rs::TS;
+        AppReady::export_all().unwrap();
         Pong::export_all().unwrap();
         FrontendLog::export_all().unwrap();
         FrontendLogLevel::export_all().unwrap();
-        super::super::AppReady::export_all().unwrap();
         AppError::export_all().unwrap();
     }
 }
