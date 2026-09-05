@@ -225,7 +225,8 @@ understanding, not instructions**:
 - Commit message: short subject line, then a body explaining what changed and why.
   End with the `Co-Authored-By` trailer.
 - Only stage files relevant to the change. The empty root placeholder `.md` files
-  stay untracked until their owning phase fills them.
+  are tracked but stay empty until their owning phase fills them (see the Document
+  Map).
 - Local commits only. **Never** push, add a remote, or create a GitHub repo
   without an explicit instruction — pushing publishes the code.
 
