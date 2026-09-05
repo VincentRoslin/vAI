@@ -4,124 +4,143 @@ Covers step 3.10 and D-5. Requirements: FR-90..97, FR-C80..82, FR-C90..94;
 ARQ-9, ARQ-11. **One subsystem serves Tab 2 (standalone) and Tab 3 (character
 images).**
 
-Owner-provided stack (2026-09-05):
-- **Base model:** Krea 2 Turbo (`unsloth/Krea-2-Turbo` — ungated mirror).
-- **LoRAs:**
-  - Krea 2 Realism (`gokaygokay`) — candid photography
-  - Krea 2 Skin (`inlineresearch`) — skin texture
-  - Lustify · Krea 2 (18+) — from `Omnico/Krea2_turbo_diff_loras` (200+ LoRA
-    archive incl. NSFW; "more LoRAs" come from here)
+---
+
+## Owner's existing implementation (from their other project, 2026-09-05)
+
+**This is a working reference to adapt, not a spec — the owner asked for
+optimization.** Must stay offline / local / no third-party UI.
+
+| Aspect | Current implementation |
+| ------ | ---------------------- |
+| Runtime | **diffusers**, no ComfyUI. A **FastAPI sidecar** `image_gen/server.py` (`POST /generate {model, prompt, width, height, seed, lora, lora_weight}`), driven by Rust `image_gen.rs` / `commands/image.rs` + the Image tab. |
+| Model | Un-quantized bf16 `unsloth/Krea-2-Turbo` (ungated mirror of `krea/Krea-2-Turbo`). ~34 GB download; ~24 GB transformer. |
+| Quantization | **bitsandbytes NF4 at load**: `PipelineQuantizationConfig(quant_backend="bitsandbytes_4bit", bnb_4bit_quant_type="nf4", compute_dtype=bf16)` on transformer + text encoder, then `enable_model_cpu_offload()`. Re-quantized **on every load**. |
+| Params | steps 8, `guidance_scale 0.0`, no negative prompt (inert at guidance 0), FlowMatch Euler (pipeline default, not exposed). Resolution: aspect buttons 1024²–1664×928, snapped to /16. |
+| LoRA | **Single, not stacked.** `load_lora_weights(adapter_name=…)` → `set_adapters([name], [weight])`, weight 0–1 (default 0.9). A Kohya→diffusers converter in `server.py` loads attn/MLP layers, skips norm layers. |
+| Identity | **None.** No IP-Adapter, PuLID, reference image, per-character LoRA. Krea 2 in diffusers is **text-to-image only** (no img2img/edit pipeline yet). Consistency = seed lock + prompt. |
+| Timing | ~**17–18 s** per 1024² once loaded (8 steps). Cold first-ever 306 s (incl. download + first quant). Subsequent cold loads ~**90 s** (re-quant). |
+| VRAM | Peak ~**11.4 GB** during a generation (LLM + TTS unloaded first via `exclusive_vram`). **~1.6 GB at rest** between generations (CPU offload). |
+
+**LocalAI uses Krea 2 Turbo as the only image model** (the other project's
+"Z-Image" is **out of scope** per owner, 2026-09-05). The sidecar keeps a
+`model` field for forward-compatibility, but no second image model ships.
 
 ---
 
-## Model facts (researched)
+## D-5 — Subsystem design (adaptation)
 
-- Krea 2 = 12B Diffusion Transformer (Krea.ai), released 2026-06-22. **Turbo =
-  8-step distilled** (schnell-tier speed, more aesthetic range).
-- **FP16 ≈ 36.6 GB** for 1024×1024 — **does not fit 16 GB**.
-- **fp8 ≈ ~18 GB** — still does not fit with headroom.
-- **NVFP4** (Blackwell-native 4-bit, 5th-gen tensor cores): ~3.5x smaller than
-  FP16 → **~10–11 GB weights**, near-fp8 accuracy, ~1.7x faster than BF16.
-  diffusers + TorchAO recipes exist (`sayakpaul/diffusers-blackwell-quants`).
-- Diffusers path: `Krea2Pipeline` (diffusers from source as of mid-2026).
+### What to reuse
+- **The FastAPI sidecar pattern.** Rust supervises a Python image server over a
+  **loopback HTTP socket** (`127.0.0.1:<free port>`). This matches the owner's
+  working setup *and* the `llama-server` decision (`02_llm-runtime.md`) — same
+  supervision + transport pattern for both "big model servers". (Revises the
+  earlier lean toward stdio for the image worker — see `11_worker-protocol.md`.)
+- The `POST /generate {model, …}` shape — `model` kept for forward-compat, but
+  Krea 2 Turbo is the only image model LocalAI ships.
+- `enable_model_cpu_offload()` — the reason idle VRAM is only ~1.6 GB. Keep it.
+- The Kohya→diffusers LoRA converter.
+- `exclusive_vram` (unload LLM + TTS before an image job) → becomes the
+  resource-manager / scheduler contract (`05`, `08`).
 
-**Conclusion: Krea 2 Turbo must run in NVFP4 on this card, and even then it needs
-most of the 16 GB (weights + activations + LoRAs) → the LLM must be evicted during
-image generation** (see `05_resource-vram.md`, `08_scheduler.md`).
+### Optimizations to evaluate (owner invited these)
 
----
+1. **Persist the NF4-quantized weights** (highest value). bitsandbytes can
+   serialize a quantized model (`save_pretrained` on the quantized pipeline /
+   `bnb` state). Re-quantizing ~24 GB on every load is the ~90 s cost; loading
+   pre-quantized NF4 from disk should be ~15–25 s. One-time quantize on first run
+   (part of model acquisition), then cache. **Recommend for Phase 22.**
+2. **Blackwell-native NVFP4 via torchao** instead of bitsandbytes NF4. Pros:
+   5th-gen tensor-core support, ~1.7x faster inference than BF16, comparable
+   memory; diffusers+torchao recipes exist for FLUX-family. Cons: a different
+   quant path to validate on Krea 2 specifically; bitsandbytes NF4 already works.
+   **Benchmark both in Phase 22**; if NVFP4 is stable on Krea 2 it likely wins on
+   speed (17 s → ~10–12 s) and load (if a pre-quantized checkpoint is cached).
+3. **Keep the image sidecar alive** (idle ~1.6 GB) vs **on-demand start** (pay the
+   load cost, shut down after idle). Given the load cost even optimized is
+   10–25 s and idle cost is only ~1.6 GB, **keep it alive** while the Discovery or
+   Image tab is active; shut it down after N minutes idle or when VRAM pressure
+   from voice needs the 1.6 GB. Scheduler decides (`08`).
+4. **Torch compile / fusion** for the 8-step loop — measure; may shave a few
+   seconds; risk of long first-call compile.
+5. **Resolution / step tuning** — 8 steps is already turbo-minimal; below 1024²
+   for character thumbnails/discovery cards to cut time.
 
-## D-5 — Subsystem design
-
-### Runtime
-- A **Python worker** (diffusers + torch + torchao, CUDA 12/13 build for sm_120)
-  running Krea 2 Turbo. Rust-supervised, isolated, non-authoritative (Article I).
-- **Not** llama.cpp-style loopback HTTP — this is our own script, so **stdio
-  JSON-lines** control + **image bytes written to a controlled path** the Rust
-  core dictates (blob store), path returned in the result. (Worker-protocol ADR
-  D-12.)
-- Model + LoRA files acquired via the shared download/verify path (Phase 12
-  mechanism) into the model dir; the worker loads from local paths only.
-
-### LoRA handling (FR-96, FR-97)
-- The worker accepts a typed request: `{ prompt, negative?, width, height, steps,
-  seed, guidance, loras: [{id, weight}], reference?: {image_ids, mode, strength} }`.
-- LoRAs applied by id + weight; **LoRA hotswapping** (diffusers supports swapping
-  LoRAs without recompiling the pipeline) so switching preset/LoRA sets between
-  jobs is cheap.
-- A **LoRA registry** (like the model registry): id → local file, base-model
-  compatibility (`krea-2-turbo`), default weight, tags (e.g. `nsfw`), source.
-  The 200+ archive is *not* bulk-imported — the user adds the ones they want
-  (Tab 2 "add LoRA"), plus the three named above pinned as defaults.
-
-### Presets (FR-95)
-- A **preset** = a saved, named parameter set: model + steps + guidance + size +
-  a LoRA list with weights + optional prompt scaffolding. Stored in SQLite
-  (personas/characters-style CRUD). Tab 2 ships a few built-in presets; the user
-  saves their own. Character-image generation (Tab 3) selects a preset internally.
-
-### Identity conditioning (FR-C90..94, ARQ-11)
-- Krea 2 / FLUX-family reference-image conditioning options to evaluate at Phase
-  27: IP-Adapter-style reference, or a per-character LoRA trained from the
-  character's reference images, or diffusers "reference" mode. Per-character LoRA
-  gives the strongest identity but costs training time + storage per character;
-  reference/IP-Adapter is instant but weaker. **Lean:** reference/IP-Adapter for
-  v1 (instant, no per-character training), revisit per-character LoRA if identity
-  quality is inadequate.
-- **Identity-similarity check** (accept vs regenerate): a face/image embedding
-  (e.g. an ArcFace-style face embedder, or CLIP image similarity as a weaker
-  fallback) comparing the generated image to the character's reference set;
-  threshold + max-retries in config. Runs in the worker or a tiny separate
-  embedder. Cost ~tens of ms per candidate.
+### LoRA + preset registries
+- **LoRA registry** (SQLite): id → local file, base compat (`krea-2-turbo`),
+  format (kohya/diffusers), default weight, tags (`nsfw`, …), source. User adds
+  LoRAs in Tab 2 ("add LoRA"); the three named defaults
+  (`gokaygokay` Realism, `inlineresearch` Skin, Lustify Krea 2) are pinned.
+  Not a bulk import of the 200+ archive.
+- **Single-select LoRA for v1** (matches the current impl). Multi-LoRA stacking is
+  a possible later enhancement — the request contract allows a list from day one
+  so it's non-breaking, but v1 UI is single-select.
+- **Preset** (SQLite CRUD): named `{ model, steps, guidance, size, lora?, weight,
+  prompt_scaffold? }`. Tab 2 ships a few; user saves their own; character-image
+  generation picks a preset internally.
 
 ### Generation flow (Tab 2 and Tab 3 identical core)
 ```
-request → resource manager: reserve VRAM (evict LLM if needed via scheduler)
-        → worker: load Krea 2 Turbo (NVFP4) + requested LoRAs (if not resident)
-        → generate (8 steps)
-        → [Tab 3 only] identity-similarity check → accept | regenerate (bounded)
-        → write image to blob store; metadata + params + hash + (score) to SQLite
-        → release VRAM → scheduler restores LLM
+request → scheduler: acquire GPU (evict LLM + TTS; wait for VRAM to settle)
+        → image server: ensure model + LoRA loaded (cached NF4)
+        → generate (8 steps, ~10–18 s)
+        → [Tab 3] identity check → accept | regenerate (bounded)   ← see below
+        → write image to blob store; params + hash + (seed) to SQLite
+        → scheduler: release GPU → reload LLM (+ TTS if voice active)
         → deliver (Tab 2 gallery | character gallery + conversation)
 ```
 
-→ **ADR-0006**: Python diffusers worker, Krea 2 Turbo NVFP4, stdio control + blob
-output, LoRA + preset registries, reference-based identity for v1, embedding
-similarity gate.
+→ **ADR-0006**: diffusers image sidecar over loopback HTTP (reuse the owner's
+pattern), Krea 2 Turbo, **cached NF4 quant** (benchmark NVFP4/torchao),
+`enable_model_cpu_offload`, single-select LoRA + preset registries, kept alive
+while relevant tabs active.
 
 ---
 
-## ⚠ Need from the owner before Phase 22 (and to finalize this ADR)
+## ⚠ Identity consistency is a real gap (FR-C90..94, ARQ-11)
 
-Your existing implementation's specifics — please confirm:
-1. **diffusers or ComfyUI?** (affects whether the worker embeds a pipeline or
-   drives ComfyUI headless)
-2. **Quantization you actually run** — NVFP4 via torchao? A prebuilt fp8/nvfp4
-   checkpoint? GGUF via a different runtime?
-3. **Typical params**: steps (8?), resolution, guidance/CFG, scheduler/sampler.
-4. **How LoRAs are stacked** — weights, order, any base-prompt injection per LoRA.
-5. **Reference/identity mechanism** you use now (if any) — IP-Adapter? PuLID?
-   per-character LoRA? none yet?
-6. Roughly **how long a generation takes** and **peak VRAM** on your hardware.
-7. Is the implementation a **script**, a **server**, or a ComfyUI **workflow
-   JSON**?
+The owner's current setup has **no identity mechanism** — and Krea 2 in diffusers
+is text-to-image only (no img2img / IP-Adapter / edit). But the product requires
+**"high visual continuity"** for characters across poses/clothing/scenes.
+Seed-lock + prompt alone will **not** meet FR-C90..91.
 
-I'll fold your answers in and adjust the ADR; the plan doesn't need them to start
-3.5–3.9, but 3.10/3.11 and Phase 22 do.
+Options for Phase 27 (research + prototype, don't decide here):
+1. **Per-character LoRA.** After a character's reference images are generated,
+   train a small LoRA on them (few minutes on the 5080). Strongest identity;
+   costs training time + ~50–200 MB storage per character; needs a training
+   pipeline. Fits "local, offline".
+2. **IP-Adapter / PuLID / InstantID for Krea 2** — not available in diffusers for
+   Krea 2 today; may land later. Instant, no training, moderate identity.
+3. **Different model for character images** — a FLUX.1 variant or SDXL with
+   PuLID/InstantID that *does* support face reference. Splits the image stack
+   (two base models) — cost in VRAM juggling + the LoRA ecosystem is Krea-2-specific.
+4. **Structured-appearance mega-prompt + seed lock + the similarity-check-and-
+   regenerate loop** (FR-C93). Weakest; the fallback if 1–3 are impractical.
+
+**Recommendation:** plan for **per-character LoRA (option 1)** as the primary path
+(best identity, stays local), with option 4 as the interim while the LoRA training
+pipeline is built. Flag to the owner that FR-C90's bar likely needs option 1 —
+Krea 2 text-to-image + prompt is not enough. This is the biggest open technical
+risk in the product.
+
+The identity-similarity check (accept/regenerate): a face-embedding model
+(ArcFace-style) or CLIP image similarity vs the character's reference set;
+threshold + max-retries in config.
 
 ---
 
 ## Failure modes
-- NVFP4 checkpoint/torchao path fails on sm_120 → fall back to fp8 with
-  aggressive CPU offload (slow) or a smaller/quantized Krea variant; worst case a
-  different image model. Record as a Phase 4 risk.
-- OOM even after LLM eviction → reduce resolution / disable a LoRA / fewer
-  concurrent activations; typed error with guidance.
-- Worker crash mid-generation → VRAM released, no partial file in the blob store,
-  typed error, scheduler restores the LLM.
-- Identity check always fails for a hard character → after N retries, deliver the
-  best-scoring candidate with a "couldn't closely match" note (FR-C93).
+- NF4 cache invalid / bitsandbytes breaks on a torch upgrade → re-quantize (slow
+  path) or fall back to bf16 + full CPU offload (very slow) → typed error with
+  guidance.
+- OOM even after LLM+TTS eviction (a big LoRA + large resolution) → reduce
+  resolution / drop the LoRA / fewer steps; typed error.
+- Image sidecar crash mid-generation → GPU released, no partial file, typed error,
+  scheduler reloads the LLM.
+- Per-character LoRA training fails/OOM → fall back to option 4 for that character.
+- Identity check never passes → deliver best candidate + "couldn't closely match".
 
 ## Sources
-- [unsloth/Krea-2-Turbo](https://huggingface.co/unsloth/Krea-2-Turbo) · [Krea 2 VRAM](https://willitrunai.com/image-models/krea-2) · [Krea 2 review (Turbo/LoRA)](https://www.buildfastwithai.com/blogs/krea-2-open-source-review-raw-turbo)
-- [PyTorch: NVFP4/MXFP8 diffusion on Blackwell](https://pytorch.org/blog/faster-diffusion-on-blackwell-mxfp8-and-nvfp4-with-diffusers-and-torchao/) · [diffusers-blackwell-quants](https://github.com/sayakpaul/diffusers-blackwell-quants)
+- [unsloth/Krea-2-Turbo](https://huggingface.co/unsloth/Krea-2-Turbo) · [Krea 2 review (Turbo/LoRA)](https://www.buildfastwithai.com/blogs/krea-2-open-source-review-raw-turbo)
+- [PyTorch: NVFP4/MXFP8 diffusion on Blackwell + torchao](https://pytorch.org/blog/faster-diffusion-on-blackwell-mxfp8-and-nvfp4-with-diffusers-and-torchao/) · [diffusers-blackwell-quants](https://github.com/sayakpaul/diffusers-blackwell-quants)
+- [HF blog: LoRA fine-tuning FLUX on consumer hardware](https://huggingface.co/blog/flux-qlora)

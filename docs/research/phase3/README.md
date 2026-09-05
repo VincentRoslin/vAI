@@ -5,6 +5,11 @@ area per file — options, trade-offs, and a recommendation each. They are **not
 decisions**; ratified decisions become ADRs in `docs/decisions/` at step 3.15 and
 are frozen at Phase 5.
 
+**Every area file carries an "Optimizations" section** (owner standing
+instruction — always look for the better option; performance + resource
+efficiency are first-class). Each optimization is a candidate to validate/measure
+in its implementation phase, not a commitment.
+
 Requirements traced: `docs/product/requirements.md` (`FR-*`, `NFR-*`, `ARQ-*`).
 Machine: `docs/verification/01_env_audit.md` (Ryzen 9800X3D, RTX 5080 **16 GB**,
 32 GB RAM, single NVMe ~215 GB free, Win 11, CUDA runtime 13.3, driver 610.88,
@@ -22,12 +27,12 @@ Blackwell **sm_120**).
 | D-4 | Voice pipeline: STT / VAD / TTS / audio I/O | `03_voice.md` | drafted | ADR-0005 |
 | D-5 | Image-generation subsystem (Krea 2 Turbo + LoRAs) | `04_image-generation.md` | drafted | ADR-0006 |
 | D-6 | Resource manager + VRAM accounting | `05_resource-vram.md` | drafted | ADR-0007 |
-| D-7 | Model acquisition (HF, GGUF) | `06_model-acquisition.md` | pending | ADR-0008 |
-| D-8 | Persistence: driver, pool, schema groups, blob store | `07_persistence.md` | pending | ADR-0009 |
-| D-9 | Scheduler / GPU arbitration | `08_scheduler.md` | pending | ADR-0010 |
+| D-7 | Model acquisition (HF, GGUF) | `06_model-acquisition.md` | drafted | ADR-0008 |
+| D-8 | Persistence: driver, pool, schema groups, blob store | `07_persistence.md` | drafted | ADR-0009 |
+| D-9 | Scheduler / GPU arbitration | `08_scheduler.md` | drafted | ADR-0010 |
 | D-10 | Persistent character visual identity | `09_character-identity.md` | pending | ADR-0011 |
 | D-11 | Memory: schema + retrieval | `10_memory.md` | pending | ADR-0012 |
-| D-12 | Worker protocol (stdio JSON-lines) | `11_worker-protocol.md` | pending | ADR-0013 |
+| D-12 | Subprocess transport: loopback HTTP for model *servers* (LLM, image), stdio JSON-lines for small workers (STT/TTS) | `11_worker-protocol.md` | pending | ADR-0013 |
 | D-13 | Packaging (Windows, workers, native libs) | `12_packaging.md` | pending | ADR-0014 |
 | D-14 | App navigation / shell (3 tabs) (ARQ-16) | `01_desktop-ipc.md` | drafted | ADR-0002 |
 | D-15 | Character generation subsystem (ARQ-13/14) | `09_character-identity.md` | pending | ADR-0011 |
@@ -45,17 +50,27 @@ From the research below, approximate loaded-VRAM footprints on this card:
 | STT (faster-whisper `large-v3`) | float16 (**not** int8 on Blackwell) | ~3–4 GB | usually yes |
 | VAD (Silero) | — | <0.1 GB (or CPU) | yes |
 | TTS (Chatterbox Turbo) | fp16 | ~1–3 GB | yes |
-| Image (Krea 2 Turbo, 12B) | **NVFP4** | ~10–12 GB + LoRAs + activations | **no — requires LLM eviction** |
-| Image (Krea 2 Turbo) | fp8 | ~18 GB | **does not fit at all** |
+| Image (Krea 2 Turbo, 12B) | bitsandbytes **NF4** + `enable_model_cpu_offload` | **~11.4 GB peak** during generation, **~1.6 GB at rest** (measured — owner's impl) | **no — requires LLM + TTS eviction** |
+| Image (Krea 2 Turbo) | fp8 / bf16 full | ~18–24 GB | **does not fit** |
 
 **Consequences that shape the whole architecture:**
 1. Image generation (Tab 2 and character-sent images) **cannot coexist** with a
-   loaded LLM → the hot-swap subsystem (Phase 23) is not optional, it is on the
-   critical path for the Discovery experience and Tab 2.
-2. Krea 2 Turbo must run in **NVFP4** (Blackwell-native 4-bit). fp8 is out.
-3. STT must use `compute_type=float16` (CTranslate2 int8 is broken on sm_120).
-4. Voice (STT+VAD+TTS ≈ 5–7 GB) **can** run with a mid-size LLM loaded — voice
+   loaded LLM → the hot-swap subsystem is **on the critical path** for Discovery
+   and Tab 2 (not an optimization). The owner's existing impl already does this
+   (`exclusive_vram` unloads LLM + TTS first).
+2. Krea 2 Turbo runs quantized: owner uses **bitsandbytes NF4 + CPU offload**
+   (~11.4 GB peak, ~1.6 GB idle, ~17–18 s/image, but ~90 s to (re)load).
+   Optimization to evaluate: **cache the NF4-quantized weights** (kill the ~90 s
+   re-quant) and/or **torchao NVFP4** (Blackwell-native, faster). See `04`.
+3. Because idle VRAM is only ~1.6 GB, the image sidecar can stay **alive**
+   between generations; only the generation itself needs the LLM evicted.
+4. STT must use `compute_type=float16` (CTranslate2 int8 is broken on sm_120).
+5. Voice (STT+VAD+TTS ≈ 5–7 GB) **can** run with a mid-size LLM loaded — voice
    does not need a swap; image does.
+6. **Biggest open risk:** character visual identity (FR-C90..94). Krea 2 in
+   diffusers is text-to-image only; the owner's impl has no reference/identity
+   mechanism. "High visual continuity" likely needs **per-character LoRAs**
+   (trained locally). See `04` §identity.
 
 ---
 

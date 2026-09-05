@@ -12,17 +12,22 @@ Effective budget for AI ≈ **13–14 GB**. From the other research files:
 | Scenario | Components | ~VRAM | Verdict |
 | -------- | --------- | ----- | ------- |
 | Chat (text) | LLM Q4_K_M ~8B + 8k KV | 6–8 GB | fits, lots of headroom |
-| Voice | above + faster-whisper fp16 + Chatterbox + VAD | 11–15 GB | fits, tight — may need a smaller LLM or STT model |
-| Image (Tab 2 or character) | Krea 2 Turbo NVFP4 + LoRAs + activations | 11–14 GB | fits **only if the LLM is unloaded** |
-| Image + LLM together | — | 18–22 GB | **impossible** |
+| Voice | above + faster-whisper fp16 + Chatterbox + VAD | 11–15 GB | fits, tight — resource manager may pick a smaller LLM or STT model |
+| Image idle (sidecar alive) | Krea 2 Turbo NF4, CPU-offloaded | **~1.6 GB** | coexists with anything |
+| Image generating | Krea 2 Turbo NF4, active | **~11.4 GB peak** (measured, owner's impl) | fits **only with LLM + TTS evicted** |
+| Image + LLM both active | — | ~18–20 GB | **impossible** |
 
 **Design consequences (feed the scheduler ADR D-9):**
-1. **LLM ↔ image are mutually exclusive** on the GPU. Every image request
-   (Tab 2 or FR-C80) requires an LLM eviction + restore.
+1. **LLM ↔ active image generation are mutually exclusive** on the GPU. Every
+   image *generation* (Tab 2 or FR-C80) requires evicting the LLM (+ TTS) and
+   restoring after. The image *sidecar can stay resident* (~1.6 GB) — only the
+   ~11.4 GB generation spike conflicts.
 2. **Voice coexists with the LLM** but leaves little slack — the resource manager
    must be able to say "not enough for `large-v3` fp16 alongside this LLM, use
    `medium`".
 3. Only **one** heavy GPU workload at a time. No concurrent image jobs.
+4. LLM reload after an image job costs time (model-size dependent, ~10–30 s) —
+   the scheduler should batch queued image requests before restoring the LLM.
 
 ---
 
@@ -87,6 +92,25 @@ correction, single serialization point, config safety margin.
   the measurement, logs the drift, recovers stale reservations after a timeout.
 - WDDM free-memory lag after unload → the swap path waits for `free` to actually
   recover (poll, with timeout) before loading the next model.
+
+## Optimizations
+1. **KV-cache quantization** (see `02`) — the cheapest way to buy VRAM headroom
+   for voice-alongside-LLM.
+2. **Keep the image sidecar resident** at ~1.6 GB rather than fully stopping it —
+   only the generation spike needs the LLM evicted, and only when a job is
+   actually queued.
+3. **Batch queued image jobs** — if the user requests 3 images (or a character
+   sends several), generate all before restoring the LLM. One eviction/restore
+   instead of three.
+4. **Predictive eviction** — when the user opens the Discovery or Image tab,
+   pre-shrink the LLM (or pre-evict) so the first image doesn't wait the full
+   unload+reload on the critical path.
+5. **Learned correction factors** — persist `(estimated, measured)` per model and
+   converge the estimate; over time `reserve` decisions get tighter and fewer
+   safety-margin GB are wasted.
+6. **`-ngl` auto-tuning** from measured free VRAM (see `02`).
+7. **Idle unload** — unload STT/TTS after N minutes of no voice; unload the LLM
+   after N minutes of no chat *if* an image or discovery session is active.
 
 ## Phase 3 exit items for this area
 - [ ] Runnable `nvml-wrapper` probe: does per-process VRAM work on driver 610.88 /

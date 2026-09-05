@@ -109,6 +109,23 @@ user stops speaking
 Barge-in (FR-23, target < ~200 ms): VAD speech-onset → trip LLM + TTS cancel →
 stop playback (small buffer). Measured in Phase 19.
 
+## Optimizations
+1. **VAD-gated STT** — only transcribe detected speech; never run Whisper on
+   silence. Biggest single latency + compute saver.
+2. **Pipeline overlap** — start Chatterbox on clause 1 while the LLM is still
+   generating clause 2, and start playback of chunk 1 while chunk 2 synthesizes.
+   Cuts perceived voice latency substantially.
+3. **Keep STT + TTS models resident** (they're small, ~4–6 GB combined) — no swap,
+   ever. Only unload if VRAM pressure from a bigger LLM demands it.
+4. **`distil-large-v3` / `medium` STT** if `large-v3` RTF or VRAM is marginal with
+   the chosen LLM — measure in Phase 18.
+5. **Faster-whisper `batch` + `beam_size=1`** for interactive turns (greedy is
+   fine for conversational STT, much faster than beam search).
+6. **ONNX Runtime / TensorRT path** for Silero VAD (and evaluate a TensorRT
+   Whisper as an alternative to CTranslate2 given the sm_120 int8 breakage).
+7. **Speculative / short-context TTS** — Chatterbox Turbo already targets ~75 ms;
+   keep the playback buffer tiny (~100 ms) so barge-in is near-instant.
+
 ## Failure modes
 - STT worker crash mid-utterance → typed error, recover for next utterance.
 - No input/output device, or device removed mid-session → clear error, no crash.

@@ -115,6 +115,19 @@ Three primary tabs + two utility surfaces (FR-4):
 - `invoke` of an unknown command → compile-time prevented by the typed wrapper
   layer; runtime still returns a typed `AppError::NotFound`.
 
+## Optimizations
+1. **Coalesce token deltas** on the Channel — batch every ~2–4 tokens (or ~16 ms)
+   into one message. Cuts IPC message count ~3–4x on fast models with no
+   perceptible latency cost.
+2. **Raw `Response` bytes** for image previews / audio, not base64 in JSON —
+   avoids a ~33% size blow-up and a decode step.
+3. **Frontend**: virtualize the message list and character/model lists; `memo`
+   message components so a streaming append re-renders only the last bubble.
+4. **`ts-rs` codegen only on changed types** (build-cached) so the IPC contract
+   regen isn't a full-rebuild tax.
+5. **Single global store fed by events**, not per-component polling — one
+   subscription, not N `invoke` loops.
+
 ## Open sub-questions for Phase 4 / Phase 5
 - Exact Channel backpressure policy (drop-oldest vs coalesce vs bounded-block).
 - Whether the typed invoke wrappers are generated (small codegen) or hand-written.

@@ -84,6 +84,24 @@ scripted; installer bundles the binary + DLLs.
 - `-ngl` (GPU layers) and context size come from the resource manager's estimate
   (see `05_resource-vram.md`), never hardcoded.
 
+## Optimizations
+1. **Flash attention** (`-DGGML_CUDA_FA_ALL_QUANTS` / `--flash-attn`) — faster
+   prefill + less KV memory. On by default for supported models.
+2. **KV-cache quantization** (`--cache-type-k q8_0 --cache-type-v q8_0`) — roughly
+   halves KV memory → longer context in the same budget, or headroom for voice.
+   Measure quality impact in Phase 15.
+3. **Blackwell FP4 tensor-core build** — the sm_120 community builds add TurboQuant
+   KV compression + MTP (multi-token prediction). Evaluate MTP for throughput once
+   the base build is stable.
+4. **Keep `llama-server` warm** — only ever unload it for an image generation.
+   Persona/model switches reuse the running server where the model is unchanged.
+5. **`--parallel` slots + context reuse** — one server serving multiple
+   conversations without reload; prompt-cache the shared persona prefix.
+6. **`-ngl` from measured free VRAM**, not a fixed number — offload the maximum
+   layers that fit, leaving KV + margin.
+7. **Speculative decoding** with a tiny draft model — only if VRAM allows
+   (unlikely alongside everything else on 16 GB; note for a future bigger card).
+
 ## Failure modes
 - CUDA OOM on load → child exits; caught; reservation released; typed "not enough
   VRAM, free X GB or pick a smaller quant" message; **no auto-retry same config**.
