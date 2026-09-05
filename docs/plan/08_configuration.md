@@ -1,6 +1,6 @@
 # Phase 8 — Configuration
 
-> ⚠ Step detail finalized at phase entry (after Phase 5). Outline only.
+> **Architecture frozen at Phase 5** (`PROJECT.md`, `ARCHITECTURE.md`, `AI_PIPELINES.md`, ADR-0001..0015). The design below is settled. Concrete implementation specifics (exact modules, crate APIs, filenames) are filled in at phase entry against the frozen ADRs — they do not change the design.
 
 ## Objective
 One typed, validated, versioned configuration system: defaults → user config →

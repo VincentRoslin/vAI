@@ -1,12 +1,13 @@
 # Phase 22 — Image Generation (FLUX.1 Krea)
 
-> ⚠ Step detail finalized at phase entry (after Phase 5).
-> Phase 3 (`docs/research/phase3/04`) + ADR-0006 have the design. The owner
-> supplied the reference implementation's specifics in chat (2026-09-05) — do
-> **not** read their other project directly.
+> **Architecture frozen at Phase 5.** Governing: **ADR-0006** (diffusers sidecar,
+> Krea 2 Turbo, **NF4 quant cache required**, `generate`-only / no self-managed
+> VRAM), **ADR-0013** (transport), **ADR-0010** (scheduler eviction),
+> `AI_PIPELINES.md` §5. The owner supplied the reference implementation's
+> specifics in chat (2026-09-05) — do **not** read their other project directly.
 > **Before downloading Krea 2 / any LoRA / the NF4 cache: ask the owner whether
-> they already have the specific files locally** (`CLAUDE.md` → "Model / asset
-> downloads — always ask first").
+> they already have the files locally** (`CLAUDE.md` → "Model / asset downloads").
+> Benchmark torchao NVFP4 vs NF4 here (deferred item).
 
 ## Objective
 Local image generation as a resource-managed workload: an isolated worker running

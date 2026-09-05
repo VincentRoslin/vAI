@@ -1,7 +1,10 @@
 # Phase 15 — llama.cpp Adapter
 
-> ⚠ Step detail finalized at phase entry (after Phase 5). Depends heavily on the
-> Phase 3.4 transport ADR (loopback `llama-server` vs FFI).
+> **Architecture frozen at Phase 5.** Governing: **ADR-0003** (`llama-server`
+> supervised child), **ADR-0004** (build from source, sm_120), **ADR-0013**
+> (named-pipe / token'd loopback transport), `AI_PIPELINES.md` §1. Concrete steps
+> filled in at phase entry — the design does not change. Note the WDDM-hang watch
+> item (`docs/verification/02_phase3_probes.md`).
 
 ## Objective
 The first LLM backend, implementing the `ModelBackend` / `LlmBackend` interface.

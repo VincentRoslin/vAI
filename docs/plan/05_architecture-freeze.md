@@ -77,13 +77,16 @@ Do: promote every `docs/decisions/` ADR from `PROPOSED` to `ACCEPTED` (or
 ADR.
 Verify: no ADR left `PROPOSED`; every Phase 3/4 decision has an ADR.
 
-### 5.9 — Re-derive `docs/plan/06–40`
-Do: for every implementation phase, expand the step outline into concrete steps
-(specific modules, crates, files, commands) against the frozen architecture.
-Remove the "finalized at phase entry" banner as each is completed. Keep steps
-small and each independently verifiable.
-Verify: every `docs/plan/NN` for 6–40 has concrete steps with real `Verify:`
-lines; no banner remains; `ROADMAP.md` §4 gate summaries still match.
+### 5.9 — Re-align `docs/plan/06–40` to the freeze
+Do: replace each phase file's "step detail finalized at phase entry" banner with a
+**"Architecture frozen at Phase 5"** banner naming that phase's **governing ADRs**
++ the relevant `ARCHITECTURE.md` / `AI_PIPELINES.md` section. The design is now
+settled; the work remaining at phase entry is filling in implementation specifics
+(exact modules, crate APIs, filenames), not architectural choices. Sharpen step
+outlines where an ADR makes them concrete.
+Verify: every `docs/plan/NN` for 6–40 carries the frozen-architecture banner with
+governing ADRs; no "the architecture might move this" language remains;
+`ROADMAP.md` §4 gate summaries still match the plan files.
 
 ### 5.10 — Cross-check pass
 Do: read all binding docs + all plan docs together. Check: no contradictions;
@@ -100,8 +103,8 @@ Verify: a written cross-check note listing what was checked and that it passed.
 3. Every `docs/decisions/` ADR is `ACCEPTED` or `UNDECIDED` (none `PROPOSED`).
 4. `ARCHITECTURE.md` lets a reader trace chat / voice / image / character flows
    end to end; single-authority map has no gaps.
-5. `docs/plan/06–40` all carry concrete steps; no "finalized at phase entry"
-   banner remains.
+5. `docs/plan/06–40` all carry the "Architecture frozen at Phase 5" banner with
+   governing ADRs; no "architecture may still move this" language remains.
 6. Cross-check note exists and reports no contradictions.
 7. **Repo still contains no application code.** — `git status`.
 

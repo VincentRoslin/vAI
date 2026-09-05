@@ -8,13 +8,16 @@ granular, individually-verifiable steps.
 
 1. Read `ROADMAP.md` §1 for the current phase.
 2. Open this directory's file for that phase (linked from §4).
-3. If the file still shows the **"⚠ step detail finalized at phase entry"**
-   banner, finalize it first — expand each step against the frozen architecture
-   (Phase 5 output), then do the work.
+3. Every 06–40 file carries a **"Architecture frozen at Phase 5"** banner naming
+   its **governing ADRs**. The *design* is settled and will not move. At phase
+   entry, expand the step outline into concrete steps against those ADRs +
+   `ARCHITECTURE.md` + `AI_PIPELINES.md` (exact modules, crate APIs, filenames),
+   then do the work.
 4. Work the steps in order. Each step has a `Verify:` line — run it, observe the
    result, record it.
 5. When every step passes, run the **Verification gate**. Record evidence for each
-   check (`CLAUDE.md` Article IV). Then update `ROADMAP.md` §1 + §5.
+   check (`CLAUDE.md` Article IV). Then update `ROADMAP.md` §1 + §5 and the plan
+   file itself (mark stages done).
 
 ## File list
 
@@ -61,7 +64,8 @@ granular, individually-verifiable steps.
 | 40 | `40_closing.md` | outline |
 
 "outline" = objective, exclusions, architecture + performance notes, a 5–12 step
-outline, and the gate. The concrete per-step detail is filled in at phase entry
+outline, the gate, and (since Phase 5) the frozen-architecture banner + governing
+ADRs. The concrete per-step detail is filled in at phase entry
 (Phase 5.9 re-derives 6–40 against the frozen architecture first).
 
 ## Phases 0–2

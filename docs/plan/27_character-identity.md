@@ -1,7 +1,10 @@
 # Phase 27 — Persistent Character Identity (image)
 
-> ⚠ Step detail finalized at phase entry (after Phase 5). Depends on Phase 3.11
-> (conditioning + similarity-check ADRs).
+> **Architecture frozen at Phase 5.** Governing: **ADR-0011** (prompt-based
+> identity — `QuadView_krea2_v1` reference sheet + LLM-captioned canonical
+> appearance block + fixed seed + realism LoRA + face-embedding similarity gate;
+> **no LoRA training**; FR-C90 scoped to portraits/selfies), `AI_PIPELINES.md` §7.
+> Adopt IP-Adapter/reference conditioning for Krea 2 immediately if it ships.
 
 ## Objective
 A character stays the *same conceptual entity* across generated images: reference

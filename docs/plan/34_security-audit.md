@@ -1,6 +1,6 @@
 # Phase 34 — Security Audit
 
-> ⚠ Step detail finalized at phase entry (after Phase 5). Outline only.
+> **Architecture frozen at Phase 5** (`PROJECT.md`, `ARCHITECTURE.md`, `AI_PIPELINES.md`, ADR-0001..0015). The design below is settled. Concrete implementation specifics (exact modules, crate APIs, filenames) are filled in at phase entry against the frozen ADRs — they do not change the design.
 
 ## Objective
 A documented threat model and a pass of concrete security checks. Local does not

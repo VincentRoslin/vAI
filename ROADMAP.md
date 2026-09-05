@@ -24,17 +24,18 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 5 — Project Documentation / Architecture Freeze         |
-| **Stage**        | 5.9 — re-derive `docs/plan/06–40`, then 5.10 cross-check |
-| **Status**       | `IN PROGRESS`                                           |
-| **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/05_architecture-freeze.md`                   |
+| **Phase**        | 6 — Tauri + React + Rust Bootstrap                      |
+| **Stage**        | 6.1 — scaffold the Tauri v2 app                         |
+| **Status**       | `NOT STARTED`                                           |
+| **Blocked by**   | —  (Phase 6 writes the first application code)          |
+| **Plan doc**     | `docs/plan/06_bootstrap.md`                             |
 | **Last updated** | 2026-09-05                                              |
 | **Updated by**   | phase-5-freeze                                          |
 
-**5.1–5.8 done:** `PROJECT.md`, `ARCHITECTURE.md`, `AI_PIPELINES.md`,
-`SECURITY.md`, `PERFORMANCE.md`, `UI_GUIDELINES.md`, `DEVELOPMENT.md` written;
-all 15 ADRs `ACCEPTED`; `CLAUDE.md` Article I transport + Document Map updated.
+**Architecture frozen (Phase 5).** Binding: `PROJECT.md`, `ARCHITECTURE.md`,
+`AI_PIPELINES.md`, `SECURITY.md`, `PERFORMANCE.md`, `UI_GUIDELINES.md`,
+`DEVELOPMENT.md`, `docs/decisions/0001–0015` (all `ACCEPTED`). Cross-check:
+`docs/verification/04_phase5_crosscheck.md`.
 
 **Completed:** Phase 0–2 · Product Definition · **Phase 3** (`docs/research/phase3/`
 + `docs/decisions/0001–0015`; probes `docs/verification/02_phase3_probes.md`) ·
@@ -421,66 +422,42 @@ _None._
 
 ---
 
-## 7. Open Questions & Resolved Facts
+## 7. Decisions & open items
 
-### Resolved facts (binding)
+**The architecture is frozen (Phase 5, 2026-09-05).** The binding record is
+`PROJECT.md` + `ARCHITECTURE.md` + `AI_PIPELINES.md` + `SECURITY.md` +
+`PERFORMANCE.md` + `UI_GUIDELINES.md` + `DEVELOPMENT.md` + `docs/decisions/`
+(ADR-0001…0015, all `ACCEPTED`). Changes need STOP → propose → approve → ADR.
 
-- **R1. LocalAI is a local-first AI desktop application for Windows.** Direction:
-  Tauri + React/TypeScript + Rust core + isolated AI subprocesses + local SQLite.
-  No cloud, no remote DB, no telemetry at runtime (`CLAUDE.md` Art. I–II).
-  Direction, not frozen architecture — Phase 3 confirms details.
-- **R2. The character system is a core capability**, designed for from the start
-  (Phases 25–29): persistent entities with structured identity/memory/relationship
-  and identity-consistent generated images.
-- **R3. Untrusted AI output is contained** — only allow-listed typed Rust ops;
-  especially character image actions (`CLAUDE.md` Art. III, Phase 28).
-- **R4. Verification honesty + smallest-correct-implementation** are binding
-  (`CLAUDE.md` Art. IV). Everything is questioned for performance in Phases 3–4
-  and the audit phases (31–38).
+### Resolved (was O1–O7)
 
-### Recorded tech defaults (strong preference — **validated in Phase 3, not frozen**)
+| Item | Resolution |
+| ---- | ---------- |
+| O1 memory retrieval | FTS5 keyword; embeddings deferred behind a measured trigger (ADR-0012) |
+| O2 single vs multi-user | **single-user, local** (NFR-61, `PROJECT.md`) |
+| O3 subprocess transport | named-pipe / token'd loopback for model servers, stdio for workers (ADR-0013); `CLAUDE.md` Art. I updated |
+| O4 Rust structure | single Tauri crate, documented split triggers (ADR-0001) |
+| O5 env gaps | build llama.cpp from source + CUDA Toolkit 13.x (ADR-0004); embedded CPython + shared venv + MSI (ADR-0014); npm + a default `model_dir` pinned at Phase 6 |
+| O6 character identity bar | prompt-based, **no LoRA training** (ADR-0011); FR-C90 scoped to portraits/selfies — owner-confirmed |
+| O7 Krea 2 quant | NF4 (cached) for v1; benchmark torchao NVFP4 at Phase 22 |
 
-- **LLM**: GGUF models via an in-app **HuggingFace picker + one-shot resumable
-  download** (Phase 12).
-- **STT**: **faster-whisper**, one pinned model. **VAD**: **Silero**.
-- **TTS**: **Resemble Chatterbox**, one pinned model.
-- **Image**: **FLUX.1 Krea [dev]** — owner has a working implementation elsewhere
-  to adapt; **request it at Phase 3.10 / Phase 22**.
-- Phase 3 confirms each fits 16 GB VRAM / Blackwell sm_120 / offline / licensing,
-  and records an ADR. If one does not fit, Phase 3 picks the alternative.
+### Deferred (decide during implementation — not architectural)
 
-### Open questions (for Product Definition → Phase 3)
+- NVFP4 vs NF4 for Krea 2 → Phase 22.
+- `synchronous=FULL` on the DB writer → Phase 9 with measurements.
+- Named pipe vs token'd TCP for `llama-server` → Phase 15 (confirm upstream).
+- npm vs pnpm → Phase 6.
+- At-rest encryption of the DB + blob store → a later phase, if ever in scope.
 
-- **O1. Memory retrieval** — start SQLite + FTS5 keyword search; embeddings only
-  if measured need (Phase 21). Confirm scope in Product Definition.
-- **O2. Single-user vs multi-user** — working assumption **single-user, local
-  profile**. Confirm in Product Definition.
-- **O3. Subprocess transport** — **draft ADR-0013**: loopback HTTP for model
-  servers (`llama-server`, image), stdio JSON-lines for small workers (STT/TTS/
-  embedder/trainer). `CLAUDE.md` Art. I updated at Phase 5.
-- **O4. Rust structure** — **draft ADR-0001**: single Tauri crate, documented
-  split triggers.
-- **O5. Environment gaps** — **draft ADR-0004** (build llama.cpp from source,
-  CUDA Toolkit 13.x), **ADR-0014** (embedded CPython + shared venv; MSI). npm vs
-  pnpm + model storage default still to pin at Phase 5/6.
+### Watch items
 
-### New open items from Phase 3 (for Phase 4 / owner)
+- **WDDM hang** on the first sustained `llama-server` generation (Hyper-V enabled
+  on host) → Phase 15, 3-step mitigation ladder in
+  `docs/verification/02_phase3_probes.md`.
 
-- **O6. Character visual identity bar (FR-C90).** Owner ruled out LoRA training
-  2026-09-05. ADR-0011 = prompt-based (`QuadView_krea2_v1` reference sheet +
-  LLM-captioned canonical appearance block + fixed seed + realism LoRA +
-  face-embedding similarity gate). **FR-C90/C91 scoped to best-effort for v1** —
-  identity drifts under big pose/scene changes; no in-scope fix until Krea 2 gets
-  reference conditioning. Owner to confirm the expected *range* of character
-  images (portraits/selfies = fine; full-body varied scenes = visible drift).
-- **O7. Krea 2 quant** — NF4 (bitsandbytes, proven) for v1; benchmark torchao
-  NVFP4 at Phase 22.
+### Closed (historical)
 
-### Closed
-
-- **Environment-inspection gap** → Phase 2, complete 2026-09-05.
-- **Constitution location** — stays in `CLAUDE.md`; `PROJECT.md` reserved for
-  Phase 5.
-- **Generic web-service phase ledger** → replaced with the LocalAI course.
-- **Phase-list detail level** → lean index here + `docs/plan/NN_*.md` per phase
-  (2026-09-05).
+- Environment-inspection gap → Phase 2. Constitution location → stays in
+  `CLAUDE.md`. Generic web-service ledger → replaced with the LocalAI course.
+  Phase-list detail → `docs/plan/`. `docs/OVERVIEW.md` → superseded by `PROJECT.md`
+  + `ARCHITECTURE.md`.

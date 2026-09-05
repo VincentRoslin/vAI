@@ -1,7 +1,9 @@
 # Phase 18 — Voice: capture · Silero VAD · faster-whisper STT
 
-> ⚠ Step detail finalized at phase entry (after Phase 5). Depends on the Phase 3.9
-> voice ADR (models, streaming vs batch, audio crate).
+> **Architecture frozen at Phase 5.** Governing: **ADR-0005** (faster-whisper
+> fp16, Silero VAD in the Rust core, `cpal`, VAD-segmented transcription),
+> **ADR-0013** (stdio worker), `AI_PIPELINES.md` §2–3. Concrete steps filled in at
+> phase entry; the design does not change.
 
 ## Objective
 The input half of voice: microphone capture → voice-activity detection

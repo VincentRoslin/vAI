@@ -1,7 +1,10 @@
 # Phase 37 — Packaging (Windows installer)
 
-> ⚠ Step detail finalized at phase entry (after Phase 5). Depends on the Phase
-> 3.14 packaging ADR.
+> **Architecture frozen at Phase 5.** Governing: **ADR-0014** (MSI/WiX, embedded
+> CPython + one shared frozen venv, deterministic sibling layout, first-run model
+> onboarding, offline install, signing stubbed), **ADR-0015** (worker network
+> env), `SECURITY.md` C10, `DEVELOPMENT.md` §1. Concrete steps filled in at phase
+> entry; the design does not change. Re-check the Tauri NSIS stale-sidecar bug.
 
 ## Objective
 A Windows installer that bundles the app, native dependencies, and the AI workers,

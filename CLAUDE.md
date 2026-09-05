@@ -16,11 +16,24 @@ This file is loaded into every Claude Code session. It has two parts:
 
 ## Document Map
 
+**Never scan a directory to find something — every subdirectory has a `README.md`
+index. Read the index, then the one file you need.**
+
+| Looking for… | Go to |
+| ------------ | ----- |
+| Current phase + what to do next | `ROADMAP.md` §1 → the linked `docs/plan/NN` |
+| How a subsystem works / a decision's rationale | `ARCHITECTURE.md` / `AI_PIPELINES.md` → `docs/decisions/README.md` → the ADR |
+| A product requirement | `PROJECT.md` (summary) or `docs/product/requirements.md` (`FR-*`/`NFR-*` by number) |
+| A per-phase step plan | `docs/plan/README.md` → `docs/plan/NN_*.md` |
+| What was tested / verified | `docs/verification/README.md` |
+| Pre-architecture research (historical) | `docs/research/phase3/README.md` |
+| Cross-session context / owner preferences | `memory/MEMORY.md` |
+
 | File | Role | Authoritative for | Status |
 | ---- | ---- | ----------------- | ------ |
 | `CLAUDE.md` (this file) | Constitution + agent operating manual | Rules, ownership boundaries, how to work | Live |
 | `ROADMAP.md` | **State machine + phase index** — LocalAI course (Phase 0–40) | Current phase/stage, progress, gate summaries, open questions (§7) | Live. Mechanics fixed; per-phase detail lives in `docs/plan/` |
-| `docs/plan/NN_*.md` | Detailed, individually-verifiable steps for one phase | *How* to execute the current phase | Live. On phase entry read the file for that phase first; finalize its steps if the "finalized at phase entry" banner is still there |
+| `docs/plan/NN_*.md` | Detailed, individually-verifiable steps for one phase (index: `docs/plan/README.md`) | *How* to execute the current phase | Live. Read the current phase's file first; it names its governing ADRs |
 | `PROJECT.md` | **The officialized product definition** | What LocalAI is / does / is not; the binding FR/NFR summary | **Live — frozen at Phase 5.** Changes need STOP→propose→approve. Constitution stays here in `CLAUDE.md`. |
 | `ARCHITECTURE.md` | **The frozen system design** | Runtimes, boundaries, single-authority map, the VRAM constraint, cross-cutting flows | **Live — frozen at Phase 5.** |
 | `AI_PIPELINES.md` | Each AI pipeline end to end | LLM / STT / VAD / TTS / image / identity / memory / relationship | **Live — frozen at Phase 5.** |
@@ -29,9 +42,9 @@ This file is loaded into every Claude Code session. It has two parts:
 | `README.md` | Quickstart | clone → install → run | Empty until Phase 6.11 |
 | `docs/OVERVIEW.md` | Early product/architecture overview | historical context | Superseded by `PROJECT.md` + `ARCHITECTURE.md`; kept for history |
 | `docs/product/requirements.md` | Numbered product requirements (`FR-*`, `NFR-*`, `ARQ-*`) | The requirement IDs `PROJECT.md` summarizes | Live |
-| `docs/verification/` | Evidence logs (`NN_topic.md`) — what was physically run and observed | Verification history | Live — `01_env_audit.md` |
-| `docs/research/` | Pre-architecture technical research (`NN_topic.md` + `README.md`) | Options & trade-offs, **not decisions**; input to Phase 3 | Live |
-| `docs/decisions/` | ADRs — one ratified decision each (decision, context, options, choice, reason, consequences) | Decision record | Empty; starts at Phase 3/5 |
+| `docs/verification/` | Gate evidence (`README.md` + `NN_topic.md`) — what was physically run/observed | Verification history | Live |
+| `docs/research/phase3/` | Pre-architecture research (`README.md` + 12 files) | Options & trade-offs — **superseded by the ADRs where they conflict** | Historical |
+| `docs/decisions/` | ADRs (`README.md` + `NNNN-*.md`) — one decision each | The frozen architecture decisions | Live — ADR-0001…0015 all `ACCEPTED` |
 | `memory/` (outside the repo, in `~/.claude/...`) | Claude's cross-session notes | Context, user preferences, open tensions | Live |
 
 If a prompt says "read `PROJECT.md`" and it is empty, that is expected — the rules

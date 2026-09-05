@@ -1,7 +1,9 @@
 # Phase 19 — Voice: Chatterbox TTS · playback · barge-in
 
-> ⚠ Step detail finalized at phase entry (after Phase 5). Depends on the Phase 3.9
-> voice ADR.
+> **Architecture frozen at Phase 5.** Governing: **ADR-0005** (Chatterbox Turbo,
+> clause-chunked, `cpal` playback with a small buffer, barge-in state machine on
+> the conversation engine), `AI_PIPELINES.md` §4. Concrete steps filled in at
+> phase entry; the design does not change.
 
 ## Objective
 The output half of voice: assistant text → chunked speech synthesis → audio
