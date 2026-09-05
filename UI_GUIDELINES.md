@@ -77,7 +77,12 @@ across all flows; Phase 30's gate is the check.
 
 ## 8. Responsiveness
 
-- Relative units; flex/grid layout; the window is resizable to a sensible minimum
-  without breakage.
+- The window opens **maximized** (windowed — the Windows title bar and
+  minimize/maximize/close controls stay visible; not exclusive fullscreen). It is
+  **resizable** down to a sensible minimum (720×520) without breakage. The
+  un-maximized restore size is 1280×800, centred. (Persisting the last
+  size/position across launches — via `tauri-plugin-window-state` — is a small
+  later add, not v1-critical.)
+- Relative units; flex/grid layout.
 - Wide content (long messages, image grids) scrolls within its own container —
   the window never scrolls horizontally.
