@@ -1,9 +1,19 @@
 # ROADMAP — vAI Bootstrap State Machine
 
-> **Authority**: This file is the single source of truth for bootstrap progress.
-> No phase may be considered done, and no later phase may begin, unless this file
-> records it. If reality and this file disagree, this file is wrong — fix it in
-> the same change that fixes reality, never after.
+> **Status: WORKING DRAFT.** The phase list below (count, names, scope, ordering,
+> and gate details) is **provisional and subject to revision** — it has not been
+> ratified against a finalized architecture. Treat it as a planning scaffold, not
+> a contract. Expect it to be re-derived once the architecture is frozen (see the
+> realignment note in §7).
+>
+> What *is* stable and should be respected: the **state-tracking discipline** —
+> the status vocabulary (§2), the transition rules (§3), the current-state pointer
+> (§1), and the principle that a phase is not "done" until its verification was
+> physically executed and recorded. Those mechanics carry over even if the phases
+> themselves change.
+>
+> If reality and this file disagree about *progress*, fix the file in the same
+> change that fixes reality.
 
 ---
 
@@ -62,6 +72,11 @@ Phase-level status is the **minimum** of its stage statuses (a phase is
 ---
 
 ## 4. Phase Ledger
+
+**Provisional (working draft).** The phases below are a first-pass decomposition,
+not a ratified plan. Names, scope, count, ordering, and gate specifics will change
+— expect a re-derivation toward a subsystem-driven structure once the architecture
+is frozen (§7). Do not treat an entry here as a committed requirement.
 
 Legend per phase: **Objective** · **Depends on** · **Stages** · **Verification
 Gate** (must be explicit + machine-checkable where possible) · **Exit Criteria**.
@@ -813,11 +828,14 @@ _None._ (Phase 6.1 carries an inherited debt from Phase 1.4–1.6 — tracked, n
 - **R3. Verification honesty + smallest-correct-implementation** are binding
   (`CLAUDE.md` Article IV).
 
-### Ledger realignment required (Phase 2 entry task)
+### Ledger realignment required (before serious Phase 2 work)
 
-The phase ledger was drafted before R1 and still uses web-service / cloud
-vocabulary. Before Phase 2 work begins, realign — **without changing phase count
-(32), state-machine semantics, or the one-gate-per-phase rule**:
+The phase ledger was drafted before R1, still uses web-service / cloud vocabulary,
+and is an explicit **working draft** (see the banner at the top of this file). It
+is expected to be re-derived toward a subsystem-driven structure once the
+architecture is frozen. Phase count, names, and ordering are all open. What should
+survive the re-derivation: **state-machine semantics (§2–§3) and one explicit,
+physically-executable verification gate per phase.** Known corrections to fold in:
 
 - "HTTP server / `/api/v1` / request id header" (Phase 4, 10, 11, 13) → **typed
   Tauri IPC commands + events**; "backend service skeleton" → **Rust core boot,
