@@ -9,6 +9,7 @@ numbered file per verification event.
 | 02 | `02_phase3_probes.md` | Phase 3 — NVML per-process VRAM (unavailable), GGUF header parse (works), WDDM hang (inconclusive → Phase 15 watch) |
 | 03 | `03_adversarial_review.md` | Phase 4 — assembled architecture + ~40-risk register + ADR changes |
 | 04 | `04_phase5_crosscheck.md` | Phase 5.10 — binding docs ↔ ADRs ↔ plan ↔ ROADMAP consistency |
+| 05 | `05_phase6_bootstrap.md` | Phase 6 — Tauri/React/Rust scaffold: check suite + app launch + IPC round-trip; startup baseline |
 
-Later phases add their gate evidence here (`05_bootstrap.md`, `06_…`, the
-performance/offline/fault/security/dependency/maintainability audits, etc.).
+Later phases add their gate evidence here (the performance/offline/fault/security/
+dependency/maintainability audits, etc.).

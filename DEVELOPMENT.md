@@ -85,8 +85,22 @@ CI runs the suite on every push; `main` stays releasable.
 
 ## 6. Line endings
 
-`.gitattributes` normalizes to LF (`* text=auto eol=lf`, binaries excluded),
-added in Phase 6. Until then, CRLF warnings on commit are expected and harmless.
+`.gitattributes` normalizes to LF (`* text=auto eol=lf`, binaries excluded,
+`*.ps1`/`*.cmd`/`*.bat` keep CRLF). Added in Phase 6 — CRLF warnings are gone.
+
+## 6a. Tooling (wired in Phase 6)
+
+| Tool | Config | Command |
+| ---- | ------ | ------- |
+| rustfmt | `rustfmt.toml` | `cargo fmt` |
+| clippy | `[lints]` in `src-tauri/Cargo.toml` (deny warnings; `all` + `pedantic`) | `cargo clippy --all-targets -- -D warnings` |
+| ESLint 9 (flat) | `eslint.config.js` (`no-console` error; logs via `lib/log.ts`) | `npm run lint` |
+| Prettier | `.prettierrc.json` / `.prettierignore` | `npm run format` |
+| tsc (strict) | `tsconfig.json` (`noUncheckedIndexedAccess`) | `npm run typecheck` |
+| Vitest (jsdom) | `vitest.config.ts` / `src/test/setup.ts` | `npm run test` |
+| ts-rs bindings | `#[ts(export)]` on DTOs → `src/bindings/` (committed) | `cargo test` regenerates; `npm run check` fails on drift |
+| Git hooks | `.githooks/` — enable once: `git config core.hooksPath .githooks` | pre-commit (fmt+lint), commit-msg (subject ≤ 72, blank line 2) |
+| Full suite | `scripts/check.mjs` | `npm run check` |
 
 ## 7. Git
 

@@ -24,24 +24,25 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 6 — Tauri + React + Rust Bootstrap                      |
-| **Stage**        | 6.1 — scaffold the Tauri v2 app                         |
+| **Phase**        | 7 — Application Contracts                               |
+| **Stage**        | 7.1 — define the ID newtypes + serialization           |
 | **Status**       | `NOT STARTED`                                           |
-| **Blocked by**   | —  (Phase 6 writes the first application code)          |
-| **Plan doc**     | `docs/plan/06_bootstrap.md`                             |
+| **Blocked by**   | —                                                      |
+| **Plan doc**     | `docs/plan/07_application-contracts.md`                 |
 | **Last updated** | 2026-09-05                                              |
-| **Updated by**   | phase-5-freeze                                          |
+| **Updated by**   | phase-6-bootstrap                                       |
 
 **Architecture frozen (Phase 5).** Binding: `PROJECT.md`, `ARCHITECTURE.md`,
 `AI_PIPELINES.md`, `SECURITY.md`, `PERFORMANCE.md`, `UI_GUIDELINES.md`,
-`DEVELOPMENT.md`, `docs/decisions/0001–0015` (all `ACCEPTED`). Cross-check:
-`docs/verification/04_phase5_crosscheck.md`.
+`DEVELOPMENT.md`, `docs/decisions/0001–0015` (all `ACCEPTED`).
+**Phase 6 done** — the app scaffold runs (`docs/verification/05_phase6_bootstrap.md`).
 
-**Completed:** Phase 0–2 · Product Definition · **Phase 3** (`docs/research/phase3/`
-+ `docs/decisions/0001–0015`; probes `docs/verification/02_phase3_probes.md`) ·
-**Phase 4 Adversarial Review** (`docs/verification/03_adversarial_review.md` —
-~40 risks; 4 critical → ADR changes; 7 accepted). ADRs still `PROPOSED`, ratified
-at Phase 5.
+**Completed:** Phase 0–2 · Product Definition · Phase 3 (research + ADRs + probes)
+· Phase 4 (adversarial review, `03_adversarial_review.md`) · **Phase 5**
+(architecture freeze — 7 binding docs + `docs/decisions/0001–0015` all `ACCEPTED`;
+`04_phase5_crosscheck.md`) · **Phase 6** (app bootstrap — Tauri v2 + React/TS +
+Rust; check suite green; app launches; IPC round-trip verified;
+`05_phase6_bootstrap.md`).
 
 **Only one `(Phase, Stage)` pair is ever `IN PROGRESS`.** Advancing the pointer is
 itself a state transition and MUST follow §3.
@@ -394,7 +395,9 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
-| 2026-09-05 | Phase 5 `NOT STARTED` | Phase 5 `IN PROGRESS` (5.9) | phase-5 | 5.1–5.8: `PROJECT.md` + `ARCHITECTURE.md` + `AI_PIPELINES.md` + `SECURITY.md` + `PERFORMANCE.md` + `UI_GUIDELINES.md` + `DEVELOPMENT.md` written and frozen. **All 15 ADRs `PROPOSED` → `ACCEPTED`.** `CLAUDE.md` Article I transport ratified (ADR-0013); Document Map updated (`PROJECT.md` now the officialized definition). Remaining: 5.9 re-derive `docs/plan/06–40` against the frozen ADRs, 5.10 cross-check. |
+| 2026-09-05 | Phase 6 `NOT STARTED` | Phase 6 `VERIFIED` → Phase 7 / 7.1 `NOT STARTED` | phase-6 | Tauri v2 + React/TS + Rust scaffold (branch `phase-6-bootstrap` → `main` `1f6c6a1`). Single Rust crate (`ipc` + `logging`); typed IPC with `ts-rs` bindings; 3-tab hash-routed shell + error boundary + theme tokens; ESLint/Prettier/rustfmt/clippy/Vitest wired; `.gitattributes` + `.githooks`. Gate: `cargo fmt`/`clippy`/`test` (8) ✓ · `tsc`/`eslint`/`prettier`/`vitest`(2)/`vite build` ✓ · `tauri dev` launches, `app_ping` round-trip observed in the structured log ✓ · no AI/model/network code ✓. Evidence `docs/verification/05_phase6_bootstrap.md`. |
+| 2026-09-05 | Phase 5 `IN PROGRESS` | Phase 5 `VERIFIED` → Phase 6 / 6.1 `NOT STARTED` | phase-5 | Architecture **frozen**. 5.9: all `docs/plan/06–40` re-aligned (frozen-architecture banner + governing ADRs). 5.10 cross-check `docs/verification/04_phase5_crosscheck.md` — no contradictions. §7 rewritten (O1–O7 resolved). Nav-efficiency: `CLAUDE.md` "looking for X → go to Y" table + a `README.md` in every `docs/` subdir. |
+| 2026-09-05 | Phase 5 `NOT STARTED` | Phase 5 `IN PROGRESS` (5.9) | phase-5 | 5.1–5.8: `PROJECT.md` + `ARCHITECTURE.md` + `AI_PIPELINES.md` + `SECURITY.md` + `PERFORMANCE.md` + `UI_GUIDELINES.md` + `DEVELOPMENT.md` written and frozen. **All 15 ADRs `PROPOSED` → `ACCEPTED`.** `CLAUDE.md` Article I transport ratified (ADR-0013); Document Map updated. |
 | 2026-09-05 | Phase 4 `NOT STARTED` | Phase 4 `VERIFIED` → Phase 5 / 5.1 `NOT STARTED` | phase-4 | `docs/verification/03_adversarial_review.md`: architecture assembled + attacked across 8 categories, ~40 risks. **4 critical → ADR changes**: loopback-server auth (ADR-0013, prefer named pipes), Python-worker telemetry lockdown (new ADR-0015), NF4 quant cache now *required* (ADR-0006/0008), GPU-mutex lock-ordering rule (ADR-0010). Also driver-TDR recovery + system-RAM tracking (ADR-0007), backup-before-migrate verify + blob write-order (ADR-0009). 7 risks `ACCEPTED` with rationale. No code. |
 | 2026-09-05 | Phase 3 `IN PROGRESS` | Phase 3 `VERIFIED` → Phase 4 / 4.1 `NOT STARTED` | phase-3 | Gate met: 16 decisions in 12 area writeups, 14 draft ADRs (`PROPOSED`), 3 probes run (`docs/verification/02_phase3_probes.md` — NVML per-process VRAM **unavailable** on WDDM/610.88 → ledger-based accounting confirmed; GGUF header parse **works** from a range request; WDDM-hang inconclusive → Phase 15 watch item). Owner: no LoRA trainer; portraits/selfies → prompt-based identity OK. No app code (probes were throwaway, deleted). ADRs ratified at Phase 5. |
 | 2026-09-05 | Phase 3 `IN PROGRESS` | Phase 3 `IN PROGRESS` (3.15) | phase-3 | All 12 research areas drafted (`docs/research/phase3/01–12`) + **14 draft ADRs** (`docs/decisions/0001–0014`, `PROPOSED`). Owner's Krea impl folded in (diffusers sidecar, NF4, ~11.4 GB peak). Transport resolved (ADR-0013: loopback HTTP for model servers, stdio for workers). **Biggest risk: character visual identity (ADR-0011) — Krea 2 is text-to-image only; needs per-character LoRA (~45–60 min/char background) → owner sign-off.** Exit items: 3 runnable probes (nvml per-process, GGUF header, WDDM) + owner sign-off, then Phase 4. |
@@ -417,8 +420,7 @@ _None._
 - **Phase 15 watch item**: WDDM hang risk on the first sustained `llama-server`
   generation (Hyper-V enabled on host — inconclusive from inspection). Mitigations
   in `docs/verification/02_phase3_probes.md`.
-- Phase 6 carries forward Phase 1's deferred formatter/linter/hook/README tooling —
-  tracked, not blocking.
+- Phase 1's deferred tooling (formatter/linter/hooks/README) → **done in Phase 6.**
 
 ---
 
