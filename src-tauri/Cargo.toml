@@ -29,6 +29,7 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync"] }
 tracing-appender = "0.2.5"
 regex = { version = "1.13.1", default-features = false, features = ["std", "perf"] }
+uuid = { version = "1.26.0", features = ["v4"] }
 
 [dev-dependencies]
 serde_json = "1"

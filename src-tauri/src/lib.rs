@@ -13,7 +13,9 @@ pub mod contracts;
 pub mod db;
 pub mod ipc;
 pub mod logging;
+pub mod models;
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use tauri::{Emitter, Manager, RunEvent};
@@ -68,6 +70,8 @@ pub fn run() {
                 open_ms = db_started.elapsed().as_secs_f64() * 1000.0,
                 "database ready"
             );
+            let database = Arc::new(database);
+            app.manage(models::ModelRegistry::new(Arc::clone(&database)));
             app.manage(database);
 
             Ok(())
@@ -85,7 +89,7 @@ pub fn run() {
 
     app.run(|handle, event| {
         if let RunEvent::ExitRequested { .. } = event {
-            if let Some(database) = handle.try_state::<db::Db>() {
+            if let Some(database) = handle.try_state::<Arc<db::Db>>() {
                 tauri::async_runtime::block_on(database.checkpoint_and_optimize());
             }
         }

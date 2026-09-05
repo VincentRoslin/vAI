@@ -106,3 +106,40 @@ pub enum ModelState {
     /// Being released from memory.
     Unloading,
 }
+
+/// Whether a registered model's file is actually present on disk. Computed at
+/// read time (Phase 11) — **not** the same as [`ModelState`], which is runtime
+/// lifecycle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub enum RegistryAvailability {
+    /// The file exists where the registry says it is.
+    Ready,
+    /// The registry row is intact but the file is gone.
+    Missing,
+}
+
+/// A compute device a model can run on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub enum Device {
+    /// An NVIDIA CUDA GPU.
+    Cuda,
+    /// The CPU.
+    Cpu,
+}
+
+/// A model registry row as the frontend sees it: its [`ModelMetadata`] plus the
+/// on-disk facts (Phase 11).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct RegisteredModel {
+    /// Static description.
+    pub metadata: ModelMetadata,
+    /// Absolute path to the model file (confined to the configured model dir).
+    pub path: String,
+    /// Whether the file is present right now.
+    pub availability: RegistryAvailability,
+    /// Devices this model can run on.
+    pub devices: Vec<Device>,
+}

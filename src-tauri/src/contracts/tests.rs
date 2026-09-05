@@ -13,7 +13,10 @@ use super::generation::{GenerationEvent, GenerationRequest, SamplingParams, Stop
 use super::ids::{
     AssetId, ConversationId, DownloadId, MessageId, ModelId, ReservationId, TaskId, WorkerJobId,
 };
-use super::model::{ModelBackend, ModelCapabilities, ModelKind, ModelMetadata, ModelState, Quant};
+use super::model::{
+    Device, ModelBackend, ModelCapabilities, ModelKind, ModelMetadata, ModelState, Quant,
+    RegisteredModel, RegistryAvailability,
+};
 use super::resource::{Reservation, ReservationState, ResourceKind};
 use super::task::{CancelRequest, TaskKind, TaskState, TaskStatus};
 use super::worker::{WorkerHello, WorkerKind, WorkerRequest, WorkerResponse, WorkerResult};
@@ -212,9 +215,27 @@ fn model_contracts_round_trip() {
             streaming: false,
             context_tokens: None,
         },
-        ..meta
+        ..meta.clone()
     };
     round_trip(&minimal);
+
+    for a in [RegistryAvailability::Ready, RegistryAvailability::Missing] {
+        round_trip(&a);
+    }
+    for d in [Device::Cuda, Device::Cpu] {
+        round_trip(&d);
+    }
+    round_trip(&RegisteredModel {
+        metadata: meta,
+        path: "C:/models/x.gguf".into(),
+        availability: RegistryAvailability::Ready,
+        devices: vec![Device::Cuda, Device::Cpu],
+    });
+}
+
+#[test]
+fn unknown_registry_availability_is_rejected() {
+    assert!(serde_json::from_str::<RegistryAvailability>("\"Downloading\"").is_err());
 }
 
 // ---------------------------------------------------------------- generation
