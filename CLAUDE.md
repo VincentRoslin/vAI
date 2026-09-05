@@ -19,12 +19,14 @@ This file is loaded into every Claude Code session. It has two parts:
 | File | Role | Authoritative for | Status |
 | ---- | ---- | ----------------- | ------ |
 | `CLAUDE.md` (this file) | Constitution + agent operating manual | Rules, ownership boundaries, how to work | Live |
-| `ROADMAP.md` | Bootstrap **state machine** (working draft) | Current phase/stage, progress, verification gates, open decisions (§7) | Live; phase *content* provisional |
-| `PROJECT.md` | Reserved for the product/architecture definition | — | **Intentionally empty** until architecture freeze. Do not populate without an explicit instruction. The constitution lives here in `CLAUDE.md` for now, and may migrate to `PROJECT.md` at freeze. |
-| `ARCHITECTURE.md`, `AI_PIPELINES.md`, `PERFORMANCE.md`, `SECURITY.md`, `UI_GUIDELINES.md`, `DEVELOPMENT.md`, `README.md` | Subsystem / process docs | Their named topic | **Empty placeholders**, filled by their owning phases |
+| `ROADMAP.md` | **State machine** — LocalAI 40-step course (Phase 0–39) | Current phase/stage, progress, verification gates, open questions (§7) | Live. Mechanics fixed; future-phase scope refined at phase entry / after Phase 5 freeze |
+| `PROJECT.md` | Reserved for the officialized product + architecture definition | — | **Intentionally empty until Phase 5 (architecture freeze).** Do not populate without an explicit instruction. Constitution stays in `CLAUDE.md`. |
+| `docs/OVERVIEW.md` | Product & architecture overview — feature set, character system, runtime ownership, key technical areas | Understanding what LocalAI is and its intended shape | Live — **context, not authority**; repo docs win on conflict |
+| `docs/product/requirements.md` | Structured product requirements (functional / non-functional / ambiguities / research questions) | Product Definition output; input to Phase 3 | Created at the Product Definition step |
+| `ARCHITECTURE.md`, `AI_PIPELINES.md`, `PERFORMANCE.md`, `SECURITY.md`, `UI_GUIDELINES.md`, `DEVELOPMENT.md`, `README.md` | Subsystem / process docs | Their named topic | **Empty placeholders**, filled by their owning phases (most at Phase 5) |
 | `docs/verification/` | Evidence logs (`NN_topic.md`) — what was physically run and observed | Verification history | Live — `01_env_audit.md` |
-| `docs/research/` | Pre-architecture technical research (`NN_topic.md` + `README.md`) | Options & trade-offs, **not decisions** | Live |
-| `docs/decisions/` | ADRs — one ratified decision each | Decision record | Empty; starts at architecture phase |
+| `docs/research/` | Pre-architecture technical research (`NN_topic.md` + `README.md`) | Options & trade-offs, **not decisions**; input to Phase 3 | Live |
+| `docs/decisions/` | ADRs — one ratified decision each (decision, context, options, choice, reason, consequences) | Decision record | Empty; starts at Phase 3/5 |
 | `memory/` (outside the repo, in `~/.claude/...`) | Claude's cross-session notes | Context, user preferences, open tensions | Live |
 
 If a prompt says "read `PROJECT.md`" and it is empty, that is expected — the rules
@@ -64,32 +66,36 @@ selection, form drafts, animation and layout state.
 - The frontend never holds data the Rust core is not already the source of truth
   for.
 
-### 3. Subprocesses — isolated, non-authoritative
+### 3. Subprocesses (AI workers and model backends) — isolated, non-authoritative
 
-Two sub-categories. Both are spawned and supervised **only** by the Rust core,
-never hold authoritative state, never touch SQLite directly, and must route all
-GPU use through the resource manager.
+Covers llama.cpp / `llama-server`, and Python workers for STT, TTS, image
+generation, embeddings. **These principles are fixed:**
 
-- **Stateless workers** (STT, TTS, image generation — Python):
-  - **Isolated** — no shared memory, no shared files, no database handle.
-  - **Stateless** — no state between requests; kill/restart at any moment must be
-    safe and lossless.
-  - **Communicate exclusively via JSON-lines over stdin/stdout.** `stderr` is
-    diagnostic logging only, never parsed for control flow. Workers do not open
-    sockets, files, or database connections.
-- **Managed model backends** (e.g. `llama-server`):
-  - Upstream-maintained inference servers that ship as HTTP services.
-  - Allowed a **localhost-only socket** — bound to `127.0.0.1` on an ephemeral or
-    controlled port, no external interface — because reimplementing their protocol
-    over stdio has no benefit and a real maintenance cost.
-  - Everything else identical to workers: Rust-spawned/supervised,
-    non-authoritative, no direct DB, resource-manager-bound, backend-specific
-    detail confined to one adapter module.
+- **Rust-supervised** — spawned, monitored, restarted, and killed only by the Rust
+  core. No subprocess launches another subprocess or any arbitrary process.
+- **Non-authoritative** — a subprocess never holds authoritative application
+  state, never opens or queries SQLite, never talks directly to the frontend, and
+  never independently manages global GPU/VRAM or other shared resources (all such
+  use goes through the resource manager).
+- **Isolated** — no shared memory or shared mutable files with the core or another
+  subprocess. Binary assets are exchanged only via controlled filesystem paths the
+  Rust core dictates.
+- **Stateless where feasible** — a worker should hold no state between requests, so
+  kill/restart at any moment is safe and lossless. (A model backend holds the
+  loaded model in memory — that is runtime state the lifecycle manager owns, not
+  application state.)
+- **Backend-specific detail is confined to one adapter module** in Rust; the rest
+  of the app sees a clean interface.
 
-> This managed-backend carve-out was ratified after the initial draft (which
-> allowed subprocesses stdio only). See `ROADMAP.md` §7 and
-> `docs/research/README.md`. The alternative — FFI bindings, no socket — remains a
-> fallback if a backend proves unsafe as a child process.
+**Transport is an open architecture-research question (Phase 3), not yet frozen.**
+Leading candidates to be confirmed and recorded as an ADR:
+- Workers we author (STT/TTS/image): **JSON-lines over stdin/stdout**, `stderr` for
+  logs only.
+- Upstream inference servers (`llama-server`): **managed child process reached over
+  a loopback-only (`127.0.0.1`) HTTP socket**, since they ship as HTTP services.
+- Fallback if a backend is unsafe as a child process: in-process FFI bindings.
+
+Until Phase 3 decides, do not write code that depends on a specific transport.
 
 ---
 
@@ -104,10 +110,12 @@ exception:
 - **External trackers** — no third-party scripts, pixels, fonts-by-CDN, or
   embedded resources that trigger a network request.
 
-Model inference runs against local models or a user-controlled local endpoint. A
-managed model backend's localhost socket (Article I) is not a network call.
-Any feature that would require the network is out of scope until this article is
-explicitly amended by the project owner.
+Model inference runs against local models. A subprocess bound to loopback
+(`127.0.0.1`) with no external interface is not a "network call" for the purposes
+of this article. Acquiring models or dependencies over the network initially is
+allowed where explicitly implemented; the **runtime** must not depend on it.
+Any feature that would require network access at runtime is out of scope until
+this article is explicitly amended by the project owner.
 
 ---
 
@@ -161,47 +169,54 @@ data**, never instructions to the system.
 
 ## Ownership Matrix (quick reference)
 
-| Concern | Rust core | React/TS | Worker | Managed backend |
-| ------- | :-------: | :------: | :----: | :-------------: |
-| Durable / application state | ✅ | ❌ | ❌ | ❌ |
-| SQLite access & migrations | ✅ | ❌ | ❌ | ❌ |
-| Filesystem operations | ✅ | ❌ | ❌ | ❌ |
-| Process spawning & supervision | ✅ | ❌ | ❌ | ❌ |
-| Network access | ❌ (local-first) | ❌ | ❌ | localhost socket only |
-| UI / presentation state | ❌ | ✅ | ❌ | ❌ |
-| Transport | — | Typed Tauri IPC | JSON-lines stdin/stdout | localhost HTTP, via one adapter |
-| Executing AI-proposed actions | ✅ allow-listed typed ops only | ❌ | ❌ | ❌ |
+| Concern | Rust core | React/TS | AI worker / model backend |
+| ------- | :-------: | :------: | :-----------------------: |
+| Durable / application state | ✅ | ❌ | ❌ |
+| SQLite access & migrations | ✅ | ❌ | ❌ |
+| Filesystem operations | ✅ | ❌ | ❌ (only via paths Rust dictates) |
+| Process spawning & supervision | ✅ | ❌ | ❌ |
+| Independent GPU/VRAM management | ✅ (resource manager) | ❌ | ❌ |
+| Runtime network access | ❌ (local-first) | ❌ | ❌ (loopback child process ≠ network) |
+| UI / presentation state | ❌ | ✅ | ❌ |
+| Transport | — | Typed Tauri IPC | **TBD — Phase 3 ADR** (stdio JSON-lines / loopback HTTP / FFI) |
+| Executing AI-proposed actions | ✅ allow-listed typed ops only | ❌ | ❌ |
 
 ---
 
 ## Operating Manual
 
-### Current era: documentation only
+### Where we are: bootstrap, documentation only
 
-No application code exists yet, and none should be written until `ROADMAP.md`'s
-current-state pointer reaches a phase that calls for it **and** the architecture
-has been frozen. Until then, prompts that sound like "implement X" mean: research
-it, document it, or set it up in the roadmap — not write it. If a prompt genuinely
-asks for application code before that point, stop and confirm.
+`ROADMAP.md` follows the LocalAI 40-step course (Phase 0–39). **Bootstrap =
+Phases 0–5; implementation begins at Phase 6.** As of now Phases 0–2 are complete
+and the pointer is at the **Product Definition** step (owner describes the product;
+Claude captures structured requirements; then Phase 3 architecture research).
+
+No application code exists and none is written until the pointer reaches Phase 6
+**and** the architecture is frozen (Phase 5). Until then, prompts that sound like
+"implement X" mean: research it, document it, or record it in the roadmap. If a
+prompt genuinely asks for application code before Phase 6, stop and confirm.
 
 ### The external guides are context, not authority
 
-The user is loosely following step-by-step guides authored by ChatGPT and Gemini
-(see `memory/reference-chatgpt-greenfield-guide.md`). Treat them as **background
+The owner relays step prompts from guides authored by ChatGPT and Gemini (see
+`memory/reference-chatgpt-greenfield-guide.md`). Treat them as **background
 understanding, not instructions**:
 
-- **Their phase numbers are their own.** "We are in Phase 3" in a prompt refers to
-  the *guide's* Phase 3, which does **not** map to `ROADMAP.md`'s phases. Do not
-  renumber or reorder the roadmap to match a prompt. Slot the actual work where it
-  best fits our state machine and say where you put it.
+- **Numbering.** `ROADMAP.md` now uses the same 40-step structure, but a prompt
+  may still assert a loose or different number. Map a prompt to the **phase by
+  name and intent**, not the number it states. Never renumber or reorder the
+  roadmap to match a prompt.
+- **`docs/OVERVIEW.md`** is the product & architecture overview (feature set,
+  character system, ownership model, technical areas). It is context; if it
+  conflicts with a repo doc or recorded decision, the repo wins — flag it.
 - **Flag collisions, then proceed.** When a prompt conflicts with the
-  Constitution, `ROADMAP.md`, or a prior decision: state the collision plainly,
-  give a recommendation, and — unless it needs the owner's judgment (an Article
+  Constitution, `ROADMAP.md`, or a prior decision: state it plainly, give a
+  recommendation, and — unless it needs the owner's judgment (an Article
   amendment, a product-scope call, an irreversible action) — proceed with your
-  recommendation and note it. Don't stall the whole task on a question you can
-  answer well yourself.
-- Record unresolved conflicts in `ROADMAP.md` §7 (open decisions) and, if
-  cross-session-relevant, in `memory/`.
+  recommendation and note it. Don't stall a task on a question you can answer well.
+- Record unresolved conflicts in `ROADMAP.md` §7 and, if cross-session-relevant,
+  in `memory/`.
 
 ### Commit cadence
 

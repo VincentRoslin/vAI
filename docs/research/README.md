@@ -20,31 +20,19 @@ Items marked **SPIKE** need a throwaway proof-of-concept, not more reading.
 
 ---
 
-## ⚠️ Constitution collision surfaced by this research (topic 02 + 03)
+## Open architecture-research question: subprocess transport (topics 02 + 03)
 
-`CLAUDE.md` **Article I** currently says:
+`CLAUDE.md` Article I fixes the *principles* for AI subprocesses (Rust-supervised,
+non-authoritative, isolated, no direct SQLite, no independent GPU management) but
+**leaves transport open for Phase 3** (ROADMAP §7 O3). The candidates this research
+should weigh:
 
-> Python workers … **communicate exclusively via JSON-lines … over stdin/stdout**.
-> … Workers do not open sockets, files, or database connections.
+| Candidate | Fits | Trade-off |
+| --------- | ---- | --------- |
+| **stdio JSON-lines** | workers we author (STT, TTS, image) | trivially sandboxed/killable; we own the protocol; no socket |
+| **loopback HTTP** (`127.0.0.1`, no external interface) | upstream inference servers (`llama-server`) that ship as HTTP services | avoids reimplementing their protocol over stdio; adds a local socket + port management |
+| **in-process FFI** (`llama-cpp-2`) | any backend, if a child process is unsafe | no socket; a backend crash/OOM can take down the app |
 
-`llama-server` is an HTTP server on a localhost socket. Supervising it with
-`tokio::process` and consuming its streaming HTTP endpoint (topic 02) **does not
-fit the "worker" definition** as written.
-
-**Recommended resolution** (needs owner approval — see
-`docs/research` memory / `project-constitution-guide-tensions`):
-
-Introduce two distinct categories in the Constitution:
-
-| Category | Examples | Transport | Rationale |
-| -------- | -------- | --------- | --------- |
-| **Managed model backend** | `llama-server` (and any future HTTP inference server) | Rust-supervised child process; **localhost HTTP**, bound to `127.0.0.1` on an ephemeral port, no external interface | These ship as HTTP servers upstream; reimplementing their protocol over stdio is wasted effort and a maintenance liability |
-| **Stateless worker** | STT, TTS, image generation (Python) | Rust-supervised child process; **JSON-lines over stdin/stdout only** | We own these scripts; stdio keeps them trivially sandboxable and killable |
-
-Both remain: (a) spawned and supervised only by the Rust core, (b) never holders
-of authoritative state, (c) never direct SQLite clients, (d) bound to the resource
-manager for any GPU use. The only thing that changes is that a *managed model
-backend* is allowed a localhost HTTP socket.
-
-**Until the owner rules on this**, topic 02 documents the HTTP approach as the
-*likely* path but also notes the stdio-only alternative.
+Topic 02 documents the loopback-HTTP path in most detail because it is the leading
+candidate for `llama-server`, but it is **not decided**. No code may depend on a
+specific transport until the Phase 3 ADR.
