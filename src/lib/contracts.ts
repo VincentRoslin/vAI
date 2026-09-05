@@ -21,6 +21,13 @@ export type { AssetId } from '../bindings/AssetId';
 export type { AppError } from '../bindings/AppError';
 export type { ErrorEnvelope } from '../bindings/ErrorEnvelope';
 
+// Configuration (ADR-0016; not a wire contract, but the effective view crosses IPC).
+export type { AppConfig } from '../bindings/AppConfig';
+export type { ModelsConfig } from '../bindings/ModelsConfig';
+export type { ConfigKey } from '../bindings/ConfigKey';
+export type { ConfigSet } from '../bindings/ConfigSet';
+export type { ConfigKeyInfo } from '../bindings/ConfigKeyInfo';
+
 // Tasks.
 export type { TaskKind } from '../bindings/TaskKind';
 export type { TaskState } from '../bindings/TaskState';

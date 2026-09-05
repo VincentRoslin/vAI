@@ -82,6 +82,10 @@ CI runs the suite on every push; `main` stays releasable.
   `uv run workers/<name>.py` with the offline env (ADR-0015) set.
 - **DB:** created on first run under the app data dir; `scripts/db-reset.ps1`
   (Phase 14) wipes + re-migrates + seeds.
+- **Config:** `%APPDATA%\com.localai.app\config.json` (ADR-0016). Absent on a
+  fresh machine — the app runs on defaults and only writes the file when a value
+  changes. Delete it to reset to defaults; an unparseable file is auto-backed-up
+  to `config.json.corrupt-<unix>` and defaults are used.
 
 ## 6. Line endings
 

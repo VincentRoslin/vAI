@@ -2,9 +2,11 @@
 //! No business logic lives here (`CLAUDE.md` Article I).
 
 use serde::{Deserialize, Serialize};
+use tauri::State;
 use ts_rs::TS;
 
 use super::error::{AppError, AppResult};
+use crate::config::{AppConfig, ConfigKeyInfo, ConfigManager, ConfigSet};
 
 /// Response for [`app_ready`] — the startup handshake.
 #[derive(Debug, Clone, Serialize, TS)]
@@ -98,6 +100,44 @@ pub fn frontend_log(entry: FrontendLog) {
         tracing::Level::DEBUG => tracing::debug!(target: "frontend", source, "{message}"),
         tracing::Level::TRACE => tracing::trace!(target: "frontend", source, "{message}"),
     }
+}
+
+// ---------------------------------------------------------------- config
+//
+// Tauri injects `State` by value into command handlers; `needless_pass_by_value`
+// is expected here and allowed per command.
+
+/// The effective configuration (defaults ← file ← session overrides).
+#[must_use]
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub fn config_get(config: State<'_, ConfigManager>) -> AppConfig {
+    config.effective()
+}
+
+/// Change one configuration value — persisted to the file when `persist`, else a
+/// session-only override.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub fn config_set(config: State<'_, ConfigManager>, req: ConfigSet) -> AppResult<()> {
+    let ConfigSet {
+        key,
+        value,
+        persist,
+    } = req;
+    if persist {
+        config.set_user(key, &value)
+    } else {
+        config.set_session(key, &value)
+    }
+}
+
+/// Every overridable key with its current effective value.
+#[must_use]
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub fn config_keys(config: State<'_, ConfigManager>) -> Vec<ConfigKeyInfo> {
+    config.keys()
 }
 
 #[cfg(test)]

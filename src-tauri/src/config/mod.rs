@@ -1,0 +1,440 @@
+//! Configuration — the single settings authority (ADR-0016, `CLAUDE.md`
+//! Article I). Rust owns it; the frontend reads and writes only through the
+//! typed `config_*` IPC commands.
+//!
+//! Layers, folded into the *effective* config:
+//! `defaults` (code) ← `file` (`<app_config_dir>/config.json`) ← `session`
+//! (in-memory, never written).
+//!
+//! Two distinct failure paths:
+//! - **unparseable file** → back up to `config.json.corrupt-<unix>`, start from
+//!   defaults, warn (never a silent wipe);
+//! - **parseable but an invalid value** → fail fast with [`AppError::Validation`]
+//!   naming the offending key.
+//!
+//! No secret ever lives in the config file (`SECURITY.md`); there is no field
+//! that could hold one.
+
+#[cfg(test)]
+mod tests;
+
+use std::fs;
+use std::io::{ErrorKind, Write as _};
+use std::path::{Path, PathBuf};
+use std::sync::RwLock;
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use time::OffsetDateTime;
+use ts_rs::TS;
+
+use crate::ipc::{AppError, AppResult};
+
+/// Schema version this binary understands. A file with a higher version is
+/// refused; a lower (or absent) version is migrated forward on load.
+pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+
+const FILE_NAME: &str = "config.json";
+const TMP_NAME: &str = "config.json.tmp";
+const DEFAULT_MODEL_BUDGET_GB: u32 = 100;
+
+// ---------------------------------------------------------------- schema
+
+/// The full configuration document.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct AppConfig {
+    /// Schema version of this document.
+    pub version: u32,
+    /// Model storage + budget.
+    pub models: ModelsConfig,
+}
+
+/// Where downloaded models live and how much disk they may use.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct ModelsConfig {
+    /// Absolute directory for downloaded model files. Default: `<app_data>/models`.
+    #[ts(type = "string")]
+    pub dir: PathBuf,
+    /// Maximum disk the model directory may occupy, in GB. Must be `>= 1`.
+    pub budget_gb: u32,
+}
+
+impl AppConfig {
+    /// The built-in defaults, anchored under the app data root.
+    #[must_use]
+    pub fn defaults(app_data_root: &Path) -> Self {
+        Self {
+            version: CURRENT_SCHEMA_VERSION,
+            models: ModelsConfig {
+                dir: app_data_root.join("models"),
+                budget_gb: DEFAULT_MODEL_BUDGET_GB,
+            },
+        }
+    }
+
+    /// Reject a semantically invalid document. Errors name the dotted key.
+    ///
+    /// # Errors
+    /// [`AppError::Validation`] for an unsupported schema version, a
+    /// `budget_gb` below 1, or a non-absolute / empty `models.dir`.
+    pub fn validate(&self) -> AppResult<()> {
+        if self.version > CURRENT_SCHEMA_VERSION {
+            return Err(AppError::Validation(format!(
+                "config schema version {} is newer than supported ({CURRENT_SCHEMA_VERSION})",
+                self.version
+            )));
+        }
+        if self.models.budget_gb < 1 {
+            return Err(AppError::Validation(
+                "models.budget_gb must be >= 1".to_owned(),
+            ));
+        }
+        if self.models.dir.as_os_str().is_empty() {
+            return Err(AppError::Validation(
+                "models.dir must not be empty".to_owned(),
+            ));
+        }
+        if !self.models.dir.is_absolute() {
+            return Err(AppError::Validation(
+                "models.dir must be an absolute path".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------- migration
+
+fn detect_version(raw: &Value) -> u64 {
+    raw.get("version").and_then(Value::as_u64).unwrap_or(0)
+}
+
+/// Recursively overlay `overlay` onto `base` (objects merge key-wise; any other
+/// value replaces).
+fn deep_merge(base: &mut Value, overlay: Value) {
+    match (base, overlay) {
+        (Value::Object(b), Value::Object(o)) => {
+            for (k, v) in o {
+                deep_merge(b.entry(k).or_insert(Value::Null), v);
+            }
+        }
+        (b, o) => *b = o,
+    }
+}
+
+/// v0 (no `version` field, possibly missing keys) → v1: layer the document onto
+/// the current defaults and stamp the version.
+fn step_0_to_1(raw: Value, app_data_root: &Path) -> Value {
+    let mut base = serde_json::to_value(AppConfig::defaults(app_data_root))
+        .expect("defaults always serialize");
+    deep_merge(&mut base, raw);
+    base["version"] = Value::from(1u32);
+    base
+}
+
+type MigrationStep = fn(Value, &Path) -> Value;
+
+/// Ordered steps; index `i` migrates a version-`i` document to version `i + 1`.
+const STEPS: &[MigrationStep] = &[step_0_to_1];
+
+fn migrate(raw: Value, app_data_root: &Path) -> AppResult<Value> {
+    let start = detect_version(&raw);
+    let current = u64::from(CURRENT_SCHEMA_VERSION);
+    if start > current {
+        return Err(AppError::Validation(format!(
+            "config schema version {start} is newer than supported ({CURRENT_SCHEMA_VERSION})"
+        )));
+    }
+    let mut value = raw;
+    let mut v = start;
+    while v < current {
+        let idx = usize::try_from(v).map_err(|_| AppError::Internal)?;
+        let step = STEPS.get(idx).ok_or(AppError::Internal)?;
+        value = step(value, app_data_root);
+        v += 1;
+    }
+    Ok(value)
+}
+
+// ---------------------------------------------------------------- session layer
+
+#[derive(Debug, Default, Clone)]
+struct SessionOverrides {
+    models_dir: Option<PathBuf>,
+    models_budget_gb: Option<u32>,
+}
+
+impl SessionOverrides {
+    fn is_empty(&self) -> bool {
+        self.models_dir.is_none() && self.models_budget_gb.is_none()
+    }
+
+    fn apply(&self, cfg: &mut AppConfig) {
+        if let Some(dir) = &self.models_dir {
+            cfg.models.dir.clone_from(dir);
+        }
+        if let Some(budget) = self.models_budget_gb {
+            cfg.models.budget_gb = budget;
+        }
+    }
+}
+
+// ---------------------------------------------------------------- keys
+
+/// A settable configuration key. The set is small and explicit; it grows
+/// additively as phases add settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub enum ConfigKey {
+    /// `models.dir` — absolute path.
+    ModelsDir,
+    /// `models.budget_gb` — integer `>= 1`.
+    ModelsBudgetGb,
+}
+
+impl ConfigKey {
+    /// Every overridable key.
+    pub const ALL: [Self; 2] = [Self::ModelsDir, Self::ModelsBudgetGb];
+
+    #[must_use]
+    fn dotted(self) -> &'static str {
+        match self {
+            Self::ModelsDir => "models.dir",
+            Self::ModelsBudgetGb => "models.budget_gb",
+        }
+    }
+
+    #[must_use]
+    fn value_type(self) -> &'static str {
+        match self {
+            Self::ModelsDir => "path",
+            Self::ModelsBudgetGb => "integer",
+        }
+    }
+
+    fn current(self, cfg: &AppConfig) -> String {
+        match self {
+            Self::ModelsDir => cfg.models.dir.display().to_string(),
+            Self::ModelsBudgetGb => cfg.models.budget_gb.to_string(),
+        }
+    }
+}
+
+/// Apply a raw string value for `key` onto `cfg` (does not validate the whole
+/// document — the caller does that after).
+fn apply_kv(cfg: &mut AppConfig, key: ConfigKey, raw: &str) -> AppResult<()> {
+    match key {
+        ConfigKey::ModelsDir => cfg.models.dir = PathBuf::from(raw),
+        ConfigKey::ModelsBudgetGb => {
+            cfg.models.budget_gb = raw.trim().parse().map_err(|_| {
+                AppError::Validation(format!("models.budget_gb must be an integer, got {raw:?}"))
+            })?;
+        }
+    }
+    Ok(())
+}
+
+/// Request body for [`crate::ipc::commands::config_set`].
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct ConfigSet {
+    /// Which key to change.
+    pub key: ConfigKey,
+    /// The new value, as a string (parsed per key).
+    pub value: String,
+    /// `true` writes it to the config file; `false` sets a session-only override.
+    pub persist: bool,
+}
+
+/// One row of [`ConfigManager::keys`].
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct ConfigKeyInfo {
+    /// The key.
+    pub key: ConfigKey,
+    /// Dotted path (`models.dir`).
+    pub dotted: String,
+    /// A hint at the expected value form (`path`, `integer`).
+    pub value_type: String,
+    /// Current effective value, stringified.
+    pub current: String,
+}
+
+// ---------------------------------------------------------------- manager
+
+#[derive(Debug)]
+struct State {
+    /// defaults + persisted file values.
+    base: AppConfig,
+    session: SessionOverrides,
+    recovered: bool,
+}
+
+/// Owns the effective configuration and its persistence. Held in Tauri managed
+/// state; every subsystem reads config through this.
+#[derive(Debug)]
+pub struct ConfigManager {
+    config_dir: PathBuf,
+    state: RwLock<State>,
+}
+
+impl ConfigManager {
+    /// Load configuration from `config_dir`, using `app_data_root` to anchor
+    /// defaults. A missing file yields defaults (not written). An unparseable
+    /// file is backed up and defaults are used. A parseable file that fails
+    /// migration / validation returns `Err` (fail fast).
+    ///
+    /// # Errors
+    /// Propagates [`AppError::Validation`] for an invalid config value, or
+    /// [`AppError::Internal`] for an unexpected I/O failure.
+    pub fn load(config_dir: &Path, app_data_root: &Path) -> AppResult<Self> {
+        let path = config_dir.join(FILE_NAME);
+        let (base, recovered) = match fs::read_to_string(&path) {
+            Err(err) if err.kind() == ErrorKind::NotFound => {
+                (AppConfig::defaults(app_data_root), false)
+            }
+            Err(err) => return Err(AppError::internal("read config file", err)),
+            Ok(text) => match serde_json::from_str::<Value>(&text) {
+                Ok(raw) => {
+                    let migrated = migrate(raw, app_data_root)?;
+                    let cfg: AppConfig = serde_json::from_value(migrated).map_err(|err| {
+                        AppError::Validation(format!("config file has the wrong shape: {err}"))
+                    })?;
+                    cfg.validate()?;
+                    (cfg, false)
+                }
+                Err(parse_err) => {
+                    Self::back_up_corrupt(config_dir, &text)?;
+                    tracing::warn!(%parse_err, "config file is unparseable — starting from defaults");
+                    (AppConfig::defaults(app_data_root), true)
+                }
+            },
+        };
+
+        Ok(Self {
+            config_dir: config_dir.to_path_buf(),
+            state: RwLock::new(State {
+                base,
+                session: SessionOverrides::default(),
+                recovered,
+            }),
+        })
+    }
+
+    fn back_up_corrupt(config_dir: &Path, contents: &str) -> AppResult<()> {
+        let stamp = OffsetDateTime::now_utc().unix_timestamp();
+        let backup = config_dir.join(format!("{FILE_NAME}.corrupt-{stamp}"));
+        fs::write(&backup, contents)
+            .map_err(|err| AppError::internal("back up corrupt config", err))
+    }
+
+    /// Whether the last load recovered from a corrupt file.
+    #[must_use]
+    pub fn recovered(&self) -> bool {
+        self.read().recovered
+    }
+
+    /// The effective configuration: base folded with session overrides.
+    #[must_use]
+    pub fn effective(&self) -> AppConfig {
+        let state = self.read();
+        let mut cfg = state.base.clone();
+        state.session.apply(&mut cfg);
+        cfg
+    }
+
+    /// Every overridable key with its current effective value.
+    #[must_use]
+    pub fn keys(&self) -> Vec<ConfigKeyInfo> {
+        let effective = self.effective();
+        ConfigKey::ALL
+            .into_iter()
+            .map(|key| ConfigKeyInfo {
+                key,
+                dotted: key.dotted().to_owned(),
+                value_type: key.value_type().to_owned(),
+                current: key.current(&effective),
+            })
+            .collect()
+    }
+
+    /// Set a persisted user value: validate, write the file atomically, then
+    /// commit in memory.
+    ///
+    /// # Errors
+    /// [`AppError::Validation`] if the value is invalid; [`AppError::Internal`]
+    /// on a write failure (the in-memory config is left unchanged).
+    pub fn set_user(&self, key: ConfigKey, raw: &str) -> AppResult<()> {
+        let mut state = self.write();
+        let mut next = state.base.clone();
+        apply_kv(&mut next, key, raw)?;
+        next.validate()?;
+        self.write_atomic(&next)?;
+        state.base = next;
+        Ok(())
+    }
+
+    /// Set a session-only override: validated against the current effective
+    /// config, kept in memory, never written.
+    ///
+    /// # Errors
+    /// [`AppError::Validation`] if the resulting effective config is invalid.
+    pub fn set_session(&self, key: ConfigKey, raw: &str) -> AppResult<()> {
+        let mut state = self.write();
+        let mut probe = state.base.clone();
+        state.session.apply(&mut probe);
+        apply_kv(&mut probe, key, raw)?;
+        probe.validate()?;
+        match key {
+            ConfigKey::ModelsDir => state.session.models_dir = Some(PathBuf::from(raw)),
+            ConfigKey::ModelsBudgetGb => {
+                state.session.models_budget_gb = Some(probe.models.budget_gb);
+            }
+        }
+        Ok(())
+    }
+
+    /// Drop all session overrides.
+    pub fn clear_session(&self) {
+        self.write().session = SessionOverrides::default();
+    }
+
+    /// Whether any session override is active.
+    #[must_use]
+    pub fn has_session_overrides(&self) -> bool {
+        !self.read().session.is_empty()
+    }
+
+    fn write_atomic(&self, cfg: &AppConfig) -> AppResult<()> {
+        fs::create_dir_all(&self.config_dir)
+            .map_err(|err| AppError::internal("create config dir", err))?;
+        let json = serde_json::to_string_pretty(cfg)
+            .map_err(|err| AppError::internal("serialize config", err))?;
+        let tmp = self.config_dir.join(TMP_NAME);
+        {
+            let mut file = fs::File::create(&tmp)
+                .map_err(|err| AppError::internal("create temp config", err))?;
+            file.write_all(json.as_bytes())
+                .map_err(|err| AppError::internal("write temp config", err))?;
+            file.sync_all()
+                .map_err(|err| AppError::internal("fsync temp config", err))?;
+        }
+        fs::rename(&tmp, self.config_dir.join(FILE_NAME))
+            .map_err(|err| AppError::internal("commit config", err))?;
+        Ok(())
+    }
+
+    fn read(&self) -> std::sync::RwLockReadGuard<'_, State> {
+        self.state
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn write(&self) -> std::sync::RwLockWriteGuard<'_, State> {
+        self.state
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}

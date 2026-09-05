@@ -24,11 +24,11 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 8 — Configuration                                       |
-| **Stage**        | 8.1 — ADR-0016                                          |
-| **Status**       | `IN PROGRESS`                                           |
+| **Phase**        | 9 — SQLite Persistence                                  |
+| **Stage**        | 9.1 — (finalize at phase entry)                         |
+| **Status**       | `NOT STARTED`                                           |
 | **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/08_configuration.md` (finalized 2026-09-06)  |
+| **Plan doc**     | `docs/plan/09_sqlite-persistence.md`                    |
 | **Last updated** | 2026-09-06                                              |
 | **Updated by**   | phase-8-configuration                                   |
 
@@ -38,6 +38,8 @@
 **Phase 6 done** — the app scaffold runs (`docs/verification/05_phase6_bootstrap.md`).
 **Phase 7 done** — typed contract vocabulary + `ts-rs` bindings
 (`docs/verification/06_phase7_contracts.md`, `docs/contracts.md`).
+**Phase 8 done** — config system (`config/` module, ADR-0016,
+`docs/verification/07_phase8_config.md`).
 
 **Completed:** Phase 0–2 · Product Definition · Phase 3 (research + ADRs + probes)
 · Phase 4 (adversarial review, `03_adversarial_review.md`) · **Phase 5**
@@ -155,13 +157,13 @@ resource reservations, worker jobs). No model names in logic.
 Gate: compile; serialize/deserialize round-trip; invalid rejected; documented;
 `git grep` finds no model-name literals in logic.
 
-### Phase 8 — Configuration *(current pointer)* — `NOT STARTED` — `docs/plan/08_configuration.md`
+### Phase 8 — Configuration — `COMPLETE` — `docs/verification/07_phase8_config.md`
 One typed, validated, versioned config (defaults → user → session). No subsystem
 invents its own storage. No secrets in source.
 Gate: defaults load; invalid rejected with a named error; persists across restart;
 migration works; session override works; corrupt/missing handled without crash.
 
-### Phase 9 — SQLite Persistence — `NOT STARTED` — `docs/plan/09_sqlite-persistence.md`
+### Phase 9 — SQLite Persistence *(current pointer)* — `NOT STARTED` — `docs/plan/09_sqlite-persistence.md`
 Rust-owned persistence: migrations, versioning, pooling, transactions,
 repositories, structured errors. Minimum schema. Frontend/workers never touch DB.
 Gate: create from empty; migrate up/down + idempotent; commit + rollback; survives
@@ -397,6 +399,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 8 / 8.1 `IN PROGRESS` | Phase 8 `COMPLETE` → Phase 9 / 9.1 `NOT STARTED` | phase-8 | Config system landed: `src-tauri/src/config/` — `AppConfig` (`version` + `models.{dir, budget_gb}`), forward migration runner, `ConfigManager` (layered defaults ← file ← session, atomic write, corrupt-file backup + recovery), `config_get`/`config_set`/`config_keys` IPC, `setup()` wiring. **ADR-0016** (JSON, `<app_config_dir>/config.json`) closes the format question. Gate: defaults w/o file ✓ · invalid value fails fast naming the key ✓ · out-of-range rejected ✓ · change persists across restart ✓ · versionless file migrates to v1 ✓ · session override non-persistent ✓ · corrupt file → defaults + `config.json.corrupt-*` + warn ✓ · no ad-hoc env/settings reads (bar `LOCALAI_LOG`) ✓ · check suite green ✓. 88 rust tests (+22), config load **~0.08 ms**. Evidence `docs/verification/07_phase8_config.md`. |
 | 2026-09-06 | Phase 8 `NOT STARTED` | Phase 8 / 8.1 `IN PROGRESS` | phase-8 | Phase entry: `docs/plan/08_configuration.md` finalized (11 steps). Format decision (`ADR-0016`: JSON, `<app_config_dir>/config.json`, layered defaults/file/session, `version` + forward migrations, atomic write, no secrets) closes the plan's open question. Minimal schema — `version` + `models.{dir, budget_gb}` — grown additively by later phases. |
 | 2026-09-06 | Phase 7 / 7.1 `IN PROGRESS` | Phase 7 `COMPLETE` → Phase 8 / 8.1 `NOT STARTED` | phase-7 | Application contracts landed: `src-tauri/src/contracts/` (`ids` · `task` · `model` · `generation` · `conversation` · `resource` · `worker`) + `ipc::error` extended to 9 `kind`s + `ErrorEnvelope`. 42 `ts-rs` bindings (was 5); `src/lib/contracts.ts` import surface; `docs/contracts.md` (evolution rules). Gate: `cargo build`+`tsc` clean, zero warnings ✓ · 66 rust tests (round-trip every type + rejection: unknown variant/tag, missing field, out-of-range `validate()`) ✓ · no model-name literals outside `contracts/` ✓ · bindings committed + in sync ✓ · `TokenDelta` round-trip ~3.3 µs ✓ · no behaviour / handler change ✓. Evidence `docs/verification/06_phase7_contracts.md`. Entry note: plan finalized to 12 steps (ADR-0002 + ADR-0013); scope held to the plan's list — character/persona/config/registry contracts stay with their phases. |
 | 2026-09-06 | (no state change) | — | phase-7 | **Phase 6 polish** (`main` `HEAD`): replaced the `app://ready` **event** with an `app_ready` **command** — the event fired in `.setup()` before the webview subscribed, and `listen()` at module-eval threw an unhandled `transformCallback` rejection every launch. Readiness now a command the shell calls once on mount; Phase 6 `app_ping` probe guarded against StrictMode/HMR re-fire (log went from ~14 lines/session → 1). Fresh `tauri dev` verified clean. `docs/verification/05_phase6_bootstrap.md` follow-up resolved. Check suite green. |
