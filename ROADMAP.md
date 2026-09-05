@@ -25,12 +25,12 @@
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
 | **Phase**        | 10 — Observability                                     |
-| **Stage**        | 10.1 — (finalize at phase entry)                       |
-| **Status**       | `NOT STARTED`                                           |
+| **Stage**        | 10.1 — deps                                            |
+| **Status**       | `IN PROGRESS`                                           |
 | **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/10_observability.md`                         |
+| **Plan doc**     | `docs/plan/10_observability.md` (finalized 2026-09-06)  |
 | **Last updated** | 2026-09-06                                              |
-| **Updated by**   | phase-9-persistence                                     |
+| **Updated by**   | phase-10-observability                                  |
 
 **Architecture frozen (Phase 5).** Binding: `PROJECT.md`, `ARCHITECTURE.md`,
 `AI_PIPELINES.md`, `SECURITY.md`, `PERFORMANCE.md`, `UI_GUIDELINES.md`,
@@ -401,6 +401,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 10 `NOT STARTED` | Phase 10 / 10.1 `IN PROGRESS` | phase-10 | Phase entry: `docs/plan/10_observability.md` finalized (10 steps). Scope: reloadable filter + config `logging.level` (schema **v2**), boundary redaction (regex — `hf_`, `Bearer`, secret JSON keys), non-blocking lossy writer, in-memory ring buffer, `operation()` span helper. **Deferred to Phase 37:** persistent log file + rotation/retention + the diagnostics-bundle IPC command (no terminal-less build or Settings UI yet) — this closes the plan's "retention/rotation" open question. Hot-path throughput comparison → Phase 16. No new ADR (implements frozen `SECURITY.md`/`PERFORMANCE.md`). |
 | 2026-09-06 | Phase 9 / 9.1 `IN PROGRESS` | Phase 9 `COMPLETE` → Phase 10 / 10.1 `NOT STARTED` | phase-9 | SQLite persistence landed: `src-tauri/src/db/` — `Db` (writer pool 1 + reader pool 4, `deadpool-sqlite`), per-connection pragma hook (WAL, `busy_timeout`, `foreign_keys`, `synchronous=NORMAL`), `refinery` forward-only grouped migrations with verified `VACUUM INTO` backup (keep 5) + unknown-newer refusal, `write`/`read` helpers, `PRAGMA quick_check` on open, `DbError` + `From<DbError> for AppError`, `AppMetaRepo`, `V0001__init.sql` (`core_app_meta`). `lib.rs` opens+migrates at startup, checkpoints WAL on exit. Deps: `rusqlite 0.37` (bundled), `deadpool-sqlite 0.12`, `refinery 0.9`, `tokio 1`. Gate: create-from-empty ✓ · forward-only + idempotent ✓ · commit persists / error+panic roll back ✓ · survives restart ✓ · grouped rollback + verified backup ✓ · 24 concurrent writers, no `SQLITE_BUSY` ✓ · corrupt file → `DbError::Corruption` ✓ · no rusqlite version split ✓ · check suite green. 99 rust tests (+11). Baselines: insert ~0.12 ms, PK read ~0.05 ms, 100-row tx ~0.16 ms. Evidence `docs/verification/08_phase9_persistence.md`. Entry: gate-2 collision (plan said "migrate down") resolved to forward-only per ADR-0009; `synchronous=NORMAL` kept. |
 | 2026-09-06 | Phase 9 `NOT STARTED` | Phase 9 / 9.1 `IN PROGRESS` | phase-9 | Phase entry: `docs/plan/09_sqlite-persistence.md` finalized (11 steps). **Collision flagged + resolved:** the plan's original gate 2 ("migrate down") conflicts with ADR-0009's forward-only decision → reframed to forward-only + idempotent (ADR wins). `synchronous=FULL` deferred item decided: **keep `NORMAL`** (WAL+NORMAL is crash-safe; FULL only guards OS/power loss at a write cost). Topology: `deadpool-sqlite` writer pool (1) + reader pool (4), `refinery` grouped migrations with verified `VACUUM INTO` backup. Blob store explicitly **not** this phase. |
 | 2026-09-06 | Phase 8 / 8.1 `IN PROGRESS` | Phase 8 `COMPLETE` → Phase 9 / 9.1 `NOT STARTED` | phase-8 | Config system landed: `src-tauri/src/config/` — `AppConfig` (`version` + `models.{dir, budget_gb}`), forward migration runner, `ConfigManager` (layered defaults ← file ← session, atomic write, corrupt-file backup + recovery), `config_get`/`config_set`/`config_keys` IPC, `setup()` wiring. **ADR-0016** (JSON, `<app_config_dir>/config.json`) closes the format question. Gate: defaults w/o file ✓ · invalid value fails fast naming the key ✓ · out-of-range rejected ✓ · change persists across restart ✓ · versionless file migrates to v1 ✓ · session override non-persistent ✓ · corrupt file → defaults + `config.json.corrupt-*` + warn ✓ · no ad-hoc env/settings reads (bar `LOCALAI_LOG`) ✓ · check suite green ✓. 88 rust tests (+22), config load **~0.08 ms**. Evidence `docs/verification/07_phase8_config.md`. |
