@@ -1,0 +1,26 @@
+#!/bin/sh
+# Commit-message convention: a short subject (<= 72 chars, no trailing period),
+# then a blank line, then a body. Merge/revert/fixup commits are exempt.
+msg_file="$1"
+subject=$(head -n1 "$msg_file")
+
+case "$subject" in
+  Merge\ *|Revert\ *|fixup!\ *|squash!\ *) exit 0 ;;
+esac
+
+if [ "${#subject}" -gt 72 ]; then
+  echo "commit-msg: subject line is ${#subject} chars (max 72):"
+  echo "  $subject"
+  exit 1
+fi
+
+case "$subject" in
+  *.) echo "commit-msg: subject must not end with a period"; exit 1 ;;
+esac
+
+if [ "$(sed -n 2p "$msg_file" | tr -d '[:space:]')" != "" ]; then
+  echo "commit-msg: line 2 must be blank (subject, blank, body)"
+  exit 1
+fi
+
+exit 0
