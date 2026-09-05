@@ -17,8 +17,9 @@ are NOT bundled (acquired on first run). Must support a fully-offline install.
   aren't replaced on upgrade (stale Python server). Re-check the bug before
   Phase 37.
 - **Embedded CPython + one shared frozen venv** (torch, diffusers, bitsandbytes,
-  faster-whisper + CTranslate2 CUDA-12, Chatterbox, InsightFace). Workers are
-  scripts: `<app>/python/python.exe <app>/workers/<name>.py`.
+  faster-whisper + CTranslate2 CUDA-12, Chatterbox, InsightFace face-embedder).
+  No LoRA trainer (ADR-0011). Workers are scripts:
+  `<app>/python/python.exe <app>/workers/<name>.py`.
 - **Deterministic sibling layout** resolved from `current_exe()`, never PATH:
   `bin/` (llama-server + CUDA DLLs), `python/`, `workers/`, `webview2/`.
 - **First run**: layout + worker self-check → model onboarding (LLM picker; voice

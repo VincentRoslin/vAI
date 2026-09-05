@@ -97,31 +97,15 @@ while relevant tabs active.
 
 ---
 
-## ⚠ Identity consistency is a real gap (FR-C90..94, ARQ-11)
+## ⚠ Identity consistency — prompt-based only (owner: no LoRA training)
 
-The owner's current setup has **no identity mechanism** — and Krea 2 in diffusers
-is text-to-image only (no img2img / IP-Adapter / edit). But the product requires
-**"high visual continuity"** for characters across poses/clothing/scenes.
-Seed-lock + prompt alone will **not** meet FR-C90..91.
-
-Options for Phase 27 (research + prototype, don't decide here):
-1. **Per-character LoRA.** After a character's reference images are generated,
-   train a small LoRA on them (few minutes on the 5080). Strongest identity;
-   costs training time + ~50–200 MB storage per character; needs a training
-   pipeline. Fits "local, offline".
-2. **IP-Adapter / PuLID / InstantID for Krea 2** — not available in diffusers for
-   Krea 2 today; may land later. Instant, no training, moderate identity.
-3. **Different model for character images** — a FLUX.1 variant or SDXL with
-   PuLID/InstantID that *does* support face reference. Splits the image stack
-   (two base models) — cost in VRAM juggling + the LoRA ecosystem is Krea-2-specific.
-4. **Structured-appearance mega-prompt + seed lock + the similarity-check-and-
-   regenerate loop** (FR-C93). Weakest; the fallback if 1–3 are impractical.
-
-**Recommendation:** plan for **per-character LoRA (option 1)** as the primary path
-(best identity, stays local), with option 4 as the interim while the LoRA training
-pipeline is built. Flag to the owner that FR-C90's bar likely needs option 1 —
-Krea 2 text-to-image + prompt is not enough. This is the biggest open technical
-risk in the product.
+Krea 2 in diffusers is text-to-image only (no img2img / IP-Adapter / edit), and
+the owner ruled out per-character LoRA training. So character visual identity is
+**prompt-based**: `QuadView_krea2_v1` for the reference sheet + an LLM-captioned
+**canonical appearance block** + fixed per-character seed + realism LoRA +
+batch-and-pick against a **face-embedding similarity gate**. Full detail and the
+honest scoping of FR-C90 (best-effort; drifts under big pose/scene changes) is in
+**`09_character-identity.md`** — this is the product's biggest open risk.
 
 The identity-similarity check (accept/regenerate): a face-embedding model
 (ArcFace-style) or CLIP image similarity vs the character's reference set;
@@ -137,8 +121,8 @@ threshold + max-retries in config.
   resolution / drop the LoRA / fewer steps; typed error.
 - Image sidecar crash mid-generation → GPU released, no partial file, typed error,
   scheduler reloads the LLM.
-- Per-character LoRA training fails/OOM → fall back to option 4 for that character.
-- Identity check never passes → deliver best candidate + "couldn't closely match".
+- Identity check never passes (likely for full-body/varied-scene shots) → deliver
+  best candidate + "couldn't closely match" (expected, not a bug — see `09`).
 
 ## Sources
 - [unsloth/Krea-2-Turbo](https://huggingface.co/unsloth/Krea-2-Turbo) · [Krea 2 review (Turbo/LoRA)](https://www.buildfastwithai.com/blogs/krea-2-open-source-review-raw-turbo)

@@ -47,8 +47,10 @@ all `PROPOSED`).**
 2. **GGUF header parse** verified against a real `.gguf` file's first ~1–2 MB.
 3. **Confirm no WDDM hang** on the 5080 bare-metal compute path (spawn
    `llama-server`, hold VRAM, observe).
-4. **Owner sign-off on ADR-0011** — per-character LoRA (option B) cost/feasibility,
-   or scope FR-C90 to option-A quality for v1.
+4. **Owner input on ADR-0011 open question** — the expected *range* of character
+   images (portraits/selfies → prompt-based is adequate; full-body across varied
+   scenes → visible drift, no in-scope fix). FR-C90 scoped to prompt-based quality
+   for v1 (owner ruled out LoRA training 2026-09-05).
 5. Phase 4 (adversarial review) then Phase 5 (ratify ADRs, freeze).
 
 ---
@@ -80,10 +82,11 @@ From the research below, approximate loaded-VRAM footprints on this card:
 4. STT must use `compute_type=float16` (CTranslate2 int8 is broken on sm_120).
 5. Voice (STT+VAD+TTS ≈ 5–7 GB) **can** run with a mid-size LLM loaded — voice
    does not need a swap; image does.
-6. **Biggest open risk:** character visual identity (FR-C90..94). Krea 2 in
-   diffusers is text-to-image only; the owner's impl has no reference/identity
-   mechanism. "High visual continuity" likely needs **per-character LoRAs**
-   (trained locally). See `04` §identity.
+6. **Biggest open risk:** character visual identity (FR-C90..94). Krea 2 is
+   text-to-image only; owner ruled out LoRA training. v1 = prompt-based
+   (`QuadView_krea2_v1` reference sheet + LLM-captioned canonical appearance block
+   + fixed seed + realism LoRA + face-embedding similarity gate). **FR-C90 scoped
+   to best-effort** — will drift under big pose/scene changes. See `09`.
 
 ---
 

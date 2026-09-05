@@ -12,39 +12,47 @@ mechanism** (seed + prompt only). Per-character FLUX-family LoRA training is
 ~45–60 min on a 4080/4090-class GPU.
 
 ## Options considered
-- A: seed lock + structured-appearance mega-prompt + similarity-check-and-regenerate.
-- B: per-character LoRA trained from reference images.
-- C: IP-Adapter / PuLID for Krea 2 (not available yet).
-- D: a separate reference-capable model for character images.
+- A: prompt-based — canonical appearance block + fixed seed + batch-and-pick + gate.
+- B: per-character LoRA trained from reference images. **Rejected by owner
+  2026-09-05** (no LoRA trainer).
+- C: IP-Adapter / PuLID / reference conditioning for Krea 2 — not available yet.
+- Existing LoRAs: realism/skin LoRAs (aesthetic, not identity); `QuadView_krea2_v1`
+  CharacterSheet LoRA (multi-view sheet in one generation — useful for the
+  reference set).
 
 ## Decision
-**Layered: A now → B in the background → C when available.**
-1. **v1 baseline (A)**: fixed per-character seed + an appearance prompt built from
-   the structured appearance fields; identity-similarity gate
+**Prompt-based, no training.** FR-C90 ("high visual continuity across
+poses/clothing/environments/lighting/scenes") is a **best-effort v1 target** —
+current research is clear that prompt + seed cannot fully hold a face across
+dramatic scene changes without a reference or trained anchor.
+1. **Reference set** generated with `QuadView_krea2_v1` (one consistent multi-view
+   sheet), cropped into the character's gallery.
+2. **Canonical appearance block**: an LLM captions the primary reference view in
+   extreme detail → merged with structured appearance → the character's immutable
+   identity prompt prefix, byte-identical every generation.
+3. **Fixed per-character seed** for the character's whole lifetime.
+4. **Realism LoRA always on** (`gokaygokay/Krea-2-Realism`/V2 + Skin).
+5. **Batch-and-pick**: generate N, run the identity-similarity gate
    (face-embedding cosine vs the reference set; threshold + bounded retries;
-   config).
-2. **Background upgrade (B)**: after a character is *kept*, queue a per-character
-   LoRA training job (scheduler priority 5, idle-only). Once trained, that
-   character's generations use the LoRA → identity "high". Character is fully
-   usable before the LoRA is ready.
-3. **Later (C)**: adopt Krea 2 IP-Adapter/PuLID if it ships.
+   config), deliver the best; on repeated failure deliver the best candidate +
+   "couldn't closely match" (FR-C93).
+6. **Adopt IP-Adapter / reference conditioning for Krea 2 immediately if it ships**
+   — the biggest possible upgrade, no training.
+7. **Phase 27 prompt-engineering research**: measure which prompt techniques
+   actually move the similarity score on Krea 2.
 
 **Character generation (D-15)**: schema-constrained LLM authors the structured
-profile (validated by a completeness/coherence gate — no content filtering);
-~2–4 seed-locked reference images become the initial gallery + reference set.
-**Discovery feed**: a pre-generated pool (~10–20 ready characters) served to the
-swipe UI, topped up by the scheduler during idle windows; on-demand generation as
-fallback; a character is shown only when fully formed. Feed state: seen/kept/passed.
+profile (completeness/coherence gate — no content filtering); reference sheet via
+QuadView; LLM caption → canonical block. **Discovery feed**: pre-generated pool
+(~10–20), scheduler idle top-up, on-demand fallback, only fully-formed characters
+shown; feed state seen/kept/passed.
 
 ## Consequences
-- **Owner sign-off needed**: option B costs ~45–60 min background GPU per kept
-  character and requires Krea-2 LoRA-training support in a local trainer
-  (ai-toolkit-class) — **confirm feasible at Phase 27**. If not feasible, FR-C90
-  is scoped to "option A quality" for v1.
-- The pool + idle top-up means the user rarely waits for a character.
-- Per-character LoRA storage: ~50–200 MB each (blob store).
-- Adds a face-embedder worker (~100 MB) and a LoRA-trainer job type.
-
-## Status detail
-`UNDECIDED` sub-point: whether B is in v1 scope (pending owner + Phase 27
-feasibility). A + generation + pool are decided.
+- **FR-C90/C91 scoped to prompt-based quality for v1.** Owner to confirm the
+  expected *range* of character images (mostly portraits/selfies → adequate;
+  full-body across varied scenes → visible drift, no in-scope fix).
+- No LoRA trainer, no `lora_train` job kind (ADR-0010), no trainer in the venv
+  (ADR-0014).
+- Adds a face-embedder worker (~100 MB) and the QuadView + realism LoRAs to the
+  pinned LoRA set.
+- Pool + idle top-up means the user rarely waits for a character.

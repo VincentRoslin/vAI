@@ -20,33 +20,65 @@ Seed-lock + prompt alone **will not** meet FR-C90..91. Something more is require
 
 ---
 
-## D-10 — Identity approach
+## D-10 — Identity approach (owner: **no LoRA training** — prompt-based only)
 
-| Option | Identity strength | Cost | Local/offline |
-| ------ | ----------------- | ---- | ------------- |
-| **A. Seed lock + structured-appearance mega-prompt + similarity-check-and-regenerate** | Low–medium | Free, immediate | ✅ |
-| **B. Per-character LoRA** trained from the character's reference images | **High** | ~45–60 min training on the 5080 (background); ~50–200 MB storage/character; needs a trainer (ai-toolkit) + Krea-2 LoRA-training support | ✅ |
-| **C. IP-Adapter / PuLID / InstantID for Krea 2** | Medium–high, instant | Not available for Krea 2 yet; may land | ✅ if it ships |
-| **D. Separate reference-capable model** (a FLUX/SDXL with PuLID/InstantID) for character images | Medium–high, instant | Two image stacks; VRAM juggling; the Krea-2 LoRA ecosystem doesn't apply | ✅ |
+Owner decision 2026-09-05: **no per-character LoRA trainer.** Explore prompt-based
+consistency. This is a real constraint — current research is unanimous that
+**prompt + seed alone cannot hold a face across dramatic pose / lighting / scene
+changes**; without a reference or a trained anchor, diffusion models drift. So
+FR-C90's "recognisably the same across poses/clothing/environments/lighting/
+scenes" is a **best-effort v1 target, not a guarantee**.
 
-### Recommended: **A now, B in the background, C when available**
-1. **v1 baseline (A):** when a character is created, generate its reference images
-   with a **fixed seed** + a detailed prompt built from the **structured
-   appearance** fields (FR-C10). Every later generation reuses the seed +
-   appearance prompt + the requested scene/pose. Run the **identity-similarity
-   gate** (below) and regenerate up to N.
-2. **Background upgrade (B):** after a character is *kept* (FR-C62), queue a
-   **per-character LoRA training** job (scheduler priority: lowest, idle-only —
-   see `08`). Once trained, that character's generations use the LoRA →
-   identity jumps to "high". The character is fully usable before the LoRA is
-   ready; it just gets better.
-3. **Later (C):** if Krea 2 gains IP-Adapter/PuLID, adopt it — instant identity
-   without per-character training.
+### v1 approach: reference sheet + canonical appearance block + fixed seed + batch-and-pick + gate
+1. **Reference set via `QuadView_krea2_v1`.** Generate the character's reference
+   images with the CharacterSheet multi-view LoRA — one generation yields a face
+   close-up + 3 body views that are mutually consistent. Crop → the character's
+   reference gallery.
+2. **Canonical appearance block.** An **LLM captions the primary reference view in
+   extreme detail** (face shape, features, hair, colouring, build, distinctive
+   marks). That caption — merged with the structured appearance fields (FR-C10) —
+   becomes the character's **immutable identity prompt prefix**, byte-identical on
+   every future generation. Only the scene/pose/clothing part varies.
+3. **Fixed per-character seed** (the owner's impl already does this) — reused for
+   the character's whole lifetime.
+4. **Realism LoRA always on** (`gokaygokay/Krea-2-Realism` or V2 + Skin) so every
+   image is photographically believable.
+5. **Batch-and-pick.** Generate N candidates (e.g. 3–4), run the identity-
+   similarity gate, deliver the closest to the reference set. Cheap at 8 steps.
+6. **Identity-similarity gate** (below) with bounded regeneration; on repeated
+   failure, deliver the best candidate + a "couldn't closely match" note (FR-C93).
+7. **Constrain the variation.** Character-sent images are mostly
+   portraits/selfies/"here's me doing X" in similar framing — prompt+seed holds up
+   far better there than for arbitrary full-body scene shots. See the open
+   question below.
 
-**Flag to owner:** option B is the realistic path to FR-C90's bar, and it costs
-~45–60 min of background GPU per character and needs Krea-2 LoRA-training support
-in a local trainer. Confirm this is acceptable, or we scope FR-C90 down to
-"option A quality" for v1.
+### Existing LoRAs — what they do and don't do (owner question 2026-09-05)
+
+| LoRA | Type | Helps identity? |
+| ---- | ---- | --------------- |
+| `gokaygokay/Krea-2-Realism-LoRA`, Krea2-realism-V2, the Skin LoRA (already on the owner's list) | **General photo-realism / candid / skin quality** — applied to *every* generation | No — makes any character look like a believable real photo; does not lock a specific face |
+| `Omnico/Krea2_turbo_diff_loras` (the 200+ archive) | **Style / aesthetic** (Artaix, Dasiwa, …), ranks r8–r128 | No — style, not identity |
+| **`QuadView_krea2_v1`** (CharacterSheet collection, trained on ~300 sheets, **Krea-2 native**) | **Multi-view character sheet** — one generation produces a face close-up + 3 body views of the *same* character | **Partially — very useful for building the reference set.** All 4 views come from one generation so they're mutually consistent. Crop them → the character's reference gallery + canonical-caption source. Does **not** give consistency across *later independent* generations. |
+
+**Bottom line:** no off-the-shelf LoRA gives cross-generation *identity* lock
+without being trained on that specific person. The realism LoRAs make characters
+look photographically real (keep them, always-on). **`QuadView_krea2_v1` is worth
+adopting** to generate each character's reference set in one consistent shot.
+
+### Later (no cost now)
+- **IP-Adapter / PuLID / reference-image conditioning for Krea 2** — not in
+  diffusers today; adopt immediately if it ships (biggest single upgrade,
+  no training).
+- **Flux Kontext turnaround LoRA** (5-view, "3D-rotation"-style) — Kontext is an
+  *edit* model, not Krea 2; only relevant if a second image model is ever added.
+
+### ⚠ Open question for the owner
+**What range of images do characters actually send?** If it's mostly
+selfies/portraits/upper-body in casual settings, the v1 prompt-based approach is
+adequate. If characters need to appear consistent in **full-body shots across very
+different scenes/outfits**, prompt+seed will visibly drift and there is no
+in-scope fix until Krea 2 gets reference conditioning. Please confirm the
+expected image range so FR-C90/C91 can be scoped honestly.
 
 ### Identity-similarity gate (FR-C93, accept vs regenerate)
 - A **face-embedding model** (ArcFace / InsightFace-style, ~100 MB, fast) →
@@ -56,8 +88,9 @@ in a local trainer. Confirm this is acceptable, or we scope FR-C90 down to
   references (weaker).
 - Runs in a tiny embedder worker or folded into the image sidecar. ~tens of ms.
 
-→ **ADR-0011** (identity): A + background-B + gate. Trainer = ai-toolkit-style,
-Krea-2 support to confirm at Phase 27.
+→ **ADR-0011** (identity): canonical appearance block (LLM-captioned reference) +
+fixed seed + batch-and-pick + similarity gate. **No LoRA trainer.** IP-Adapter /
+reference conditioning adopted if Krea 2 gains it. FR-C90 is a best-effort target.
 
 ---
 
@@ -77,8 +110,10 @@ Krea-2 support to confirm at Phase 27.
 - From the structured appearance → build the appearance prompt → generate ~2–4
   reference images (portrait + a couple of variations) via the shared image
   subsystem with a fixed per-character seed.
-- These become the character's initial gallery **and** the reference set for the
-  identity gate / LoRA training.
+- One is chosen as the primary; an **LLM captions it in detail** → the character's
+  **canonical appearance block** (the immutable identity prompt prefix).
+- These images are the character's initial gallery **and** the reference set for
+  the identity-similarity gate.
 
 ### Discovery feed (ARQ-14)
 - **Pre-generated pool**: keep ~10–20 ready characters in a `char_pool` table
@@ -94,12 +129,13 @@ Krea-2 support to confirm at Phase 27.
   not re-shown (or re-shown rarely).
 
 ### Cost
-Per pool character: ~1 LLM generation (profile, seconds) + ~2–4 image generations
-(~17 s each, or less at lower res for cards) + optional LoRA later. Pool top-up is
-idle-time work; the user rarely waits.
+Per pool character: ~1 LLM generation (profile) + ~1 LLM caption + ~2–4 image
+generations (~17 s each, less at card resolution). Pool top-up is idle-time work;
+the user rarely waits.
 
 → **ADR-0011** (also covers generation): schema-constrained LLM profile +
-seed-locked reference images + pre-generated pool with idle top-up.
+seed-locked reference images + LLM-captioned canonical appearance block +
+pre-generated pool with idle top-up.
 
 ---
 
@@ -111,29 +147,35 @@ seed-locked reference images + pre-generated pool with idle top-up.
 3. **Batch pool generation** behind one LLM→image eviction cycle (`08` opt 1) —
    generate N characters' profiles (LLM), then evict once and generate all their
    reference images.
-4. **Reuse the character's fixed seed** across its lifetime so even the
-   option-A baseline has maximal consistency for free.
-5. **Train the per-character LoRA from the pool reference images** already on
-   disk — no extra generation to build a training set.
-6. **Shared base-model + hot-swappable per-character LoRA** (diffusers LoRA
-   hotswap) — switching which character you're generating for is a LoRA swap, not
-   a model reload.
+4. **Reuse the character's fixed seed** across its lifetime — the cheapest
+   consistency lever, free.
+5. **Canonical appearance block is generated once** (LLM caption of the primary
+   reference) and cached — every later generation just concatenates it with the
+   scene text.
+6. **Batch-and-pick** shares one model load — generate N candidates in one worker
+   call, gate them, keep the best.
 7. **Face-embedding cache** — embed each reference image once, store the vector;
    the identity gate compares against cached vectors, not re-embedding references
    every time.
 8. **Skip the identity gate for the baseline pool images** (they *define* the
    identity) — only gate *subsequent* generations.
+9. **Prompt-engineering research (Phase 27)**: test which of {ultra-detailed
+   caption, distinctive rare-token name, appearance-token weighting, restricting
+   framing/shot-type, low step-count determinism} actually move the
+   similarity-gate score on Krea 2 — measure, don't guess.
 
 ## Failure modes
 - LLM produces an invalid/contradictory profile → schema constraint + quality
   gate reject; retry with a different seed.
 - Reference-image generation fails → character not added to the pool; retry later.
-- Per-character LoRA training OOM / fails → character stays on option-A quality;
-  log; optionally retry once.
-- Identity gate rejects everything for a hard character → deliver best candidate +
-  "couldn't closely match" (FR-C93); the LoRA (once trained) usually fixes this.
-- Krea 2 LoRA-training unsupported by available trainers → fall back to option A
-  quality for v1 + revisit (C) — **confirm feasibility at Phase 27, not now**.
+- Identity gate rejects everything for a hard character (likely under big
+  pose/scene changes) → deliver the best candidate + "couldn't closely match"
+  (FR-C93). This is expected behaviour, not a bug, given the no-LoRA constraint.
+- Character looks inconsistent across very different scenes → **known v1
+  limitation** (see the open question); revisit if Krea 2 gains reference
+  conditioning.
 
 ## Sources
-- [FLUX character LoRA training ~45–60 min on RTX 4080/4090 (2026)](https://apatero.com/blog/flux-2-pro-lora-training-character-consistency-2026) · [ai-toolkit (ostris)](https://diffusiondoodles.substack.com/p/how-to-train-a-lora-ostris-ai-toolkit) · [FLUX.2 klein LoRA under 60 min](https://huggingface.co/blog/black-forest-labs/flux-2-klein-lora)
+- [getimg.ai — consistent characters 2026 (prompt-only limits)](https://getimg.ai/blog/how-to-create-consistent-characters-with-ai) · [stacksheriff — Flux consistent character (seed-lock limits)](https://stacksheriff.com/ai-tools/comfyui-flux-character/)
+- [gokaygokay/Krea-2-Realism-LoRA](https://huggingface.co/gokaygokay/Krea-2-Realism-LoRA) · [Omnico/Krea2_turbo_diff_loras](https://huggingface.co/Omnico/Krea2_turbo_diff_loras)
+- [CharacterSheet multi-view LoRAs (incl. `QuadView_krea2_v1`)](https://comfyui-wiki.com/en/news/2026-07-31-charactersheet-multiview-loras) · [HackerNoon — CharacterSheet LoRA collection](https://hackernoon.com/charactersheet-what-you-have-to-know-about-this-collection-of-lora-adapters)

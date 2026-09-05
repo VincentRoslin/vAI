@@ -17,7 +17,7 @@ servers**, with lightweight stdio for the small always-our-code workers.
 | Category | Members | Transport | Why |
 | -------- | ------- | --------- | --- |
 | **Model server** | `llama-server` (LLM), `image-server` (diffusers/Krea 2) | Rust-supervised child; **loopback HTTP** on `127.0.0.1:<free port>`, no external interface | Both are long-lived servers holding a big model; both already exist as HTTP servers (upstream / owner's project); HTTP gives clean streaming (SSE), health, concurrent requests, and language independence |
-| **Stateless worker** | STT (faster-whisper), TTS (Chatterbox), face-embedder, LoRA-trainer job | Rust-supervised child; **JSON-lines over stdin/stdout**; binary audio as framed bytes or short files in a controlled temp dir | Small, our code, one request at a time, trivially killable; no benefit to a socket; keeps them maximally sandboxable |
+| **Stateless worker** | STT (faster-whisper), TTS (Chatterbox), face-embedder | Rust-supervised child; **JSON-lines over stdin/stdout**; binary audio as framed bytes or short files in a controlled temp dir | Small, our code, one request at a time, trivially killable; no benefit to a socket; keeps them maximally sandboxable |
 
 Both categories are identical on everything else (`CLAUDE.md` Article I):
 Rust-spawned & supervised, non-authoritative, no direct SQLite, no independent

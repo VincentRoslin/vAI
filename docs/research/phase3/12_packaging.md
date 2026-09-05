@@ -49,7 +49,7 @@ these by relative path, never PATH.
   LocalAI.exe
   bin/  llama-server.exe, cuda dlls
   python/  python.exe, Lib/, site-packages/  (the shared venv)
-  workers/  stt.py, tts.py, image_server.py, embedder.py, trainer.py
+  workers/  stt.py, tts.py, image_server.py, embedder.py
   webview2/  (bootstrapper fallback)
 ```
 Rust reads `std::env::current_exe()` → resolves siblings. No dev paths, no PATH

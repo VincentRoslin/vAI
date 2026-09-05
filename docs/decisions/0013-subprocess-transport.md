@@ -21,7 +21,7 @@ independent GPU management, adapter-confined, loopback-only:**
 | Category | Members | Transport |
 | -------- | ------- | --------- |
 | **Model server** | `llama-server`, `image-server` | loopback HTTP on `127.0.0.1:<free port>` (or a Windows named pipe — evaluate) |
-| **Stateless worker** | STT, TTS, face-embedder, LoRA-trainer | JSON-lines over stdin/stdout; `stderr` = logs only; binary audio as framed PCM or a short temp file |
+| **Stateless worker** | STT, TTS, face-embedder | JSON-lines over stdin/stdout; `stderr` = logs only; binary audio as framed PCM or a short temp file |
 
 Common: free-port selection (bind `:0`, read, drop, pass) or named pipe; Windows
 **Job Object** for orphan cleanup; `ready` handshake with a protocol/version

@@ -5,8 +5,8 @@
 
 ## Context
 One GPU, 16 GB. LLM ⟂ active image generation. LLM reload after eviction costs
-~10–30 s. Consumers: LLM gen, image gen, STT/TTS, per-character LoRA training,
-character/pool generation.
+~10–30 s. Consumers: LLM gen, image gen, STT/TTS, character/pool generation.
+(No LoRA training — owner ruled it out, ADR-0011.)
 
 ## Options considered
 - Preemptive vs cooperative scheduling of GPU work.
@@ -17,8 +17,8 @@ character/pool generation.
   manager's single serialization mutex. Resource manager **accounts**; scheduler
   **orders and drives eviction/restore**.
 - **Priority**: (1) interactive LLM generation — never preempted; (2) STT/TTS —
-  coexist; (3) user-initiated image generation; (4) character/pool generation;
-  (5) per-character LoRA training — idle-only.
+  coexist; (3) user-initiated image generation; (4) character/pool generation —
+  idle-only.
 - A background GPU job needing an LLM eviction **waits for no interactive
   generation in flight**, then evicts, **drains all queued same-kind jobs**,
   restores the LLM, resumes queued interactive work.
@@ -34,4 +34,3 @@ character/pool generation.
   ("waiting for image generation…" rather than a frozen UI).
 - Batching N images behind one eviction is the key throughput optimization.
 - Introduced ad hoc at Phase 23 (hot-swap), formalized at Phase 24.
-- LoRA training may be deferred a long time on a heavy user → a max-defer prompt.

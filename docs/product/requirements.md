@@ -279,13 +279,21 @@ All character functionality lives in the Discovery tab.
 ### 2.10 Persistent visual identity (major requirement)
 - **FR-C90** Target: **high visual continuity** — a viewer looking at multiple
   images of a character reasonably concludes "that is the same character."
+  **v1 scope note (2026-09-05):** achieved by prompt-based means only (owner ruled
+  out per-character LoRA training) — a canonical LLM-captioned appearance block +
+  fixed per-character seed + a multi-view reference sheet + a face-embedding
+  similarity gate. This holds well for portraits/selfies in similar framing; it
+  will **drift under large pose / scene / outfit changes** until Krea 2 gains
+  reference-image conditioning. FR-C90/C91 are **best-effort for v1**, not a
+  guarantee. (ADR-0011.)
 - **FR-C91** Recognisable across images: face, hair, general physique,
-  distinctive features, overall visual identity — across different poses,
-  clothing, environments, lighting, scenes.
-- **FR-C92** The system uses references + conditioning + verification; it does not
-  assume identical prompts produce identical people.
-- **FR-C93** Obvious identity failures are detected and the image is
-  rejected/regenerated.
+  distinctive features — best within similar framing (see FR-C90 scope note).
+- **FR-C92** The system uses a reference sheet + a canonical appearance prompt +
+  seed lock + a similarity gate; it does not assume identical prompts produce
+  identical people.
+- **FR-C93** Obvious identity failures are detected (face-embedding gate) and the
+  image is regenerated (bounded); on repeated failure the best candidate is
+  delivered with a "couldn't closely match" note.
 - **FR-C94** Pixel-perfect identity is explicitly not promised (see Non-goals).
 
 ---

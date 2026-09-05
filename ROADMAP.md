@@ -456,11 +456,13 @@ tracked, not blocking.
 
 ### New open items from Phase 3 (for Phase 4 / owner)
 
-- **O6. Character visual identity bar (FR-C90).** Krea 2 is text-to-image only;
-  ADR-0011 proposes per-character LoRA (~45–60 min/char, background) as the path
-  to "high visual continuity". **Needs owner sign-off** on that cost, or FR-C90 is
-  scoped to seed+prompt quality for v1. Also: confirm Krea 2 LoRA-training is
-  feasible in a local trainer (ai-toolkit-class) — Phase 27.
+- **O6. Character visual identity bar (FR-C90).** Owner ruled out LoRA training
+  2026-09-05. ADR-0011 = prompt-based (`QuadView_krea2_v1` reference sheet +
+  LLM-captioned canonical appearance block + fixed seed + realism LoRA +
+  face-embedding similarity gate). **FR-C90/C91 scoped to best-effort for v1** —
+  identity drifts under big pose/scene changes; no in-scope fix until Krea 2 gets
+  reference conditioning. Owner to confirm the expected *range* of character
+  images (portraits/selfies = fine; full-body varied scenes = visible drift).
 - **O7. Krea 2 quant** — NF4 (bitsandbytes, proven) for v1; benchmark torchao
   NVFP4 at Phase 22.
 

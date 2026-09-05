@@ -23,11 +23,12 @@ new/updated ADR → implement (`CLAUDE.md`).
 | 0008 | Model acquisition: hf-hub + downloads table | PROPOSED | `phase3/06` |
 | 0009 | Persistence: rusqlite + dedicated writer + refinery + blob store | PROPOSED | `phase3/07` |
 | 0010 | Scheduler: priority queue, interactive LLM never preempted | PROPOSED | `phase3/08` |
-| 0011 | Character identity: seed+prompt now, per-character LoRA in background | PROPOSED | `phase3/09` |
+| 0011 | Character identity: prompt-based (reference sheet + canonical caption + seed + gate), no LoRA training | PROPOSED | `phase3/09` |
 | 0012 | Memory FTS5 + discrete relationship stages | PROPOSED | `phase3/10` |
 | 0013 | Subprocess transport: loopback HTTP for servers, stdio for workers | PROPOSED | `phase3/11` |
 | 0014 | Packaging: MSI, embedded CPython + shared venv | PROPOSED | `phase3/12` |
 
 Open items for Phase 4 / owner (not yet ADRs): character-identity quality bar
-(FR-C90 vs per-character-LoRA cost); whether Krea 2 LoRA training is feasible in a
-local trainer; NVFP4-vs-NF4 for Krea 2.
+(FR-C90 scoped to prompt-based v1; owner to confirm the expected image range);
+NVFP4-vs-NF4 for Krea 2 (benchmark at Phase 22); the 3 runnable probes
+(nvml per-process, GGUF header, WDDM).

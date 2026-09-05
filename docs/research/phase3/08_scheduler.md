@@ -12,10 +12,8 @@ One GPU, 16 GB. Consumers:
 - **Image generation** (Tab 2, character-sent) — background, ~11.4 GB spike,
   requires LLM + TTS eviction.
 - **STT / TTS** — small, coexist with the LLM; only evicted for an image job.
-- **Per-character LoRA training** (Phase 27, if chosen) — background, exclusive,
-  minutes-long.
 - **Character generation** (Phase 25/29) — LLM (profile) + image (references),
-  background.
+  background. (No LoRA training — owner ruled it out, ADR-0011.)
 
 Key facts from `05`:
 - LLM ⟂ active image generation. Everything else can share with the LLM.
@@ -36,7 +34,7 @@ Key facts from `05`:
   once.
 
 ### Job model
-`{ id, kind (llm_gen | image_gen | stt | tts | lora_train | char_gen),
+`{ id, kind (llm_gen | image_gen | stt | tts | char_gen),
    priority, resource_estimate, cancel_token, submitted_at }`
 
 ### Priority (starting policy — ADR)
@@ -45,8 +43,7 @@ Key facts from `05`:
 2. **STT / TTS** — coexist, effectively immediate.
 3. **User-initiated image generation** (Tab 2, or a character-sent image the user
    is watching for) — high background.
-4. **Character generation / discovery pool top-up** — low background.
-5. **Per-character LoRA training** — lowest; only when the user is idle.
+4. **Character generation / discovery pool top-up** — low background, idle-only.
 
 Rule: a background GPU job that needs an LLM eviction **waits until no interactive
 LLM generation is in flight**, then evicts, runs (draining the queue of same-kind
@@ -102,8 +99,6 @@ eviction/restore sequence with a WDDM free-memory settle wait.
    where VRAM allows.
 6. **Skip the swap entirely** when the resource manager says the image job fits
    alongside the current (small) LLM — don't evict reflexively.
-7. **LoRA training only on true idle** (no input for N minutes, screen not on a
-   generation view) and checkpoint it so it can be interrupted by any real job.
 
 ## Failure modes
 - Crash during eviction/restore → reconcile to a known GPU state; queued jobs
@@ -112,5 +107,3 @@ eviction/restore sequence with a WDDM free-memory settle wait.
   memory, try restarting the app" (rare; note for Phase 4).
 - Interactive generation submitted repeatedly during a long image job → they
   queue; UI shows "waiting for image generation to finish" rather than spinning.
-- LoRA training job starves forever (user never idle) → a max-defer with a
-  user prompt ("train now? this will pause chat for ~3 min").
