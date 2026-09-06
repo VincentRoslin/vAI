@@ -20,6 +20,9 @@ pub mod server;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod live_tests;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
