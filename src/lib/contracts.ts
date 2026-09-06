@@ -90,6 +90,20 @@ export type { MemoryId } from '../bindings/MemoryId';
 export type { MemoryKind } from '../bindings/MemoryKind';
 export type { Memory } from '../bindings/Memory';
 
+// Image generation (Phase 22, ADR-0006).
+export type { ImageLoraId } from '../bindings/ImageLoraId';
+export type { ImagePresetId } from '../bindings/ImagePresetId';
+export type { GeneratedImageId } from '../bindings/GeneratedImageId';
+export type { ImageRequest } from '../bindings/ImageRequest';
+export type { LoraSelection } from '../bindings/LoraSelection';
+export type { ImageEvent } from '../bindings/ImageEvent';
+export type { ImageProgress } from '../bindings/ImageProgress';
+export type { ImagePhase } from '../bindings/ImagePhase';
+export type { GeneratedImageRow } from '../bindings/GeneratedImageRow';
+export type { ImageLora } from '../bindings/ImageLora';
+export type { ImagePreset } from '../bindings/ImagePreset';
+export type { ImagePresetParams } from '../bindings/ImagePresetParams';
+
 // --- Voice (Phase 18 in, Phase 19 out) ---
 export type { VoiceState } from '../bindings/VoiceState';
 export type { InputDevice } from '../bindings/InputDevice';

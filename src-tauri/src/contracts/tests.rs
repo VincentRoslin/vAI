@@ -12,7 +12,12 @@ use super::conversation::{
 };
 use super::generation::{GenerationEvent, GenerationRequest, SamplingParams, StopReason};
 use super::ids::{
-    AssetId, ConversationId, DownloadId, MessageId, ModelId, ReservationId, TaskId, WorkerJobId,
+    AssetId, ConversationId, DownloadId, GeneratedImageId, ImageLoraId, ImagePresetId, MessageId,
+    ModelId, ReservationId, TaskId, WorkerJobId,
+};
+use super::image::{
+    GeneratedImageRow, ImageEvent, ImageLora, ImagePhase, ImagePreset, ImagePresetParams,
+    ImageProgress, ImageRequest, LoraSelection,
 };
 use super::model::{
     Device, LifecycleStatus, ModelBackend, ModelCapabilities, ModelKind, ModelMetadata, ModelState,
@@ -536,6 +541,188 @@ fn worker_hello_version_mismatch_is_detectable() {
 #[test]
 fn unknown_worker_result_status_is_rejected() {
     assert!(serde_json::from_str::<WorkerResult>(r#"{"status":"Exploded","body":null}"#).is_err());
+}
+
+// ---------------------------------------------------------------- image (P22)
+
+fn valid_image_request() -> ImageRequest {
+    ImageRequest {
+        prompt: "a photo of a lighthouse at dawn".to_owned(),
+        negative: None,
+        width: 1024,
+        height: 1024,
+        steps: None,
+        guidance: None,
+        seed: Some(42),
+        batch_count: 1,
+        loras: vec![],
+    }
+}
+
+#[test]
+fn image_contracts_round_trip() {
+    round_trip(&ImageLoraId::from_trusted("lora-1"));
+    round_trip(&ImagePresetId::from_trusted("preset-1"));
+    round_trip(&GeneratedImageId::from_trusted("img-1"));
+    round_trip(&valid_image_request());
+    round_trip(&ImageRequest {
+        negative: Some("blurry".to_owned()),
+        loras: vec![LoraSelection {
+            id: ImageLoraId::from_trusted("lora-1"),
+            weight: 0.85,
+        }],
+        ..valid_image_request()
+    });
+    let progress = ImageProgress {
+        phase: ImagePhase::Generating,
+        step: 3,
+        total_steps: 8,
+        image_index: 0,
+        batch_count: 2,
+    };
+    round_trip(&progress);
+    let row = GeneratedImageRow {
+        id: GeneratedImageId::from_trusted("img-1"),
+        asset: AssetId::from_trusted("a".repeat(64)),
+        prompt: "a lighthouse".to_owned(),
+        width: 1024,
+        height: 1024,
+        seed: 42,
+        lora: Some("Realism".to_owned()),
+        created_at: "2026-09-06T00:00:00Z".to_owned(),
+    };
+    round_trip(&row);
+    for ev in [
+        ImageEvent::Progress(progress),
+        ImageEvent::Done { images: vec![row] },
+        ImageEvent::Error {
+            error: AppError::WorkerCrashed("sidecar exited".to_owned()),
+        },
+        ImageEvent::Cancelled,
+    ] {
+        round_trip(&ev);
+    }
+    round_trip(&ImageLora {
+        id: ImageLoraId::from_trusted("lora-1"),
+        display_name: "Realism".to_owned(),
+        base_compat: "krea2".to_owned(),
+        default_weight: 0.9,
+        tags: vec!["realism".to_owned()],
+    });
+    round_trip(&ImagePreset {
+        id: ImagePresetId::from_trusted("preset-1"),
+        name: "Portrait".to_owned(),
+        params: ImagePresetParams {
+            width: 928,
+            height: 1232,
+            steps: 8,
+            guidance: 0.0,
+        },
+    });
+}
+
+#[test]
+fn image_event_is_adjacently_tagged() {
+    let json = serde_json::to_string(&ImageEvent::Cancelled).unwrap();
+    assert_eq!(json, r#"{"type":"Cancelled"}"#);
+}
+
+#[test]
+fn image_request_validate_accepts_a_good_request() {
+    valid_image_request().validate().expect("valid");
+}
+
+#[test]
+fn image_request_validate_rejects_bad_input() {
+    let lora = |weight: f32| LoraSelection {
+        id: ImageLoraId::from_trusted("a"),
+        weight,
+    };
+    let cases: Vec<(&str, ImageRequest)> = vec![
+        (
+            "empty prompt",
+            ImageRequest {
+                prompt: "   ".to_owned(),
+                ..valid_image_request()
+            },
+        ),
+        (
+            "non-multiple-of-16 width",
+            ImageRequest {
+                width: 1020,
+                ..valid_image_request()
+            },
+        ),
+        (
+            "width too small",
+            ImageRequest {
+                width: 256,
+                ..valid_image_request()
+            },
+        ),
+        (
+            "height too large",
+            ImageRequest {
+                height: 2048,
+                ..valid_image_request()
+            },
+        ),
+        (
+            "steps 0",
+            ImageRequest {
+                steps: Some(0),
+                ..valid_image_request()
+            },
+        ),
+        (
+            "steps too high",
+            ImageRequest {
+                steps: Some(200),
+                ..valid_image_request()
+            },
+        ),
+        (
+            "guidance negative",
+            ImageRequest {
+                guidance: Some(-1.0),
+                ..valid_image_request()
+            },
+        ),
+        (
+            "batch 0",
+            ImageRequest {
+                batch_count: 0,
+                ..valid_image_request()
+            },
+        ),
+        (
+            "batch too high",
+            ImageRequest {
+                batch_count: 99,
+                ..valid_image_request()
+            },
+        ),
+        (
+            "two loras",
+            ImageRequest {
+                loras: vec![lora(0.5), lora(0.5)],
+                ..valid_image_request()
+            },
+        ),
+        (
+            "lora weight out of range",
+            ImageRequest {
+                loras: vec![lora(1.5)],
+                ..valid_image_request()
+            },
+        ),
+    ];
+    for (label, req) in cases {
+        assert!(
+            matches!(req.validate(), Err(AppError::Validation(_))),
+            "expected {label:?} to be rejected"
+        );
+    }
 }
 
 // ---------------------------------------------------------------- perf probe

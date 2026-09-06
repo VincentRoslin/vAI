@@ -5,7 +5,7 @@ application state, persistence, model lifecycle, resource management, scheduling
 process supervision, and IPC. Single crate, one module per subsystem
 (`docs/decisions/0001-single-rust-crate.md`).
 
-## Current modules (Phase 21)
+## Current modules (Phase 22)
 
 | Module | What | Doc |
 | ------ | ---- | --- |
@@ -13,7 +13,8 @@ process supervision, and IPC. Single crate, one module per subsystem
 | `main.rs` | Thin bin entry | — |
 | `logging/` | Observability — JSON stdout via a non-blocking lossy writer; boundary **secret redaction**; in-memory ring buffer (`recent_lines`); **rotating daily file sink** under `<app_data>/logs/` (Phase 18.5, `enable_file_sink` + `sweep_logs`, same redaction); hot-reloadable filter (`set_level` from config / `LOCALAI_LOG`); `operation()` span helper. No network sink. | `docs/plan/10_observability.md`, `docs/plan/18.5_deploy-diagnostics.md` |
 | `ipc/` | Typed IPC boundary — `commands` (`app_*`, `frontend_log`, `config_*`), `error::{AppError, ErrorEnvelope}` | `docs/decisions/0002-ipc-design.md` |
-| `contracts/` | The serializable vocabulary for **both** the IPC and worker boundaries — `ids`, `task`, `model`, `generation`, `conversation`, `resource`, `worker`. No behaviour. | `docs/contracts.md` |
+| `contracts/` | The serializable vocabulary for **both** the IPC and worker boundaries — `ids`, `task`, `model`, `generation`, `conversation`, `resource`, `worker`, `memory`, `image`. No behaviour. | `docs/contracts.md` |
+| `blob/` | **Content-addressed blob store** (Phase 22, ADR-0009) — `BlobStore` over `<app_data>/blobs/<sha[0:2]>/<sha>`; `put` (sha256 → tmp → fsync → rename, dedupes, **no SQLite** — caller commits the `asset` row after), `get`/`read`/`contains` (64-hex-char confinement), `list_ids`, `reconcile` (orphan blobs vs dangling `asset` rows). First blob feature; voice `Audio{asset}` lands on top later. | `docs/plan/22_image-generation.md`, ADR-0009 |
 | `diag.rs` | Local diagnostics snapshot (Phase 18.5) — `DiagSnapshot` (build + effective config + registry + resources + lifecycle + conversation **metadata** + recent redacted log lines + `nvidia-smi`/OS). `collect()` / `export()` (→ `<app_data>/diagnostics/diag-<ts>.json`). `diag_snapshot` / `diag_export` IPC. All local (ADR-0015). | `docs/plan/18.5_deploy-diagnostics.md` |
 | `config/` | The settings authority — one JSON file (`<app_config_dir>/config.json`), layered defaults ← file ← session, schema **v8** (`models` · `logging` · `resources.vram_safety_margin_mb` · `runtimes.dir` · `workers.{dir,python}` · `voice.{input_device,output_device,end_of_speech_ms}`) + forward migrations, atomic write | `docs/decisions/0016-configuration.md` |
 | `db/` | SQLite persistence — writer pool (1) + reader pool (4), pragma hook, `refinery` forward-only migrations (`migrations/`) with verified `VACUUM INTO` backup, `write`/`read` helpers, `error::DbError`, `AppMetaRepo` | `docs/decisions/0009-persistence.md` |

@@ -9,6 +9,7 @@
 //! registering itself in `src-tauri/README.md` and `ARCHITECTURE.md`.
 
 pub mod acquisition;
+pub mod blob;
 pub mod config;
 pub mod context;
 pub mod contracts;

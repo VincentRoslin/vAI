@@ -139,3 +139,16 @@ id_newtype!(
     /// (`blobs/<sha256[0:2]>/<sha256>`).
     AssetId
 );
+id_newtype!(
+    /// Identifies a realism LoRA in the image-model LoRA registry (Phase 22,
+    /// ADR-0006).
+    ImageLoraId
+);
+id_newtype!(
+    /// Identifies a saved image-generation parameter preset (Phase 22).
+    ImagePresetId
+);
+id_newtype!(
+    /// Identifies one generated image and its provenance row (Phase 22).
+    GeneratedImageId
+);
