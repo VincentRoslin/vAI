@@ -25,12 +25,12 @@
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
 | **Phase**        | 13 — Resource Manager                                   |
-| **Stage**        | 13.1 — (finalize at phase entry)                        |
-| **Status**       | `NOT STARTED`                                           |
+| **Stage**        | 13.1 — Deps + config v4                                 |
+| **Status**       | `IN PROGRESS`                                           |
 | **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/13_resource-manager.md`                      |
+| **Plan doc**     | `docs/plan/13_resource-manager.md` (finalized)          |
 | **Last updated** | 2026-09-06                                              |
-| **Updated by**   | phase-12-acquisition                                    |
+| **Updated by**   | phase-13-resources                                      |
 
 **Architecture frozen (Phase 5).** Binding: `PROJECT.md`, `ARCHITECTURE.md`,
 `AI_PIPELINES.md`, `SECURITY.md`, `PERFORMANCE.md`, `UI_GUIDELINES.md`,
@@ -200,7 +200,7 @@ Gate: pick + download + verify + register a small GGUF; resume interrupted
 download; checksum mismatch rejected; insufficient disk refused pre-download;
 STT+TTS models acquired via same path; picker works read-only-offline.
 
-### Phase 13 — Resource Manager *(current pointer)* — `NOT STARTED` — `docs/plan/13_resource-manager.md`
+### Phase 13 — Resource Manager *(current pointer)* — `IN PROGRESS` (13.1) — `docs/plan/13_resource-manager.md`
 "Can this operation safely use the GPU now?" Lifecycle request → reserve → commit
 → observe → release → reconcile. Mockable hardware. Never file-size == VRAM.
 Gate (mocked): insufficient VRAM → clean failure; duplicate reservation rejected;
@@ -409,6 +409,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 13 `NOT STARTED` | Phase 13 / 13.1 `IN PROGRESS` | phase-13 | Phase entry: `docs/plan/13_resource-manager.md` finalized (11 steps, 9 gate items) against **ADR-0007** (NVML per-process VRAM confirmed unavailable → whole-GPU `{total,used,free}` + our own reservation ledger; closed-form estimate + per-backend EMA calibration; one async `Mutex` serializes `request`/`commit`/`release`/`reconcile`; system-RAM = 2nd constraint) and ADR-0010 (lock ordering). New `src-tauri/src/resources/` (`probe.rs` — `HardwareProbe` trait + `NvmlProbe`/`sysinfo` + `MockProbe`; `estimate.rs`; `mod.rs` — `ResourceManager`; `tests.rs`). `request` reads a cached snapshot (never blocks on NVML); observe loop 1.5 s loaded / 10 s idle. Config schema **v4**: `resources.vram_safety_margin_mb` (default 1500). Deps: `nvml-wrapper 0.10`, `sysinfo` (`system` only). `resources_snapshot` IPC. No new ADR (implements ADR-0007); ledger persistence + full TDR flow deferred to Phase 33. |
 | 2026-09-06 | Phase 12 / 12.1 `IN PROGRESS` | Phase 12 `COMPLETE` (code + offline gates) → Phase 13 / 13.1 `NOT STARTED` | phase-12 | Model acquisition landed: `src-tauri/src/acquisition/` — `gguf` (hand parser), `hf` (search / file-list + header range / fetch), `budget` (pre-transfer guard), `download` (`reqwest` engine: `.part` + `Range` resume + SHA-256 verify + atomic rename + register), `AcquisitionService`, `acquire_fixed` (faster-whisper `large-v3`, `ResembleAI/chatterbox-turbo` — owner-confirmed). `V0003__model_downloads.sql`; config **v3** (`models.min_free_gb`). IPC: `models_list`, `model_delete`, `hf_*`, `download_*`, `downloads_list`, `acquire_fixed`. `/models` picker UI + `Models.test`. **Gates 1–4, 6–9 PASS**: 1/6/8 verified **live** — `Qwen/Qwen2.5-0.5B-Instruct-GGUF` downloaded 491 MB @ 50.6 MB/s, SHA-256 checked against HF's LFS hash, registered with parsed metadata; 2/3/4/6/7 via a mock `Range` server + component test. **Gate 5** (fixed STT/TTS, ~5 GB) deferred → before Phase 18 (§6). The live test surfaced + fixed 3 bugs (LFS hash field `oid` not `sha256`; Windows `\\?\` verbatim paths; `register()` model-dir off-by-one). 153 rust tests (+21). Deps: `reqwest` (0 net crates), `sha2`, `fs4`, `walkdir`, `tiny_http` (dev). Evidence `docs/verification/11_phase12_acquisition.md`. |
 | 2026-09-06 | (no state change) | — | owner-approved | **ADR-0008 amended:** transfer client `hf-hub` → hand-rolled `reqwest` range requests. `hf-hub` 1.0 = +121 transitive crates (incl. `aws-lc-sys` C build + `hf-xet`); `reqwest` = 0 net crates (already in the tree via Tauri) and we need it anyway for the HF search API + GGUF header range. Xet dropped for v1. `docs/decisions/0008` + README updated. |
 | 2026-09-06 | Phase 12 `NOT STARTED` | Phase 12 / 12.1 `IN PROGRESS` | phase-12 | Phase entry: `docs/plan/12_model-acquisition.md` finalized (11 steps). New `acquisition/` module (`hf.rs`, `gguf.rs`, `download.rs`); `V0003__model_downloads.sql`; config **v3** (`models.min_free_gb`). Crates: `reqwest` (`json`/`rustls-tls`/`stream`), `sha2`, `tiny_http` (dev); **hand-written GGUF header parser** (crates immature). Owner: engine tested against a local mock server; gate 1 a small live GGUF (repo confirmed before fetch); fixed models (12.8) `faster-whisper large-v3` CT2 + `Chatterbox Turbo` downloaded live. |
