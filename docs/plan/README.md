@@ -41,7 +41,7 @@ granular, individually-verifiable steps.
 | 17 | `17_conversation-engine.md` | full (finalized at phase entry) |
 | 18 | `18_voice-in.md` | full (finalized at phase entry; split 18.A / 18.B) |
 | 18.5 | `18.5_deploy-diagnostics.md` | full (owner-requested insert; deploy + local probes, pulled forward from P37) |
-| 19 | `19_voice-out.md` | outline |
+| 19 | `19_voice-out.md` | full (finalized at phase entry; split 19.A / 19.B) |
 | 20 | `20_personas.md` | outline |
 | 21 | `21_memory.md` | outline |
 | 22 | `22_image-generation.md` | outline |
