@@ -24,13 +24,16 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 19 — Voice: Chatterbox TTS · playback · barge-in       |
-| **Stage**        | 19.1 — (finalize at phase entry)                        |
-| **Status**       | `NOT STARTED`                                           |
-| **Blocked by**   | _nothing_ — Chatterbox Turbo model acquired (Phase 12 gate 5). |
-| **Plan doc**     | `docs/plan/19_voice-out.md`                             |
+| **Phase**        | 18.5 — Deploy & Diagnostics (pulled forward from P37)   |
+| **Stage**        | 18.5.1 — file log sink (`IN PROGRESS`)                  |
+| **Status**       | `IN PROGRESS`                                           |
+| **Blocked by**   | _nothing_. Owner-requested tooling insert so the real build can be live-tested with local probes. |
+| **Plan doc**     | `docs/plan/18.5_deploy-diagnostics.md`                  |
 | **Last updated** | 2026-09-06                                              |
-| **Updated by**   | phase-18-voice-in                                       |
+| **Updated by**   | phase-18.5-deploy                                       |
+
+**Next:** Phase 19 (Voice: Chatterbox TTS · playback · barge-in) — Chatterbox
+Turbo model already acquired; not blocked.
 
 **Architecture frozen (Phase 5).** Binding: `docs/spec/` (the 7 spec docs —
 `PROJECT`, `ARCHITECTURE`, `AI_PIPELINES`, `SECURITY`, `PERFORMANCE`,
@@ -311,7 +314,19 @@ STT real-time factor within budget. **All 7 pass** — `worker/` (the shared
 supervisor) + `voice/` (`cpal` + Silero-in-core + faster-whisper worker); a live
 capture→transcript gate on the RTX 5080. ADR-0018 (dev `uv` venv). Config v6.
 
-### Phase 19 — Voice: Chatterbox TTS · playback · barge-in *(current pointer)* — `NOT STARTED` — `docs/plan/19_voice-out.md`
+### Phase 18.5 — Deploy & Diagnostics *(current pointer)* — `IN PROGRESS` — `docs/plan/18.5_deploy-diagnostics.md`
+Owner-requested tooling (pulled forward from Phase 37): `scripts/deploy-local.mjs`
+(release build + launch in place), a persistent **rotating JSON-lines file log
+sink** (`<app_data>/logs/`, redacted, swept), a `diag_export` snapshot
+(build / config / registry / resources / lifecycle / recent logs / host facts —
+redacted, no conversation content) + a Settings button, and debug-level UI
+breadcrumbs. All local — the probe is a file the owner shares, never a beacon
+(ADR-0015). Phase 37 still owns the MSI + clean-machine layout.
+Gate: real build launches against the real config; redacted rotating file log;
+sweep bounds growth; `diag_export` writes one JSON file; Settings button works;
+UI breadcrumbs land; check suite green.
+
+### Phase 19 — Voice: Chatterbox TTS · playback · barge-in — `NOT STARTED` — `docs/plan/19_voice-out.md`
 Assistant text → chunked TTS → playback; user speech or cancel stops LLM + TTS +
 playback fast; interrupted turn persisted as truncated.
 Gate: text → TTS → playback end to end; barge-in stops everything < ~200 ms and
@@ -476,6 +491,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 19 / 19.1 `NOT STARTED` | Phase 18.5 / 18.5.1 `IN PROGRESS` (insert before 19) | phase-18.5 | **Owner-requested insert.** After live-testing chat + voice by hand, the owner asked for a repeatable way to run the *real* (release) build with the real settings, plus **local** probes the agent can read after a session it did not watch. New `docs/plan/18.5_deploy-diagnostics.md`. Pulls forward the "log file / rotation / diagnostics bundle" work that `docs/decisions/README.md` had earmarked for **Phase 37** — Phase 37 still owns the MSI, embedded CPython, sibling layout, first-run acquisition, code signing, and a *portable* archive. Scope: (1) `scripts/deploy-local.mjs` — `npm run build` + `cargo build --release` + launch in place, prints build SHA + log/diag paths; (2) `logging::enable_file_sink` — rotating daily JSON-lines under `<app_data>/logs/`, reuses `RedactWriter`, startup sweep (keep 7 / ~50 MB); (3) `diag_export` — one JSON file (`<app_data>/diagnostics/diag-<ts>.json`) with build / effective config (redacted) / registry / resource snapshot / lifecycle / recent log lines / host facts (`nvidia-smi`, OS) — **no conversation content**; a Settings button triggers it; (4) `build.rs` git-SHA env; (5) debug-level UI breadcrumbs via the existing `frontend_log` bridge. **No new ADR** — implements the frozen logging + Phase-37-bundle policy; ADR-0015 already forbids any network path (the probe is a file the owner chooses to share). |
 | 2026-09-06 | Phase 18 / 18.A.1 `IN PROGRESS` | Phase 18 `COMPLETE` → Phase 19 / 19.1 `NOT STARTED` | phase-18 | **Voice-in landed.** New `src/job.rs` (`JobObject` promoted out of `llm/`). New `src-tauri/src/worker/` — the shared stdio JSON-lines supervisor (Job Object + ADR-0015 env in `env.rs` + `WorkerHello` version/kind check + `WorkerJobId` req/resp mux + `Progress` sink + cancel-abandons-wait + bounded-backoff restart → `Failed`; `layout.rs` resolves interpreter/script dev-vs-ship; `with_env` for per-worker vars). New `src-tauri/src/voice/` — `capture` (`cpal`/WASAPI on a parked thread), `resample` (`rubato` → 16 kHz mono + downmix), `vad` (Silero v5 ONNX via `ort` load-dynamic; 512-sample windows + carried LSTM state; `SpeechStart/SpeechEnd/MaxDurationCut` FSM; `force_endpoint` for PTT release), `segment` (endpointed `s16le` WAV under the cache dir), `mod` (`VoiceInput` — one PTT session; capture→VAD→segment→STT worker→`add_user_turn(Text)`; low-confidence drop policy — empty / `no_speech_prob>0.6` / `avg_logprob<-1.0` → no turn; `watch<VoiceState>`). `workers/stt.py` (faster-whisper `large-v3` fp16 CUDA; ADR-0015 env asserted; CUDA-12/cuDNN-9 DLL path primed) + `workers/stt_fake.py` (stdlib, for CI). **ADR-0018** — dev `uv` venv at `<repo>/.venv` from a pinned `workers/requirements.txt` (`scripts/setup-venv.mjs`; gitignored ~2.2 GB). `models/vad/silero_vad.onnx` (snakers4 v5.1.2, sha `2623a295…`, gitignored). Config schema **v6** — `workers.{dir,python}` + `voice.input_device`; `ConfigKey` → 9. IPC: `voice_input_devices` / `voice_start`(Channel<VoiceState>) / `voice_stop` / `voice_state` + `chat_generate` (reply over existing history — post-voice-turn); `ChatVoice.tsx` hold-to-talk mic + `VoiceState` indicator + auto-reply. Deps: `cpal 0.15`, `rubato 0.15`, `hound 3.5`, `ort 2.0-rc` (load-dynamic). **All 7 gate items PASS** — 25 unit tests (real Silero VAD against a SAPI-synthesised WAV fixture + stdlib fake worker, no venv/GPU) + `voice::live_tests` (`#[ignore]`, `LOCALAI_RUN_VOICE_LIVE`) on the RTX 5080: recorded WAV → real capture → real VAD endpoint → real `stt.py` → "Hello local AI, this is a voice input test." → one `Text` user turn; 7.9 s audio / 3.36 s wall incl. ~2.2 s model load; RTF ≪ 1.0. 251 rust tests, 10 vitest, check suite green. Owner cleared both downloads ("Download fresh versions"). Voice turns persist `Text` in v1 (→ `Audio{asset,transcript}` when the blob store lands; additive, no migration). Evidence `docs/verification/17_phase18_voice-in.md`. |
 | 2026-09-06 | Phase 18 `NOT STARTED` | Phase 18 / 18.A.1 `IN PROGRESS` (split 18.A / 18.B) | phase-18 | Phase entry: `docs/plan/18_voice-in.md` finalized. Open ADR questions resolved from ADR-0005 — **batch per VAD segment** (no streaming partials in v1), **push-to-talk** (open-mic deferred). **Split** (precedent: Phase 15): **18.A** = the Rust half — new `src-tauri/src/worker/` (the shared stdio JSON-lines supervisor actor per ADR-0013: Job Object, `WorkerHello` version check, `WorkerJobId` req/resp map, ADR-0015 hostile-network env centralised, bounded restart) + new `src-tauri/src/voice/` (`cpal` 16 kHz capture, `AudioRing`, Silero VAD via `ort`, segment assembly, `VoiceInput` orchestration → `ConversationEngine::add_user_turn(Text)`), config **v6** (`voice.*`, `workers.{dir,python}`), voice IPC + `ChatVoice.tsx` push-to-talk — all verifiable now against `workers/stt_fake.py` (stdlib). **18.B** = the real `workers/stt.py` (faster-whisper `large-v3` fp16) + the live capture→transcript gate on the RTX 5080 — **blocked** on a dev `uv` venv (**ADR-0018**, drafted 18.A.7) and owner go-ahead for ~1 GB of `nvidia-cudnn/cublas-cu12` wheels. Also needs `silero_vad.onnx` (~2 MB). Voice turns persist `Text` in v1 (→ `Audio{asset,transcript}` when the blob store lands; additive). |
 | 2026-09-06 | Phase 12 gate 5 `NOT EXECUTED` (deferred) | Phase 12 gate 5 `DONE` — Phase 18 unblocked | phase-12-gate5 | Owner go-ahead "Download fresh versions" (keep in-project, short folders). `acquire_fixed` updated: fixed bundles land in a short `dir` (`stt` / `tts`) under the model dir instead of the sanitized repo name. New `#[ignore]`d live test `live_acquire_fixed_models`: pulled `Systran/faster-whisper-large-v3` (5 files, 2.9 GB, 28.1 s) → `models\stt\model.bin` and `ResembleAI/chatterbox-turbo` (11 files, 3.8 GB, 38.3 s) → `models\tts\t3_turbo_v1.safetensors`, both registered (`Stt` / `Tts`, `Ready`, path confined). In-project, gitignored. Same multi-file engine as gate 1. **Phase 12 now all 9 gates pass.** 233 rust tests, check suite green. Evidence `docs/verification/11_phase12_acquisition.md` gate row 5. |
@@ -552,8 +568,20 @@ _None blocking._
 ## 7. Decisions & open items
 
 **The architecture is frozen (Phase 5, 2026-09-05).** The binding record is
-`docs/spec/` (the 7 spec docs) + `docs/decisions/` (ADR-0001…0017, all
+`docs/spec/` (the 7 spec docs) + `docs/decisions/` (ADR-0001…0018, all
 `ACCEPTED`). Changes need STOP → propose → approve → ADR.
+
+### Course inserts (owner-approved, additive — not architectural)
+
+- **Phase 15.D** — 15 split; a pinned prebuilt `llama-server` for v1 (ADR-0004
+  amended). Done.
+- **Phase 18** split into **18.A / 18.B**. Done.
+- **Phase 18.5 — Deploy & Diagnostics** (2026-09-06, owner-requested). A
+  repeatable real-build launch + **local** probes (rotating file log, a
+  `diag_export` JSON snapshot, UI breadcrumbs) so the owner can live-test on their
+  own time and hand the agent the results. Pulls the log-file / bundle work
+  forward from **Phase 37**, which still owns the MSI + clean-machine layout + a
+  portable archive. No new ADR (ADR-0015 already forbids the network path).
 
 ### Resolved (was O1–O7)
 
