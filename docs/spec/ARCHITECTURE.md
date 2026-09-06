@@ -160,6 +160,8 @@ loopback only, launched with the offline/no-telemetry env (ADR-0015).
 | Persona data (`persona` table) | `context::persona` (`PersonaRepo`) |
 | Memory (`memory` + `memory_fts`; extraction + retrieval) | `memory` module (`MemoryService`; FTS5 BM25, per-Persona scope — ADR-0012) |
 | Relationship state | `character` module (DB row is truth) |
+| Image generation (Krea 2 Turbo) | `image` module — `Krea2Backend` / `Krea2Server` (supervised sidecar, ADR-0013/0019) + `ImageRepo` (LoRA + preset registries) + `ImageOrchestrator` (manual evict/restore until Phase 23) |
+| Blob storage (`app_data/blobs/<sha[0:2]>/<sha>`, `asset` table) | `blob` module (`BlobStore`; write-order per ADR-0009; live from Phase 22) |
 | Executing AI-proposed effects | Rust, via allow-listed typed actions only |
 
 No component may duplicate another's authority. The Phase 36 audit enforces this.

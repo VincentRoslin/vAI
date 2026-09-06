@@ -341,6 +341,13 @@ Record on the RTX 5080 (16 GB, 32 GB RAM):
 
 ### 22.A — Blob store + contracts + Rust `image` module against the fake sidecar
 
+**Status: `COMPLETE` 2026-09-06** (commits `86aa50b` · `439d4dc` · `9e91fb6` ·
+`2d962bf` · `a4d4162` · `0ab87cb`). All 9 steps landed; check suite green
+(373 rust tests, 23 vitest). One deviation from the outline, all improvements:
+binary exchange is by **path in a Rust-dictated `out_dir`** (Article I, no
+base64) rather than inline bytes; `Model::availability()` now checks
+`path.exists()` (a diffusers model is a directory); ADR-0019 drafted `PROPOSED`.
+
 *All verifiable now — no GPU, no models, no venv.*
 
 1. **`blob/` module + `V0007` migration (asset table only first).**
