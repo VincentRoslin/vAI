@@ -14,8 +14,8 @@ use super::ids::{
     AssetId, ConversationId, DownloadId, MessageId, ModelId, ReservationId, TaskId, WorkerJobId,
 };
 use super::model::{
-    Device, ModelBackend, ModelCapabilities, ModelKind, ModelMetadata, ModelState, Quant,
-    RegisteredModel, RegistryAvailability,
+    Device, LifecycleStatus, ModelBackend, ModelCapabilities, ModelKind, ModelMetadata, ModelState,
+    Quant, RegisteredModel, RegistryAvailability,
 };
 use super::resource::{
     GpuMemory, RamInfo, Reservation, ReservationState, ResourceKind, ResourceSnapshot,
@@ -191,6 +191,7 @@ fn model_contracts_round_trip() {
         ModelState::Unloaded,
         ModelState::Loading,
         ModelState::Loaded,
+        ModelState::Busy,
         ModelState::Failed,
         ModelState::Unloading,
     ] {
@@ -232,6 +233,19 @@ fn model_contracts_round_trip() {
         path: "C:/models/x.gguf".into(),
         availability: RegistryAvailability::Ready,
         devices: vec![Device::Cuda, Device::Cpu],
+    });
+
+    round_trip(&LifecycleStatus {
+        id: model_id(),
+        state: ModelState::Busy,
+        vram_mb: Some(7_100),
+        error: None,
+    });
+    round_trip(&LifecycleStatus {
+        id: model_id(),
+        state: ModelState::Failed,
+        vram_mb: None,
+        error: Some("backend exited".into()),
     });
 }
 

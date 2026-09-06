@@ -24,11 +24,11 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 14 — Model Lifecycle Manager                            |
-| **Stage**        | 14.1 — Contract: `ModelState::Busy`                     |
-| **Status**       | `IN PROGRESS`                                           |
+| **Phase**        | 15 — llama.cpp Adapter                                  |
+| **Stage**        | 15.1 — (finalize at phase entry)                        |
+| **Status**       | `NOT STARTED`                                           |
 | **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/14_model-lifecycle.md` (finalized)           |
+| **Plan doc**     | `docs/plan/15_llama-cpp-adapter.md`                     |
 | **Last updated** | 2026-09-06                                              |
 | **Updated by**   | phase-14-lifecycle                                      |
 
@@ -57,6 +57,13 @@ reservation ledger, `request`/`commit`/`observe`/`release`/`reconcile` behind on
 async `Mutex`; `request` never blocks on the driver. Config schema **v4**
 (`resources.vram_safety_margin_mb`). Real probe confirmed on the reference
 machine (16 303 MB VRAM, 31 938 MB RAM).
+**Phase 14 done** — model lifecycle manager (`lifecycle/` module, ADR-0007/0010,
+`docs/verification/13_phase14_lifecycle.md`). `ModelBackend`/`LoadedInstance`
+traits + `FakeBackend`; state machine `Unloaded→Loading→Loaded⇄Busy→Unloading` +
+`Failed` recovery behind one async `Mutex`; concurrent loads coalesce; Phase 13
+reservation held across the load, released on every exit; bounded retry; ~2 s
+liveness monitor. `ModelState::Busy` added additively. No real backend yet —
+Phase 15.
 
 **Completed:** Phase 0–2 · Product Definition · Phase 3 (research + ADRs + probes)
 · Phase 4 (adversarial review, `03_adversarial_review.md`) · **Phase 5**
@@ -214,14 +221,15 @@ Gate (mocked): insufficient VRAM → clean failure; duplicate reservation reject
 concurrent serialized; failed/cancelled load releases; stale reservation
 recovered; crash → reconcile vs observed. **All 9 gate items pass.**
 
-### Phase 14 — Model Lifecycle Manager *(current pointer)* — `IN PROGRESS` (14.1) — `docs/plan/14_model-lifecycle.md`
+### Phase 14 — Model Lifecycle Manager — `COMPLETE` — `docs/verification/13_phase14_lifecycle.md`
 The only component that loads/unloads managed models. Explicit state machine +
 failure/recovery states. No duplicate loads; failed/cancelled loads release.
 Gate: load; concurrent same-model load not duplicated; unload; load under
 insufficient resources rejected pre-spawn; cancel mid-load releases; forced
 failure → recovery; unexpected exit detected + reconciled; state-machine tests.
+**All 9 gate items pass** (`FakeBackend`; real backend is Phase 15).
 
-### Phase 15 — llama.cpp Adapter — `NOT STARTED` — `docs/plan/15_llama-cpp-adapter.md`
+### Phase 15 — llama.cpp Adapter *(current pointer)* — `NOT STARTED` — `docs/plan/15_llama-cpp-adapter.md`
 First LLM backend behind a clean `LlmBackend` interface; llama.cpp detail confined
 to the adapter; transport per the Phase 3 ADR.
 Gate: startup + readiness; non-streaming + streaming generation; cancellation
@@ -416,6 +424,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 14 / 14.1 `IN PROGRESS` | Phase 14 `COMPLETE` → Phase 15 / 15.1 `NOT STARTED` | phase-14 | Model lifecycle manager landed: `src-tauri/src/lifecycle/` — `backend` (`ModelBackend`/`LoadedInstance` traits via `async-trait`; `FakeBackend` test-only), `mod` (`LifecycleManager`: `HashMap<ModelId, Entry>` behind one `tokio::sync::Mutex`; `load`/`unload`/`cancel_load`/`begin_use`→`BusyGuard`/`end_use`/`check_liveness`/`state`/`statuses`/`register_backend`). State machine `Unloaded→Loading→Loaded⇄Busy→Unloading`, `Failed` with an explicit recovery transition. Concurrent same-model `load`s coalesce on a `Notify` (`enable()`d under the lock). Phase 13 reservation acquired inside `run_load` **before** the backend load, `commit`ed with the instance's measured VRAM, `release`d on every failure / cancel / unload / liveness kill. `RetryPolicy { max_attempts: 3, backoff_base: 500 ms }` exponential; `Cancelled` is not a failure. `~2 s` liveness loop → `Failed` + release + reconcile. Backend `load`/`shutdown`/`health` never called under the transition lock. **Collision resolved:** `ModelState::Busy` added additively to the frozen contract (`docs/contracts.md` §3 precedent). New DTO `LifecycleStatus`; `lifecycle_status` IPC. `lib.rs` builds + manages `Arc<LifecycleManager>`, spawns the liveness loop. Deps: `async-trait` + `tokio-util` promoted to direct deps (already transitive — 0 net crates). **All 9 gate items PASS** (15 async tests, `FakeBackend` + `MockProbe`). 196 rust tests (+16), 7 vitest, check suite green. `tauri dev` clean. No real backend (Phase 15), no eviction/hot-swap (Phase 23/24), no generation. No new ADR. Evidence `docs/verification/13_phase14_lifecycle.md`. |
 | 2026-09-06 | Phase 14 `NOT STARTED` | Phase 14 / 14.1 `IN PROGRESS` | phase-14 | Phase entry: `docs/plan/14_model-lifecycle.md` finalized (13 steps, 9 gate items) against ADR-0007 + ADR-0010. New `src-tauri/src/lifecycle/` — `ModelBackend` / `LoadedInstance` traits (`async-trait`; `FakeBackend` test-only), `LifecycleManager` state machine (`Unloaded → Loading → Loaded ⇄ Busy → Unloading`, `Failed` recovery) behind one `tokio::sync::Mutex`; concurrent same-model loads coalesce on a `Notify`; reservation from Phase 13 acquired **before** the backend load, released on every exit path; `RetryPolicy { max_attempts: 3, backoff_base: 500 ms }`; a ~2 s liveness monitor → `Failed` + release + reconcile. **Collision flagged + resolved:** the state machine needs a `Busy` state the frozen `contracts::model::ModelState` lacks → **added additively** (`docs/contracts.md` additive-only; nothing matches it exhaustively). Deps: `async-trait`, `tokio-util` as direct deps (both already in the tree — 0 net crates). No real backend (Phase 15), no eviction/hot-swap (Phase 23/24), no generation. No new ADR. |
 | 2026-09-06 | Phase 13 / 13.1 `IN PROGRESS` | Phase 13 `COMPLETE` → Phase 14 / 14.1 `NOT STARTED` | phase-13 | Resource manager landed: `src-tauri/src/resources/` — `probe` (`HardwareProbe` trait; `NvmlProbe` = `nvml-wrapper` GPU 0 `memory_info` + `sysinfo` RAM, NVML init failure non-fatal; `MockProbe`), `estimate` (`estimate_llm_vram` closed form + `Calibration` per-model EMA factor, clamped), `mod` (`ResourceManager`: in-memory `LedgerEntry` vec; `request`/`commit`/`release`/`observe`/`snapshot`/`reconcile` behind one `tokio::sync::Mutex<Inner>`; `request` reads the cached measurement, never the probe; stale-TTL 120 s, drift-slack 512 MB). Config schema **v4**: `resources.vram_safety_margin_mb` (default 1500, `ConfigKey::VramSafetyMarginMb`, session override, `<= 65536`). Contracts (additive): `GpuMemory`, `RamInfo`, `ResourceSnapshot`. IPC `resources_snapshot`. `lib.rs` builds it over `NvmlProbe`, takes the first measurement, spawns the observe loop (1.5 s busy / 10 s idle). Deps: `nvml-wrapper 0.10`, `sysinfo 0.39` (`system` only). **All 9 gate items PASS** (mock hardware) + real probe confirmed on the reference machine (16 303 MB VRAM / 31 938 MB RAM) and in a `tauri dev` launch. 180 rust tests (+27), 7 vitest. Baselines: `request` ~µs, first NVML+`sysinfo` probe ~13 ms (off the request path). No new ADR (implements ADR-0007); ledger persistence + full TDR flow deferred to Phase 33. Evidence `docs/verification/12_phase13_resources.md`. |
 | 2026-09-06 | Phase 13 `NOT STARTED` | Phase 13 / 13.1 `IN PROGRESS` | phase-13 | Phase entry: `docs/plan/13_resource-manager.md` finalized (11 steps, 9 gate items) against **ADR-0007** (NVML per-process VRAM confirmed unavailable → whole-GPU `{total,used,free}` + our own reservation ledger; closed-form estimate + per-backend EMA calibration; one async `Mutex` serializes `request`/`commit`/`release`/`reconcile`; system-RAM = 2nd constraint) and ADR-0010 (lock ordering). New `src-tauri/src/resources/` (`probe.rs` — `HardwareProbe` trait + `NvmlProbe`/`sysinfo` + `MockProbe`; `estimate.rs`; `mod.rs` — `ResourceManager`; `tests.rs`). `request` reads a cached snapshot (never blocks on NVML); observe loop 1.5 s loaded / 10 s idle. Config schema **v4**: `resources.vram_safety_margin_mb` (default 1500). Deps: `nvml-wrapper 0.10`, `sysinfo` (`system` only). `resources_snapshot` IPC. No new ADR (implements ADR-0007); ledger persistence + full TDR flow deferred to Phase 33. |

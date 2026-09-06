@@ -1,8 +1,9 @@
 # Phase 14 — Model Lifecycle Manager
 
-> **Status: IN PROGRESS** — step detail finalized at phase entry (2026-09-06)
-> against the frozen architecture (ADR-0007, ADR-0010, ADR-0013) +
-> `docs/verification/12_phase13_resources.md`.
+> **Status: COMPLETE** (2026-09-06) — all 9 gate items pass;
+> evidence `docs/verification/13_phase14_lifecycle.md`.
+> Step detail was finalized at phase entry against the frozen architecture
+> (ADR-0007, ADR-0010) + `docs/verification/12_phase13_resources.md`.
 
 > **Architecture frozen at Phase 5** (`PROJECT.md`, `ARCHITECTURE.md`, `AI_PIPELINES.md`, ADR-0001..0017). The design below is settled. Concrete implementation specifics (exact modules, crate APIs, filenames) are filled in at phase entry against the frozen ADRs — they do not change the design.
 

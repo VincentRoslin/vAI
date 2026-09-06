@@ -4,4 +4,4 @@
  * Runtime state of a model in the lifecycle manager (Phase 14). Terminal only
  * in the sense that `Failed` needs an explicit recovery transition.
  */
-export type ModelState = "Unloaded" | "Loading" | "Loaded" | "Failed" | "Unloading";
+export type ModelState = "Unloaded" | "Loading" | "Loaded" | "Busy" | "Failed" | "Unloading";

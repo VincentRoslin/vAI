@@ -17,6 +17,7 @@ numbered file per verification event.
 | 10 | `10_phase11_registry.md` | Phase 11 — model registry: `models/` module, `model_entry` table, CRUD + capability query, path confinement, computed availability, UUIDv4 ids |
 | 11 | `11_phase12_acquisition.md` | Phase 12 — model acquisition: `acquisition/` module, reqwest download engine (resume/verify/register), budget guard, GGUF header parser, `/models` picker; gates 1/6/8 verified **live** (real Qwen 0.5B GGUF, 50.6 MB/s, HF SHA-256); gate 5 (fixed STT/TTS, ~5 GB) deferred → before Phase 18 |
 | 12 | `12_phase13_resources.md` | Phase 13 — resource manager: `resources/` module (`HardwareProbe` NVML/`sysinfo`/mock, closed-form VRAM estimate + EMA calibration, reservation ledger, `request`/`commit`/`observe`/`release`/`reconcile` behind one async `Mutex`); config schema v4 (`vram_safety_margin_mb`); all 9 gate items mock-verified + real probe confirmed |
+| 13 | `13_phase14_lifecycle.md` | Phase 14 — model lifecycle manager: `lifecycle/` module (`ModelBackend`/`LoadedInstance` traits + `FakeBackend`; state machine `Unloaded→Loading→Loaded⇄Busy→Unloading` + `Failed` recovery behind one async `Mutex`; coalesced loads; Phase 13 reservation held across the load; bounded retry; ~2 s liveness monitor). `ModelState::Busy` added additively. All 9 gate items pass (15 tests, fake backend) |
 
 Later phases add their gate evidence here (the performance/offline/fault/security/
 dependency/maintainability audits, etc.).

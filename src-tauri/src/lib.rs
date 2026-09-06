@@ -13,6 +13,7 @@ pub mod config;
 pub mod contracts;
 pub mod db;
 pub mod ipc;
+pub mod lifecycle;
 pub mod logging;
 pub mod models;
 pub mod resources;
@@ -86,12 +87,12 @@ pub fn run() {
                 tracing::info!(reconciled, "paused interrupted downloads from a prior run");
             }
             app.manage(acquisition);
-            app.manage(registry);
+            app.manage(Arc::clone(&registry));
             app.manage(database);
 
-            app.manage(start_resource_manager(
-                effective.resources.vram_safety_margin_mb,
-            ));
+            let resources = start_resource_manager(effective.resources.vram_safety_margin_mb);
+            app.manage(Arc::clone(&resources));
+            app.manage(start_lifecycle_manager(Arc::clone(&registry), resources));
 
             Ok(())
         })
@@ -113,6 +114,7 @@ pub fn run() {
             ipc::commands::downloads_list,
             ipc::commands::acquire_fixed,
             ipc::commands::resources_snapshot,
+            ipc::commands::lifecycle_status,
         ])
         .build(tauri::generate_context!())
         .expect("error while building LocalAI");
@@ -161,5 +163,35 @@ async fn observe_loop(manager: Arc<resources::ResourceManager>) {
             manager.reconcile().await;
         }
         tokio::time::sleep(if idle { IDLE } else { BUSY }).await;
+    }
+}
+
+/// Build the model lifecycle manager (Phase 14): the only loader/unloader of
+/// managed models. No backends are registered yet — Phase 15 (the llama.cpp
+/// adapter) registers the first. Spawns the liveness monitor.
+fn start_lifecycle_manager(
+    registry: Arc<models::ModelRegistry>,
+    resources: Arc<resources::ResourceManager>,
+) -> Arc<lifecycle::LifecycleManager> {
+    let manager = Arc::new(lifecycle::LifecycleManager::new(
+        registry,
+        resources,
+        lifecycle::RetryPolicy::default(),
+    ));
+    let handle = Arc::clone(&manager);
+    tauri::async_runtime::spawn(async move { liveness_loop(handle).await });
+    manager
+}
+
+/// Health-check every loaded model every ~2 s; a dead backend is moved to
+/// `Failed` and its reservation released (Phase 14).
+async fn liveness_loop(manager: Arc<lifecycle::LifecycleManager>) {
+    const INTERVAL: Duration = Duration::from_secs(2);
+    loop {
+        let failed = manager.check_liveness().await;
+        if failed > 0 {
+            tracing::warn!(failed, "liveness monitor moved models to Failed");
+        }
+        tokio::time::sleep(INTERVAL).await;
     }
 }

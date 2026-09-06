@@ -101,6 +101,9 @@ pub enum ModelState {
     Loading,
     /// Ready to serve requests.
     Loaded,
+    /// Loaded **and** currently serving a generation — cannot be unloaded until
+    /// it returns to `Loaded` (Phase 14).
+    Busy,
     /// A load or a running backend failed; needs recovery.
     Failed,
     /// Being released from memory.
@@ -117,6 +120,21 @@ pub enum RegistryAvailability {
     Ready,
     /// The registry row is intact but the file is gone.
     Missing,
+}
+
+/// One row of the lifecycle manager's runtime view (Phase 14): a model it is
+/// tracking, its [`ModelState`], and — once loaded — its measured VRAM.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct LifecycleStatus {
+    /// The model.
+    pub id: ModelId,
+    /// Its runtime state.
+    pub state: ModelState,
+    /// Measured VRAM footprint in MB, when loaded and the backend reports it.
+    pub vram_mb: Option<u32>,
+    /// The last error string, when `state` is `Failed`.
+    pub error: Option<String>,
 }
 
 /// A compute device a model can run on.

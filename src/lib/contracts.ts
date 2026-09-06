@@ -46,6 +46,7 @@ export type { ModelState } from '../bindings/ModelState';
 export type { RegisteredModel } from '../bindings/RegisteredModel';
 export type { RegistryAvailability } from '../bindings/RegistryAvailability';
 export type { Device } from '../bindings/Device';
+export type { LifecycleStatus } from '../bindings/LifecycleStatus';
 
 // Acquisition (HF picker + downloads, Phase 12).
 export type { HfModelSummary } from '../bindings/HfModelSummary';

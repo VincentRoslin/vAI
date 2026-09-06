@@ -30,6 +30,7 @@ never depends on a domain module, and holds no behaviour.
 | `contracts::generation` | `SamplingParams` · `GenerationRequest` · `StopReason` · `GenerationEvent` | LLM request + the per-request streaming event (`TokenDelta` / `Done` / `Error` / `Cancelled`), adjacently tagged. `SamplingParams::validate()` range-checks temperature / top_p / max_tokens. |
 | `contracts::conversation` | `Role` · `MessageContent` · `GenerationMeta` · `Message` · `ConversationKind` · `Conversation` | One shape for the Persona tab and the Character tab. `MessageContent` is adjacently tagged (`Text` / `Audio` / `Image`). Timestamps are RFC-3339 **strings** — the contract carries no date library. |
 | `contracts::resource` | `ResourceKind` · `ReservationState` · `Reservation` · `GpuMemory` · `RamInfo` · `ResourceSnapshot` | A resource-ledger entry plus the resource-manager snapshot: whole-GPU / RAM measurement (`Option` — `None` when the probe is unavailable) + outstanding reservation totals (Phase 13, ADR-0007). |
+| `contracts::model` (lifecycle) | `ModelState` (`+ Busy`, Phase 14 — added additively) · `LifecycleStatus` | Runtime state of a model in the lifecycle manager + a per-model status row (`id`, `state`, measured `vram_mb`, last `error`). |
 | `contracts::acquisition` | `HfModelSummary` · `HfGgufFile` · `DownloadState` · `DownloadInfo` · `DownloadProgress` | HF search results, GGUF file listings, and download queue / progress state (Phase 12). `DownloadProgress` is the per-download Tauri Channel payload. |
 | `contracts::worker` | `WorkerKind` · `WorkerHello` · `WorkerRequest` · `WorkerResult` · `WorkerResponse` | The JSON-lines envelope every worker speaks. `payload` / `Ok.data` bodies are `serde_json::Value` — their schema belongs to each worker's own phase (STT 18, TTS 19, embedder 27). `WorkerResult` is adjacently tagged (`Ok` / `Err` / `Progress`). |
 
@@ -68,6 +69,9 @@ change meaning once shipped.
    Data-carrying contract enums (`GenerationEvent`, `MessageContent`,
    `WorkerResult`, …) are matched exhaustively on purpose — adding a variant is a
    deliberate breaking change that the compiler flags at every call site.
+   *Precedent:* `ModelState::Busy` was added at Phase 14 — a simple state enum
+   the frozen contract had reserved for "Phase 14"; nothing matched it
+   exhaustively, the TS union just grew, no version bump.
 4. **Removing / renaming anything** → not allowed without a migration and a
    version bump.
 5. **Worker envelope change** → bump `WORKER_PROTOCOL_VERSION`; the supervisor

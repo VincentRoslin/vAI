@@ -14,6 +14,7 @@ const arrayCommands = new Set([
   'downloads_list',
   'hf_search',
   'hf_list_files',
+  'lifecycle_status',
 ]);
 
 vi.mock('@tauri-apps/api/core', () => ({

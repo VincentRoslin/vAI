@@ -20,6 +20,7 @@ import type { FrontendLog } from '../bindings/FrontendLog';
 import type { HfGgufFile } from '../bindings/HfGgufFile';
 import type { HfModelSummary } from '../bindings/HfModelSummary';
 import type { Pong } from '../bindings/Pong';
+import type { LifecycleStatus } from '../bindings/LifecycleStatus';
 import type { RegisteredModel } from '../bindings/RegisteredModel';
 import type { ResourceSnapshot } from '../bindings/ResourceSnapshot';
 
@@ -131,3 +132,8 @@ export const acquireFixed = (which: FixedModelKind): Promise<string[]> =>
 
 /** The resource manager's current view: GPU / RAM measurement + reservations. */
 export const resourcesSnapshot = (): Promise<ResourceSnapshot> => call('resources_snapshot');
+
+// ---------------------------------------------------------------- lifecycle
+
+/** Every model the lifecycle manager is tracking, with its runtime state. */
+export const lifecycleStatus = (): Promise<LifecycleStatus[]> => call('lifecycle_status');

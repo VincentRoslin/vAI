@@ -50,9 +50,9 @@ blob store, model lifecycle, resource/VRAM/RAM management, scheduling, task
 management, process supervision, IPC, security-sensitive operations, business
 logic. Single crate (`src-tauri/`); modules interact through defined interfaces.
 
-Modules (see `src-tauri/README.md` for the live list): **as of Phase 13** —
-`lib.rs` (Tauri builder + config/DB/logging/registry/acquisition/resources wiring
-in `setup()`, WAL checkpoint on exit), `logging` (JSON stdout, non-blocking lossy, boundary secret
+Modules (see `src-tauri/README.md` for the live list): **as of Phase 14** —
+`lib.rs` (Tauri builder + config/DB/logging/registry/acquisition/resources/lifecycle
+wiring in `setup()`, WAL checkpoint on exit), `logging` (JSON stdout, non-blocking lossy, boundary secret
 redaction, ring buffer, config-driven reloadable level — no network sink), `ipc`
 (`commands`, `error::{AppError, ErrorEnvelope}`), `contracts` (the serializable
 vocabulary for the IPC **and** worker boundaries — `docs/contracts.md`; no
@@ -66,8 +66,13 @@ guard + auto-register; **the only runtime network egress**; ADR-0008),
 `resources` (the resource manager — `HardwareProbe` trait over NVML whole-GPU +
 `sysinfo` RAM, mockable; in-memory reservation ledger; closed-form VRAM estimate
 + learned calibration; `request`/`commit`/`observe`/`release`/`reconcile` behind
-one async `Mutex`; `request` never blocks on the driver; ADR-0007). Each later
-phase adds its module and registers it in `src-tauri/README.md` and §3 here.
+one async `Mutex`; `request` never blocks on the driver; ADR-0007),
+`lifecycle` (the model lifecycle manager — the only loader/unloader of managed
+models; `ModelBackend` trait, state machine `Unloaded → Loading → Loaded ⇄ Busy
+→ Unloading` + `Failed` recovery behind one async `Mutex`; coalesced concurrent
+loads; a Phase 13 reservation held across the load and released on every exit
+path; bounded retry; a ~2 s liveness monitor). Each later phase adds its module
+and registers it in `src-tauri/README.md` and §3 here.
 
 ### React / TypeScript — presentation only
 Owns: rendering, UI, interaction, transient view state. Never accesses SQLite, AI
@@ -98,7 +103,7 @@ loopback only, launched with the offline/no-telemetry env (ADR-0015).
 | Blob storage | `blob store` module |
 | Filesystem | Rust core (path-confined) |
 | Configuration | `config` module |
-| Model load / unload | `lifecycle manager` |
+| Model load / unload + runtime `ModelState` | `lifecycle` module (`lifecycle manager`) |
 | GPU/VRAM + system-RAM accounting | `resources` module (`resource manager`) |
 | GPU job ordering + eviction | `scheduler` |
 | Process spawn / health / restart | `worker supervisor` |
@@ -180,6 +185,14 @@ A `send_image` typed action from the model → Rust validates (schema, allow-lis
   async `Mutex`; `request` works off the last cached measurement so it never
   blocks on the driver. `reconcile` trusts the measurement over the ledger and
   recovers reservations a crashed caller never released.
+- **Lifecycle manager loads** (`lifecycle` module, Phase 14): the only
+  loader/unloader of managed models. State machine `Unloaded → Loading → Loaded
+  ⇄ Busy → Unloading`, `Failed` with an explicit recovery transition. It reserves
+  from the resource manager **before** the backend load and releases on every
+  exit path; concurrent `load`s for one model coalesce; bounded retry with
+  backoff; a ~2 s liveness monitor moves a dead backend to `Failed` and releases
+  its reservation. Backend detail (llama.cpp, Phase 15) is confined to a
+  `ModelBackend` impl.
 - **Scheduler orders:** priority queue — (1) interactive LLM gen (never
   preempted), (2) STT/TTS, (3) user image gen, (4) character/pool generation
   (idle-only). One GPU serialization mutex; **the mutex holder performs the entire

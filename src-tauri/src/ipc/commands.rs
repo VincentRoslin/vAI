@@ -309,6 +309,21 @@ pub async fn resources_snapshot(
     Ok(resources.snapshot().await)
 }
 
+// ---------------------------------------------------------------- lifecycle
+
+use crate::contracts::model::LifecycleStatus;
+use crate::lifecycle::LifecycleManager;
+
+/// Every model the lifecycle manager is tracking, with its runtime state
+/// (Phase 14). Read-only — loading is driven by later phases.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn lifecycle_status(
+    lifecycle: State<'_, Arc<LifecycleManager>>,
+) -> AppResult<Vec<LifecycleStatus>> {
+    Ok(lifecycle.statuses().await)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
