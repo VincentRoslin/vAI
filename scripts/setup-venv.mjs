@@ -37,11 +37,14 @@ function findUv() {
   }
   const py = process.platform === 'win32' ? 'python' : 'python3';
   try {
-    const base = execFileSync(py, ['-c', 'import site;print(site.getuserbase())'], {
-      encoding: 'utf8',
-    }).trim();
-    const cand =
-      process.platform === 'win32' ? join(base, 'Scripts', 'uv.exe') : join(base, 'bin', 'uv');
+    // The per-user scripts dir a `pip install --user` writes into
+    // (win: %APPDATA%\Python\PythonXY\Scripts — note the PythonXY segment).
+    const scripts = execFileSync(
+      py,
+      ['-c', 'import os,sysconfig;print(sysconfig.get_path("scripts", os.name + "_user"))'],
+      { encoding: 'utf8' },
+    ).trim();
+    const cand = join(scripts, process.platform === 'win32' ? 'uv.exe' : 'uv');
     if (existsSync(cand)) return cand;
   } catch {
     /* fall through */
