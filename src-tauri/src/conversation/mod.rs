@@ -15,7 +15,6 @@
 //! Concurrency (v1): **one generation at a time** — a second `generate` while one
 //! runs returns [`AppError::Conflict`]. A queue is Phase 24.
 
-pub mod prompt;
 pub mod repo;
 
 #[cfg(test)]
@@ -30,6 +29,8 @@ use std::time::Instant;
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
+use crate::context::builder::{BuildInput, ContextBuilder, RuntimeContext, TokenBudget};
+use crate::context::persona::PersonaRepo;
 use crate::contracts::conversation::{
     Conversation, ConversationKind, GenerationHandle, GenerationMeta, GenerationState, Message,
     MessageContent, Role,
@@ -39,6 +40,7 @@ use crate::contracts::ids::{ConversationId, ModelId, TaskId};
 use crate::db::Db;
 use crate::ipc::{AppError, AppResult};
 use crate::lifecycle::LifecycleManager;
+use crate::models::ModelRegistry;
 use repo::ConversationRepo;
 
 /// Hard cap on tokens per turn for now (Phase 20 makes it configurable).
@@ -54,15 +56,25 @@ struct Running {
 /// `Arc<ConversationEngine>`.
 pub struct ConversationEngine {
     repo: ConversationRepo,
+    personas: PersonaRepo,
+    registry: Arc<ModelRegistry>,
+    builder: ContextBuilder,
     lifecycle: Arc<LifecycleManager>,
     running: Mutex<Option<Running>>,
 }
 
 impl ConversationEngine {
     #[must_use]
-    pub fn new(db: Arc<Db>, lifecycle: Arc<LifecycleManager>) -> Self {
+    pub fn new(
+        db: Arc<Db>,
+        registry: Arc<ModelRegistry>,
+        lifecycle: Arc<LifecycleManager>,
+    ) -> Self {
         Self {
-            repo: ConversationRepo::new(db),
+            repo: ConversationRepo::new(Arc::clone(&db)),
+            personas: PersonaRepo::new(db),
+            registry,
+            builder: ContextBuilder,
             lifecycle,
             running: Mutex::new(None),
         }
@@ -76,6 +88,43 @@ impl ConversationEngine {
     /// A persistence error.
     pub async fn create(&self) -> AppResult<Conversation> {
         self.repo.create(ConversationKind::Persona).await
+    }
+
+    /// Create a new Persona conversation, optionally bound to `persona_id`.
+    ///
+    /// # Errors
+    /// [`AppError::NotFound`] if `persona_id` is unknown; a persistence error.
+    pub async fn create_with_persona(
+        &self,
+        persona_id: Option<crate::contracts::ids::PersonaId>,
+    ) -> AppResult<Conversation> {
+        let convo = self.repo.create(ConversationKind::Persona).await?;
+        if persona_id.is_some() {
+            self.repo.set_persona(&convo.id, persona_id.clone()).await?;
+        }
+        Ok(Conversation {
+            persona_id,
+            ..convo
+        })
+    }
+
+    /// Bind (or clear) the Persona for a conversation. Rejected once the
+    /// conversation has a turn (FR-17).
+    ///
+    /// # Errors
+    /// [`AppError::NotFound`] / [`AppError::Conflict`]; a persistence error.
+    pub async fn set_persona(
+        &self,
+        conversation_id: &ConversationId,
+        persona_id: Option<crate::contracts::ids::PersonaId>,
+    ) -> AppResult<()> {
+        self.repo.set_persona(conversation_id, persona_id).await
+    }
+
+    /// The persona repository (persona CRUD lives here, shared with the builder).
+    #[must_use]
+    pub fn personas(&self) -> &PersonaRepo {
+        &self.personas
     }
 
     /// Every conversation, newest activity first.
@@ -289,6 +338,55 @@ impl ConversationEngine {
         op.finish(status);
     }
 
+    /// Assemble the exact prompt the LLM adapter will receive for the next
+    /// generation on `conversation_id` with `model_id` — the one
+    /// [`ContextBuilder`] call [`Self::stream_once`] makes. Exposed for the
+    /// FR-34 "show prompt" surface (`chat_prompt_preview`).
+    ///
+    /// # Errors
+    /// [`AppError::NotFound`] for an unknown conversation or model; a
+    /// persistence error otherwise.
+    pub async fn preview_prompt(
+        &self,
+        conversation_id: &ConversationId,
+        model_id: &ModelId,
+    ) -> AppResult<crate::context::builder::BuiltPrompt> {
+        self.build_prompt(conversation_id, model_id).await
+    }
+
+    /// The deterministic context assembly shared by `stream_once` and
+    /// `preview_prompt`: batch the history + persona + model reads, then call
+    /// the one [`ContextBuilder`].
+    async fn build_prompt(
+        &self,
+        conversation_id: &ConversationId,
+        model_id: &ModelId,
+    ) -> AppResult<crate::context::builder::BuiltPrompt> {
+        let history = self.repo.messages(conversation_id).await?;
+        let persona = match self.repo.persona_id(conversation_id).await? {
+            Some(pid) => match self.personas.get(&pid).await {
+                Ok(p) => Some(p),
+                // The row was deleted between the two reads (ON DELETE SET NULL
+                // will clear the FK; this only races). Treat as no persona.
+                Err(AppError::NotFound(_)) => None,
+                Err(e) => return Err(e),
+            },
+            None => None,
+        };
+        let model = self.registry.get(model_id).await?;
+        let budget = TokenBudget::from_context_window(model.metadata.capabilities.context_tokens);
+
+        Ok(self.builder.build(&BuildInput {
+            system: crate::context::builder::DEFAULT_SYSTEM,
+            persona: persona.as_ref(),
+            character: None,
+            memory: &[],
+            history: &history,
+            runtime: RuntimeContext::now(),
+            budget,
+        }))
+    }
+
     /// Resolve the loaded instance, render the prompt, stream, accumulate.
     async fn stream_once<F>(
         &self,
@@ -308,8 +406,16 @@ impl ConversationEngine {
             .as_llm()
             .ok_or_else(|| AppError::Validation(format!("model {model_id} is not an LLM")))?;
 
-        let history = self.repo.messages(conversation_id).await?;
-        let rendered = prompt::render_chatml(&history, prompt::DEFAULT_SYSTEM);
+        // `build_prompt` -> `ContextBuilder::build` logs the provenance at
+        // `target: "context"`.
+        let built = self.build_prompt(conversation_id, model_id).await?;
+        tracing::debug!(
+            target: "context",
+            conversation = %conversation_id,
+            total_tokens = built.provenance.total_tokens,
+            "prompt assembled for generation"
+        );
+        let rendered = built.text;
         let params = SamplingParams {
             temperature: Some(0.7),
             top_p: Some(0.95),

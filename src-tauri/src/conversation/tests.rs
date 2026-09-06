@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::repo::ConversationRepo;
-use super::{prompt, ConversationEngine};
+use super::ConversationEngine;
 use crate::contracts::conversation::{ConversationKind, MessageContent, Role};
 use crate::contracts::generation::{GenerationEvent, SamplingParams, StopReason};
 use crate::contracts::ids::ModelId;
@@ -88,80 +88,63 @@ async fn append_to_a_missing_conversation_is_not_found() {
     assert!(matches!(err, AppError::NotFound(_)));
 }
 
-#[test]
-fn chatml_render_is_exact() {
-    use crate::contracts::conversation::Message;
-    let mk = |role, body: &str| Message {
-        id: crate::contracts::ids::MessageId::from_trusted("m"),
-        conversation_id: crate::contracts::ids::ConversationId::from_trusted("c"),
-        role,
-        content: text(body),
-        created_at: "t".to_owned(),
-        generation: None,
-    };
-    let rendered =
-        prompt::render_chatml(&[mk(Role::User, "hi"), mk(Role::Assistant, "hello")], "SYS");
+#[tokio::test]
+async fn set_persona_binds_and_is_fixed_after_a_turn() {
+    use crate::context::persona::{PersonaDraft, PersonaRepo};
+
+    let tmp = tempfile::tempdir().unwrap();
+    let db = Arc::new(Db::open(&tmp.path().join("c.db")).await.unwrap());
+    db.migrate().await.unwrap();
+    let repo = ConversationRepo::new(Arc::clone(&db));
+    let personas = PersonaRepo::new(Arc::clone(&db));
+
+    let pid = personas
+        .create(PersonaDraft {
+            name: "Ada".to_owned(),
+            summary: String::new(),
+            personality: String::new(),
+            tone: String::new(),
+            style: String::new(),
+            guidance: vec![],
+        })
+        .await
+        .unwrap();
+
+    let convo = repo.create(ConversationKind::Persona).await.unwrap();
+    assert_eq!(repo.persona_id(&convo.id).await.unwrap(), None);
+
+    // Unknown persona → NotFound.
+    assert!(matches!(
+        repo.set_persona(
+            &convo.id,
+            Some(crate::contracts::ids::PersonaId::from_trusted("ghost")),
+        )
+        .await,
+        Err(AppError::NotFound(_))
+    ));
+
+    repo.set_persona(&convo.id, Some(pid.clone()))
+        .await
+        .unwrap();
+    assert_eq!(repo.persona_id(&convo.id).await.unwrap(), Some(pid.clone()));
     assert_eq!(
-        rendered,
-        "<|im_start|>system\nSYS<|im_end|>\n\
-         <|im_start|>user\nhi<|im_end|>\n\
-         <|im_start|>assistant\nhello<|im_end|>\n\
-         <|im_start|>assistant\n"
+        repo.get(&convo.id).await.unwrap().persona_id,
+        Some(pid.clone())
     );
-    // Empty transcript still has system + tail.
-    assert_eq!(
-        prompt::render_chatml(&[], "S"),
-        "<|im_start|>system\nS<|im_end|>\n<|im_start|>assistant\n"
-    );
+
+    // Once a turn exists, the persona is fixed.
+    repo.append(&convo.id, Role::User, text("hi"), None)
+        .await
+        .unwrap();
+    assert!(matches!(
+        repo.set_persona(&convo.id, None).await,
+        Err(AppError::Conflict(_))
+    ));
 }
 
-#[test]
-fn chatml_renders_transcribed_audio_and_skips_the_rest() {
-    use crate::contracts::conversation::Message;
-    use crate::contracts::ids::{AssetId, ConversationId, MessageId};
-    let mk = |role, content| Message {
-        id: MessageId::from_trusted("m"),
-        conversation_id: ConversationId::from_trusted("c"),
-        role,
-        content,
-        created_at: "t".to_owned(),
-        generation: None,
-    };
-    let rendered = prompt::render_chatml(
-        &[
-            mk(Role::User, text("typed")),
-            mk(
-                Role::User,
-                MessageContent::Audio {
-                    asset: AssetId::from_trusted("sha-a"),
-                    transcript: Some("spoken".to_owned()),
-                },
-            ),
-            mk(
-                Role::User,
-                MessageContent::Audio {
-                    asset: AssetId::from_trusted("sha-b"),
-                    transcript: None,
-                },
-            ),
-            mk(
-                Role::Assistant,
-                MessageContent::Image {
-                    asset: AssetId::from_trusted("sha-c"),
-                    caption: None,
-                },
-            ),
-        ],
-        "S",
-    );
-    assert_eq!(
-        rendered,
-        "<|im_start|>system\nS<|im_end|>\n\
-         <|im_start|>user\ntyped<|im_end|>\n\
-         <|im_start|>user\nspoken<|im_end|>\n\
-         <|im_start|>assistant\n"
-    );
-}
+// ChatML assembly is now the context builder's responsibility — see
+// `context::builder::tests` (Phase 20). The scripted `stream` below still
+// asserts it receives a ChatML prompt.
 
 fn text(s: &str) -> MessageContent {
     MessageContent::Text { text: s.to_owned() }
@@ -178,10 +161,13 @@ enum Ending {
     StallThenCancel,
 }
 
+type PromptLog = Arc<std::sync::Mutex<Vec<String>>>;
+
 struct ScriptedBackend {
     tokens: Vec<String>,
     ending: Ending,
     loads: Arc<AtomicU32>,
+    prompts: PromptLog,
 }
 
 #[async_trait]
@@ -195,6 +181,7 @@ impl ModelBackend for ScriptedBackend {
         Ok(Box::new(ScriptedInstance {
             tokens: self.tokens.clone(),
             ending: self.ending,
+            prompts: Arc::clone(&self.prompts),
         }))
     }
 }
@@ -202,6 +189,7 @@ impl ModelBackend for ScriptedBackend {
 struct ScriptedInstance {
     tokens: Vec<String>,
     ending: Ending,
+    prompts: PromptLog,
 }
 
 #[async_trait]
@@ -244,6 +232,10 @@ impl LlmInstance for ScriptedInstance {
         cancel: CancellationToken,
     ) {
         assert!(prompt.contains("<|im_start|>user\n"), "prompt is ChatML");
+        self.prompts
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(prompt);
         for (i, tok) in self.tokens.iter().enumerate() {
             if cancel.is_cancelled() {
                 let _ = tx.send(GenerationEvent::Cancelled).await;
@@ -288,6 +280,8 @@ struct Fixture {
     service: Arc<ConversationEngine>,
     model: ModelId,
     loads: Arc<AtomicU32>,
+    db: Arc<Db>,
+    prompts: PromptLog,
 }
 
 async fn fixture(tokens: &[&str], ending: Ending) -> Fixture {
@@ -329,22 +323,30 @@ async fn fixture(tokens: &[&str], ending: Ending) -> Fixture {
         RetryPolicy::default(),
     ));
     let loads = Arc::new(AtomicU32::new(0));
+    let prompts: PromptLog = Arc::new(std::sync::Mutex::new(Vec::new()));
     lifecycle.register_backend(
         BACKEND_KEY,
         Arc::new(ScriptedBackend {
             tokens: tokens.iter().map(|s| (*s).to_owned()).collect(),
             ending,
             loads: Arc::clone(&loads),
+            prompts: Arc::clone(&prompts),
         }) as Arc<dyn ModelBackend>,
     );
     lifecycle.load(&model).await.expect("model loads");
 
-    let service = Arc::new(ConversationEngine::new(db, lifecycle));
+    let service = Arc::new(ConversationEngine::new(
+        Arc::clone(&db),
+        Arc::clone(&registry),
+        lifecycle,
+    ));
     Fixture {
         _tmp: tmp,
         service,
         model,
         loads,
+        db,
+        prompts,
     }
 }
 
@@ -653,6 +655,94 @@ async fn a_backend_error_persists_a_truncated_turn_and_recovers() {
     let _ = collect(rx2).await;
     wait_for_idle(&f.service).await;
     assert_eq!(f.loads.load(Ordering::SeqCst), 1);
+}
+
+// ---------------------------------------------------------------- persona → prompt (Phase 20)
+
+#[tokio::test]
+async fn the_prompt_the_adapter_receives_carries_the_active_persona() {
+    use crate::context::persona::{PersonaDraft, PersonaRepo};
+
+    let f = fixture(&["ok"], Ending::Done).await;
+    let personas = PersonaRepo::new(Arc::clone(&f.db));
+    let repo = ConversationRepo::new(Arc::clone(&f.db));
+
+    let pid = personas
+        .create(PersonaDraft {
+            name: "Mar* the Cartographer".to_owned(),
+            summary: "keeper of forgotten coastlines".to_owned(),
+            personality: "meticulous, wry, allergic to rounding errors".to_owned(),
+            tone: String::new(),
+            style: String::new(),
+            guidance: vec![],
+        })
+        .await
+        .unwrap();
+
+    let convo = f.service.create().await.unwrap();
+    repo.set_persona(&convo.id, Some(pid)).await.unwrap();
+
+    let (tx, rx) = sink_channel();
+    f.service
+        .send(
+            convo.id.clone(),
+            f.model.clone(),
+            "where".to_owned(),
+            move |ev| {
+                let _ = tx.send(ev);
+            },
+        )
+        .await
+        .unwrap();
+    let _ = collect(rx).await;
+    wait_for_idle(&f.service).await;
+
+    let seen = f.prompts.lock().unwrap().clone();
+    assert_eq!(seen.len(), 1);
+    let prompt = &seen[0];
+    assert!(
+        prompt.contains("keeper of forgotten coastlines"),
+        "{prompt}"
+    );
+    assert!(
+        prompt.contains("meticulous, wry, allergic to rounding errors"),
+        "{prompt}"
+    );
+    assert!(
+        prompt.contains("You are Mar* the Cartographer."),
+        "{prompt}"
+    );
+
+    // `preview_prompt` returns the same assembly (FR-34 surface).
+    let preview = f.service.preview_prompt(&convo.id, &f.model).await.unwrap();
+    assert!(preview.text.contains("keeper of forgotten coastlines"));
+    assert!(preview.provenance.total_tokens > 0);
+}
+
+#[tokio::test]
+async fn no_persona_prompt_is_bare_system_plus_history() {
+    let f = fixture(&["ok"], Ending::Done).await;
+    let convo = f.service.create().await.unwrap();
+
+    let (tx, rx) = sink_channel();
+    f.service
+        .send(
+            convo.id.clone(),
+            f.model.clone(),
+            "hello there".to_owned(),
+            move |ev| {
+                let _ = tx.send(ev);
+            },
+        )
+        .await
+        .unwrap();
+    let _ = collect(rx).await;
+    wait_for_idle(&f.service).await;
+
+    let prompt = f.prompts.lock().unwrap()[0].clone();
+    assert!(prompt.starts_with("<|im_start|>system\nYou are a helpful assistant."));
+    assert!(prompt.contains("<|im_start|>user\nhello there<|im_end|>"));
+    assert!(!prompt.contains("Personality:"));
 }
 
 // ---------------------------------------------------------------- helpers

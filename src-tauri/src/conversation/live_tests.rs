@@ -32,6 +32,7 @@ struct Rig {
     _tmp: tempfile::TempDir,
     service: Arc<ConversationEngine>,
     lifecycle: Arc<LifecycleManager>,
+    registry: Arc<ModelRegistry>,
     model: crate::contracts::ids::ModelId,
     db_path: PathBuf,
 }
@@ -73,11 +74,16 @@ async fn rig() -> Rig {
     lifecycle.register_backend(BACKEND_KEY, Arc::new(LlamaBackend::new(bin)));
     lifecycle.load(&model).await.expect("real model loads");
 
-    let service = Arc::new(ConversationEngine::new(db, Arc::clone(&lifecycle)));
+    let service = Arc::new(ConversationEngine::new(
+        db,
+        Arc::clone(&registry),
+        Arc::clone(&lifecycle),
+    ));
     Rig {
         _tmp: tmp,
         service,
         lifecycle,
+        registry,
         model,
         db_path,
     }
@@ -163,7 +169,8 @@ async fn live_send_streams_persists_and_recovers_on_restart() {
     drop(rig.service);
     let db2 = Arc::new(Db::open(&rig.db_path).await.unwrap());
     db2.migrate().await.unwrap();
-    let reopened = ConversationEngine::new(db2, Arc::clone(&rig.lifecycle));
+    let reopened =
+        ConversationEngine::new(db2, Arc::clone(&rig.registry), Arc::clone(&rig.lifecycle));
     let restored = reopened.messages(&convo.id).await.unwrap();
     assert_eq!(restored.len(), 2);
     assert_eq!(reopened.latest().await.unwrap().unwrap().id, convo.id);

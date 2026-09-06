@@ -358,13 +358,26 @@ use crate::contracts::generation::GenerationEvent;
 use crate::contracts::ids::{ConversationId, TaskId};
 use crate::conversation::ConversationEngine;
 
-/// Start a new conversation.
+/// Start a new conversation, optionally bound to a Persona (Phase 20).
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
 pub async fn conversation_create(
     chat: State<'_, Arc<ConversationEngine>>,
+    persona_id: Option<crate::contracts::ids::PersonaId>,
 ) -> AppResult<Conversation> {
-    chat.create().await
+    chat.create_with_persona(persona_id).await
+}
+
+/// Bind (or clear, with `null`) the Persona for a conversation. Rejected once
+/// the conversation has a turn (FR-17).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn conversation_set_persona(
+    chat: State<'_, Arc<ConversationEngine>>,
+    conversation_id: ConversationId,
+    persona_id: Option<crate::contracts::ids::PersonaId>,
+) -> AppResult<()> {
+    chat.set_persona(&conversation_id, persona_id).await
 }
 
 /// Every conversation, newest activity first.
@@ -450,6 +463,88 @@ pub async fn chat_cancel(
     task_id: TaskId,
 ) -> AppResult<()> {
     chat.cancel(&task_id).await
+}
+
+// ---------------------------------------------------------------- personas + prompt preview (Phase 20)
+
+use crate::context::builder::Provenance;
+use crate::context::persona::{Persona, PersonaDraft};
+use crate::contracts::ids::PersonaId;
+
+/// The exact assembled prompt for the next generation on a conversation, plus
+/// its [`Provenance`] — the FR-34 "show prompt" surface.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct PromptPreview {
+    /// The full string the LLM adapter would receive.
+    pub prompt: String,
+    /// What went into it (token budget, persona inclusion, history kept/dropped).
+    pub provenance: Provenance,
+}
+
+/// Every persona, newest first.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn persona_list(chat: State<'_, Arc<ConversationEngine>>) -> AppResult<Vec<Persona>> {
+    chat.personas().list().await
+}
+
+/// One persona.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn persona_get(
+    chat: State<'_, Arc<ConversationEngine>>,
+    id: PersonaId,
+) -> AppResult<Persona> {
+    chat.personas().get(&id).await
+}
+
+/// Create a persona.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn persona_create(
+    chat: State<'_, Arc<ConversationEngine>>,
+    draft: PersonaDraft,
+) -> AppResult<PersonaId> {
+    chat.personas().create(draft).await
+}
+
+/// Update a persona in place.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn persona_update(
+    chat: State<'_, Arc<ConversationEngine>>,
+    id: PersonaId,
+    draft: PersonaDraft,
+) -> AppResult<()> {
+    chat.personas().update(&id, draft).await
+}
+
+/// Delete a persona. Conversations bound to it fall back to the default
+/// assistant.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn persona_delete(
+    chat: State<'_, Arc<ConversationEngine>>,
+    id: PersonaId,
+) -> AppResult<()> {
+    chat.personas().delete(&id).await
+}
+
+/// Assemble and return the exact prompt the next generation on `conversation_id`
+/// with `model_id` would receive (FR-34).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn chat_prompt_preview(
+    chat: State<'_, Arc<ConversationEngine>>,
+    conversation_id: ConversationId,
+    model_id: ModelId,
+) -> AppResult<PromptPreview> {
+    let built = chat.preview_prompt(&conversation_id, &model_id).await?;
+    Ok(PromptPreview {
+        prompt: built.text,
+        provenance: built.provenance,
+    })
 }
 
 // ---------------------------------------------------------------- voice (Phase 18)
@@ -583,5 +678,6 @@ mod tests {
         FrontendLog::export_all().unwrap();
         FrontendLogLevel::export_all().unwrap();
         AppError::export_all().unwrap();
+        PromptPreview::export_all().unwrap();
     }
 }

@@ -77,6 +77,14 @@ export type { ChatSendRequest } from '../bindings/ChatSendRequest';
 export type { GenerationHandle } from '../bindings/GenerationHandle';
 export type { GenerationState } from '../bindings/GenerationState';
 
+// Personas + the context builder (Phase 20).
+export type { PersonaId } from '../bindings/PersonaId';
+export type { Persona } from '../bindings/Persona';
+export type { PersonaDraft } from '../bindings/PersonaDraft';
+export type { PersonaInclusion } from '../bindings/PersonaInclusion';
+export type { Provenance } from '../bindings/Provenance';
+export type { PromptPreview } from '../bindings/PromptPreview';
+
 // --- Voice (Phase 18 in, Phase 19 out) ---
 export type { VoiceState } from '../bindings/VoiceState';
 export type { InputDevice } from '../bindings/InputDevice';

@@ -21,6 +21,9 @@ import type { HfGgufFile } from '../bindings/HfGgufFile';
 import type { HfModelSummary } from '../bindings/HfModelSummary';
 import type { Pong } from '../bindings/Pong';
 import type { Conversation } from '../bindings/Conversation';
+import type { Persona } from '../bindings/Persona';
+import type { PersonaDraft } from '../bindings/PersonaDraft';
+import type { PromptPreview } from '../bindings/PromptPreview';
 import type { GenerationEvent } from '../bindings/GenerationEvent';
 import type { GenerationState } from '../bindings/GenerationState';
 import type { LifecycleStatus } from '../bindings/LifecycleStatus';
@@ -158,8 +161,16 @@ export const modelUnload = (id: string): Promise<void> => call('model_unload', {
 
 // ---------------------------------------------------------------- chat (Phase 16)
 
-/** Start a new conversation. */
-export const conversationCreate = (): Promise<Conversation> => call('conversation_create');
+/** Start a new conversation, optionally bound to a Persona (Phase 20). */
+export const conversationCreate = (personaId: string | null = null): Promise<Conversation> =>
+  call('conversation_create', { personaId });
+
+/** Bind (or clear, with `null`) the Persona for a conversation. Rejected once
+ * the conversation has a turn (FR-17). */
+export const conversationSetPersona = (
+  conversationId: string,
+  personaId: string | null,
+): Promise<void> => call('conversation_set_persona', { conversationId, personaId });
 
 /** Every conversation, newest activity first. */
 export const conversationList = (): Promise<Conversation[]> => call('conversation_list');
@@ -206,6 +217,32 @@ export const chatState = (): Promise<GenerationState> => call('chat_state');
 
 /** Cancel an in-flight generation. */
 export const chatCancel = (taskId: string): Promise<void> => call('chat_cancel', { taskId });
+
+/** The exact prompt the next generation on `conversationId` with `modelId`
+ * would receive, plus its provenance (FR-34 "show prompt" surface). */
+export const chatPromptPreview = (
+  conversationId: string,
+  modelId: string,
+): Promise<PromptPreview> => call('chat_prompt_preview', { conversationId, modelId });
+
+// ---------------------------------------------------------------- personas (Phase 20)
+
+/** Every persona, newest first. */
+export const personaList = (): Promise<Persona[]> => call('persona_list');
+
+/** One persona. */
+export const personaGet = (id: string): Promise<Persona> => call('persona_get', { id });
+
+/** Create a persona; returns its id. */
+export const personaCreate = (draft: PersonaDraft): Promise<string> =>
+  call('persona_create', { draft });
+
+/** Update a persona in place. */
+export const personaUpdate = (id: string, draft: PersonaDraft): Promise<void> =>
+  call('persona_update', { id, draft });
+
+/** Delete a persona. Bound conversations fall back to the default assistant. */
+export const personaDelete = (id: string): Promise<void> => call('persona_delete', { id });
 
 // --- Voice (Phase 18 in, Phase 19 out) ---
 

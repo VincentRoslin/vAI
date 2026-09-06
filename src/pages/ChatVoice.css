@@ -134,3 +134,28 @@
     opacity: 0.55;
   }
 }
+
+.chat__personabar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--border, #ddd);
+  flex-wrap: wrap;
+}
+
+.chat__personabar details {
+  flex: 1 1 100%;
+}
+
+.chat__promptpreview {
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.75rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border, #ccc);
+  border-radius: 6px;
+}

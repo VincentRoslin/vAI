@@ -386,6 +386,7 @@ fn conversation_contracts_round_trip() {
         id: conversation_id(),
         kind: ConversationKind::Character,
         title: Some("First chat".into()),
+        persona_id: None,
         created_at: "2026-09-06T00:00:00Z".into(),
         updated_at: "2026-09-06T00:01:00Z".into(),
     });

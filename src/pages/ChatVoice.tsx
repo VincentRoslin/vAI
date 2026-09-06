@@ -5,19 +5,24 @@ import type {
   GenerationEvent,
   LifecycleStatus,
   Message,
+  Persona,
+  PromptPreview,
   VoiceState,
 } from '../lib/contracts';
 import {
   chatCancel,
+  chatPromptPreview,
   chatSend,
   conversationCreate,
   conversationList,
   conversationMessages,
+  conversationSetPersona,
   lifecycleStatus,
   modelLoad,
   modelRegisterLocal,
   modelsList,
   modelUnload,
+  personaList,
   toAppError,
   voiceStart,
   voiceStop,
@@ -38,7 +43,11 @@ export function ChatVoice(): React.JSX.Element {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [voice, setVoice] = useState<VoiceState['kind']>('Idle');
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [preview, setPreview] = useState<PromptPreview | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const personaLocked = messages.length > 0 || !!streaming;
 
   const loaded = models.find((m) => m.state === 'Loaded' || m.state === 'Busy');
 
@@ -66,6 +75,11 @@ export function ChatVoice(): React.JSX.Element {
         setNotice(`Could not open a conversation: ${toAppError(e).kind}`);
       }
       await refreshModels();
+      try {
+        setPersonas(await personaList());
+      } catch (e) {
+        log.warn('chat', `persona list: ${toAppError(e).kind}`);
+      }
     })();
   }, [refreshModels]);
 
@@ -193,6 +207,27 @@ export function ChatVoice(): React.JSX.Element {
     }
   }
 
+  async function changePersona(personaId: string | null): Promise<void> {
+    if (!convo || personaLocked) return;
+    try {
+      await conversationSetPersona(convo.id, personaId);
+      setConvo({ ...convo, persona_id: personaId });
+      setPreview(null);
+      log.info('ui', `persona set: ${personaId ?? 'none'}`);
+    } catch (e) {
+      setNotice(`Could not set persona: ${toAppError(e).kind}`);
+    }
+  }
+
+  async function showPrompt(open: boolean): Promise<void> {
+    if (!open || !convo || !loaded) return;
+    try {
+      setPreview(await chatPromptPreview(convo.id, loaded.id));
+    } catch (e) {
+      setNotice(`Prompt preview failed: ${toAppError(e).kind}`);
+    }
+  }
+
   return (
     <section className="chat">
       <header className="chat__bar">
@@ -220,6 +255,42 @@ export function ChatVoice(): React.JSX.Element {
       </header>
 
       {notice && <div className="chat__notice">{notice}</div>}
+
+      <div className="chat__personabar">
+        <label>
+          Persona{' '}
+          <select
+            value={convo?.persona_id ?? ''}
+            disabled={!convo || personaLocked}
+            onChange={(e) => void changePersona(e.target.value || null)}
+            title={personaLocked ? 'Fixed once the conversation has a message' : undefined}
+          >
+            <option value="">Default assistant</option>
+            {personas.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {loaded && (
+          <details onToggle={(e) => void showPrompt((e.target as HTMLDetailsElement).open)}>
+            <summary>Show prompt</summary>
+            {preview ? (
+              <>
+                <p className="chat__meta">
+                  {preview.provenance.total_tokens}/{preview.provenance.budget_tokens} tok · persona{' '}
+                  {preview.provenance.persona} · history {preview.provenance.history_turns_included}{' '}
+                  in / {preview.provenance.history_turns_dropped} dropped
+                </p>
+                <pre className="chat__promptpreview">{preview.prompt}</pre>
+              </>
+            ) : (
+              <p className="chat__meta">Loading…</p>
+            )}
+          </details>
+        )}
+      </div>
 
       <div className="chat__transcript" ref={scrollRef}>
         {messages.length === 0 && !streaming && (

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::contracts::generation::StopReason;
-use crate::contracts::ids::{AssetId, ConversationId, MessageId, ModelId, TaskId};
+use crate::contracts::ids::{AssetId, ConversationId, MessageId, ModelId, PersonaId, TaskId};
 
 /// Who authored a message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -120,6 +120,9 @@ pub struct Conversation {
     pub kind: ConversationKind,
     /// Display title; may be absent until the first turn names it.
     pub title: Option<String>,
+    /// The bound Persona (Tab 1), if any. `None` = the default assistant.
+    /// Fixed once the conversation has a turn (FR-17).
+    pub persona_id: Option<PersonaId>,
     /// RFC-3339 creation timestamp.
     pub created_at: String,
     /// RFC-3339 timestamp of the most recent activity.

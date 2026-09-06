@@ -24,11 +24,11 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 20 — Personas & Context Builder                         |
-| **Stage**        | 20.1 — schema + PersonaRepo (`IN PROGRESS`)             |
-| **Status**       | `IN PROGRESS`                                           |
+| **Phase**        | 21 — Memory                                             |
+| **Stage**        | 21.1 (`NOT STARTED`)                                    |
+| **Status**       | `NOT STARTED`                                           |
 | **Blocked by**   | _nothing_.                                              |
-| **Plan doc**     | `docs/plan/20_personas.md`                              |
+| **Plan doc**     | `docs/plan/21_memory.md`                                |
 | **Last updated** | 2026-09-06                                              |
 | **Updated by**   | phase-20-personas                                       |
 
@@ -83,6 +83,26 @@ don't corrupt the protocol — same for `stt.py`). venv gains `torch 2.11.0+cu12
 Chatterbox warm RTF ≈ 0.45, **barge-in trigger→silence ≈ 4 ms**. Truncation =
 `stop_reason=Cancelled` (frozen Phase 17): persisted = generated-so-far, spoken
 = a clause prefix of it. No new ADR.
+**Phase 20 done** — personas & the one context builder (`context/` module,
+`docs/verification/20_phase20_personas.md`). `V0005` — the `persona` table +
+`conversation.persona_id` (`ON DELETE SET NULL`, fixed once a turn exists —
+FR-17). `context::persona` (`Persona` + `PersonaDraft` + `PersonaRepo` CRUD),
+`context::sanitize::strip_control` (removes every `<|…|>` control token from
+untrusted strings — SECURITY C2), `context::tokens::estimate_tokens` (deterministic
+`max(chars/4, words·0.75)`, no tokenizer dep), `context::builder::ContextBuilder`
+(`build(BuildInput) -> BuiltPrompt` — deterministic ChatML; shed order memory →
+persona-truncation → drop persona → never the base system; `total_tokens ≤
+budget` by construction; `Provenance` logged at `target: "context"`; empty
+memory/character slots for P21/P26). `conversation::prompt` **deleted** — the
+engine holds the `PersonaRepo` + the builder and assembles every prompt through
+it; `preview_prompt` + `chat_prompt_preview` expose the exact string (FR-34).
+`contracts::ids::PersonaId`; `Conversation.persona_id` (additive). `persona_*` +
+`conversation_set_persona` IPC; persona list/form in Settings, a picker +
+"Show prompt" in ChatVoice. **All 6 gate items pass** — 24 `context` tests
+(determinism, ordering, injection-safety, budget/truncation, provenance) + a
+`conversation` test asserting the exact prompt the scripted adapter receives
+carries the active persona. 304 rust tests, 14 vitest, check suite green. No new
+ADR (`AI_PIPELINES.md` §6 fixes the design).
 **Phase 18 done** — voice-in (`worker/` + `voice/` modules, ADR-0005/0013/0015/
 **0018**, `docs/verification/17_phase18_voice-in.md`). `worker::WorkerSupervisor`
 = the shared stdio JSON-lines actor (Job Object, `WorkerHello` version check,
@@ -348,15 +368,18 @@ returns to listening; TTS failure / worker crash handled; truncated turn persist
 barge-in; live on the RTX 5080: 3 clauses spoken, warm RTF ≈ 0.45,
 **barge-in trigger→silence ≈ 4 ms**. Config v7; `torch 2.11.0+cu128`.
 
-### Phase 20 — Personas & Context Builder *(current pointer)* — `IN PROGRESS` — `docs/plan/20_personas.md`
-Structured persona data + a predictable context builder (system + persona +
+### Phase 20 — Personas & Context Builder — `COMPLETE` — `docs/verification/20_phase20_personas.md`
+Structured persona data + the one context builder (system + persona +
 character + conversation + memory + runtime). Verifiable that persona reaches the
 model.
 Gate: persona stored as structured data; context-builder unit tests; a test
 proves the assembled prompt contains the persona; switching persona changes
-behaviour in a scripted check.
+behaviour in a scripted check. **All 6 pass** — `context/` module (`persona` /
+`sanitize` / `tokens` / `builder`), `V0005`, `PersonaId`, `chat_prompt_preview`
+(FR-34); `conversation::prompt` deleted. 24 `context` tests + a `conversation`
+prompt-carries-persona assertion.
 
-### Phase 21 — Memory — `NOT STARTED` — `docs/plan/21_memory.md`
+### Phase 21 — Memory *(current pointer)* — `NOT STARTED` — `docs/plan/21_memory.md`
 Extraction → importance/validation → storage → relevant retrieval → context.
 SQLite + FTS5 keyword retrieval first; embeddings only if measured need.
 Gate: memory extracted + stored; retrieval returns relevant memories; context
@@ -507,6 +530,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 20 / 20.1 `IN PROGRESS` | Phase 20 `COMPLETE` → Phase 21 / 21.1 `NOT STARTED` | phase-20-personas | **Personas & the one context builder landed.** New `src-tauri/src/context/` — `persona` (`Persona` + `PersonaDraft` + `PersonaRepo` — all `persona` SQL, `V0005`), `sanitize::strip_control` (regex `<\|[^\|>]*\|>` → space + whitespace-normalise; every untrusted string passes through it — SECURITY C2), `tokens::estimate_tokens` (`max(⌈chars/4⌉, ⌈words·0.75⌉)`, deterministic, no tokenizer dep), `builder::ContextBuilder` (`build(BuildInput) -> BuiltPrompt`: one ChatML `system` turn = base system → persona prose → [character P26] → [memory P21] → `Current date:`; then history newest-first while it fits, kept contiguous, `history_turns_dropped` recorded; shed order when the system block alone is over budget = drop memory → truncate persona (name+summary+clamped personality) → drop persona → **never** the base system; `total_tokens ≤ budget_tokens` by construction; `Provenance` logged `target:"context"`). `V0005__personas.sql` — `persona` table + `conversation.persona_id` (`REFERENCES persona(id) ON DELETE SET NULL`). `contracts::ids::PersonaId`; `Conversation.persona_id: Option<PersonaId>` (additive). `ConversationRepo::{persona_id, set_persona}` — `set_persona` → `Conflict` once the conversation has a message (FR-17), `NotFound` for an unknown persona. `ConversationEngine` now holds the `PersonaRepo` + a `ContextBuilder` (constructed from the same `Db` + the `ModelRegistry`, for `context_tokens`); `stream_once` → `build_prompt` (batches persona + history + model reads → `build`); `conversation::prompt` (`render_chatml`) **deleted**, its tests moved to `context::builder::tests`. `preview_prompt` + **`chat_prompt_preview(conversation_id, model_id) -> PromptPreview{prompt, provenance}`** (FR-34). IPC: `persona_list/get/create/update/delete`, `conversation_set_persona`, `conversation_create(persona_id?)`. Frontend: `ipc.ts` + `contracts.ts` + `setup.ts` + bindings (`Persona`, `PersonaDraft`, `PersonaId`, `PersonaInclusion`, `Provenance`, `PromptPreview`, `Conversation` regen); a persona list/create/edit form in `Settings.tsx`; a persona `<select>` (disabled once messages exist) + a "Show prompt" `<details>` in `ChatVoice.tsx`. **All 6 gate items PASS** — 24 `context` tests (determinism byte-for-byte, assembly order, `<\|im_end\|>` in a persona/history string can't open a turn, 50-turn history vs a tiny budget drops the oldest, huge persona → `Truncated` with the base system kept, `total_tokens ≤ budget` across 5 budgets, switching persona changes the prompt) + `conversation::tests` — the prompt the scripted `LlmInstance` receives contains the active persona's summary + personality; `set_persona` fixed-after-a-turn. 304 rust tests (9 ignored live), 14 vitest, eslint + tsc + build + check suite green. **No new ADR** (`AI_PIPELINES.md` §6 fixes the builder; the token-budget split is recorded in the verification doc, not an ADR). Evidence `docs/verification/20_phase20_personas.md`. |
 | 2026-09-06 | Phase 20 `NOT STARTED` | Phase 20 / 20.1 `IN PROGRESS` | phase-20 | Phase entry: `docs/plan/20_personas.md` finalized (7 steps, 6 gate items). **No split.** New `src-tauri/src/context/` — `persona` (`Persona` + `PersonaRepo` — the `persona` table, CRUD), `sanitize` (`strip_control` — removes ChatML control tokens from every untrusted string, SECURITY C2), `tokens` (`estimate_tokens` — chars/4 heuristic, no tokenizer dep), `builder` (`ContextBuilder::build(BuildInput) -> BuiltPrompt` — deterministic; assembly order `system → persona → [character P26] → [memory P21] → runtime` inside one ChatML system turn, then token-budgeted history oldest-dropped-first; `Provenance` logged at `target:"context"`). `V0005__personas.sql` (the `persona` table + `conversation.persona_id` FK, `ON DELETE SET NULL`). `contracts::ids::PersonaId`. `ConversationRepo::{persona_id, set_persona}` (`set_persona` rejected once a turn exists — FR-17). Engine: `stream_once` batches persona + history + model reads → `build` (replaces the Phase 16 `conversation::prompt::render_chatml`, which is **deleted**). IPC: `persona_*` CRUD, `conversation_set_persona`, `conversation_create(persona_id?)`, and **`chat_prompt_preview`** (FR-34 — returns the exact assembled prompt + provenance). Persona list/form in `Settings.tsx`; a picker + "Show prompt" in `ChatVoice.tsx`. **No new ADR** — `AI_PIPELINES.md` §6 fixes the design; token-budget split resolved (memory shed first, then persona-truncation, never the base system; history fills the rest newest-first). |
 | 2026-09-06 | Phase 19 / 19.A.1 `IN PROGRESS` | Phase 19 `COMPLETE` → Phase 20 / 20.1 `NOT STARTED` | phase-19 | **Voice-out landed — voice is end to end.** `voice/` grows `chunker` (streamed LLM `TokenDelta`s → complete clauses; end-of-buffer boundary waits for the next push/flush; numbers not split), `playback` (`cpal` **output** stream on a parked thread + a PCM queue; `enqueue` resamples 24 kHz → device rate; `stop()` clears the queue → silent within one output buffer ≈ 10–20 ms; `OutputDevice` + `list_output_devices`), `resample::Resampler16` (generic mono in→out), `tts::TtsOutput` (the `WorkerKind::Tts` supervisor + `Playback`; `speak_stream(clause_rx, cancel)` → worker → temp WAV → enqueue, ~1 clause lookahead; `TtsResult`). `VoiceState::{Thinking,Speaking,Interrupting}`. `VoiceInput::start_listening(id, model_id: Option<ModelId>)` — `Some` runs the **loop** (`Listening → Transcribing → add_user_turn → Thinking → generate [token stream feeds the chunker→TTS] → Speaking → drain → Listening`, until `stop_listening`); the capture stream stays live through `Speaking` for full-duplex. **Barge-in** (VAD `SpeechStart` while answering, after a 500 ms grace so the tail of the user's own utterance doesn't self-interrupt — or an explicit stop): `engine.cancel(task_id)` (engine persists the accumulated text with `stop_reason=Cancelled`) → `tts.cancel()` → `playback.stop()` → await → `Listening`, `trigger_to_silence_ms` logged. VAD onset threshold raised by `voice.vad.playback_duck` (0.2) while speaking (echo duck). Config schema **v7** (`voice.output_device` + `ConfigKey::VoiceOutputDevice`; forward step `6→7`). `voice_output_devices` IPC; `voice_start` gains `model_id`; `lib.rs` wires the TTS `WorkerSupervisor` (`LOCALAI_TTS_MODEL_DIR`). `workers/tts.py` — `ChatterboxTurboTTS.from_local(models/tts, device="cuda")`, 24 kHz, default voice from `conds.pt`; one clause → a `PCM_16` WAV via `soundfile`; **`sys.stdout` → `stderr`** (the protocol writes to a saved handle) so perth / s3tokenizer status prints don't corrupt the JSON-lines stream — same guard added to `stt.py`. `workers/tts_fake.py` (stdlib sine) for CI. venv: **`torch 2.11.0+cu128`** (`chatterbox-tts` hard-pins `torch==2.6.0` whose CUDA wheels predate Blackwell sm_120; `workers/overrides.txt` + `uv … --override`) + `chatterbox-tts 0.1.7` + `soundfile`; faster-whisper (CTranslate2, own CUDA-12 libs) unaffected — verified. `ChatVoice.tsx` — the mic is a **click-toggle** (start/stop a session); with a model loaded it's a hands-free conversation, reply generated + spoken server-side. `eslint.config.js` ignores `.venv/` (chatterbox pulls gradio → JS). **All 7 gate items PASS** — 30 voice unit tests (real Silero VAD + stdlib fakes + a scripted `LlmInstance`: the conversation loop, barge-in truncation, the chunker, playback) + `voice::live_tests` (`#[ignore]`, `LOCALAI_RUN_VOICE_LIVE`) on the RTX 5080: `voice_live_tts_speaks` — real Chatterbox, **3 clauses spoken**, first request 12 s (model-load-dominated), Chatterbox **warm RTF ≈ 0.45**, **barge-in trigger→silence ≈ 4 ms**; 18.B re-run still green. Truncation decision (recorded): persisted = generated-so-far, spoken = a clause prefix of it. **No new ADR** (`stop_reason=Cancelled` is the frozen Phase 17 signal). 277 rust tests (11 ignored live), 10 vitest, check suite green. Evidence `docs/verification/19_phase19_voice-out.md`. |
 | 2026-09-06 | Phase 19 / 19.1 `NOT STARTED` | Phase 19 / 19.A.1 `IN PROGRESS` (split 19.A / 19.B) | phase-19 | Phase entry: `docs/plan/19_voice-out.md` finalized. **Split** (precedent: 15 / 18). **19.A** — the Rust half, verifiable against a stdlib fake TTS worker: `voice/chunker` (clause splitter driven by LLM token arrival), `voice/playback` (`cpal` **output** stream on a parked thread + PCM queue + `stop()` → silence + 24 kHz→device resample), `voice/tts` (`TtsOutput` — the TTS `WorkerSupervisor` + playback; `speak_stream` pulls clauses → worker → temp WAV → enqueue, ~1 clause lookahead), `VoiceState::{Thinking,Speaking,Interrupting}`, `start_listening(id, model_id: Option)` → the listen→think→speak→listen loop, and the **barge-in 5-step sequence** (`engine.cancel` → `tts.cancel` → `playback.stop` → await → `Listening`, timed) triggered by VAD onset while `Speaking` or an explicit stop. Config **v7** (`voice.output_device`, `voice.vad.playback_duck`). **19.B** — the real `workers/tts.py` (Chatterbox Turbo, `models/tts/`) + the live speak / barge-in gate on the RTX 5080 — **blocked** on adding PyTorch + the Chatterbox stack (~3–4 GB) to the `.venv` (owner go-ahead; the venv today has CTranslate2 for STT, not torch). **No new ADR** — `stop_reason = Cancelled` (frozen Phase 17) is the truncation signal: persisted = generated-so-far, spoken = a clause prefix of it. Echo: headphones / PTT for v1, VAD onset ducked while `Speaking`; AEC deferred. |

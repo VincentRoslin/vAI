@@ -72,11 +72,11 @@ async fn voice_live_capture_to_turn() {
     let registry = Arc::new(ModelRegistry::new(Arc::clone(&db)));
     let resources = Arc::new(ResourceManager::new(Arc::new(MockProbe::new()), 1_500));
     let lifecycle = Arc::new(LifecycleManager::new(
-        registry,
+        Arc::clone(&registry),
         resources,
         RetryPolicy::default(),
     ));
-    let engine = Arc::new(ConversationEngine::new(db, lifecycle));
+    let engine = Arc::new(ConversationEngine::new(db, registry, lifecycle));
     let convo = engine.create().await.unwrap();
 
     let tts = Arc::new(TtsOutput::new(

@@ -10,6 +10,7 @@
 
 pub mod acquisition;
 pub mod config;
+pub mod context;
 pub mod contracts;
 pub mod conversation;
 pub mod db;
@@ -61,12 +62,19 @@ pub fn run() {
             ipc::commands::model_load,
             ipc::commands::model_unload,
             ipc::commands::conversation_create,
+            ipc::commands::conversation_set_persona,
             ipc::commands::conversation_list,
             ipc::commands::conversation_messages,
             ipc::commands::chat_send,
             ipc::commands::chat_generate,
             ipc::commands::chat_state,
             ipc::commands::chat_cancel,
+            ipc::commands::chat_prompt_preview,
+            ipc::commands::persona_list,
+            ipc::commands::persona_get,
+            ipc::commands::persona_create,
+            ipc::commands::persona_update,
+            ipc::commands::persona_delete,
             ipc::commands::voice_input_devices,
             ipc::commands::voice_output_devices,
             ipc::commands::voice_start,
@@ -171,8 +179,13 @@ fn setup(app: &mut tauri::App) -> Result<(), String> {
         start_lifecycle_manager(Arc::clone(&registry), resources, &effective.runtimes.dir);
     app.manage(Arc::clone(&lifecycle));
 
-    // The one conversation engine (Phase 16 flow, Phase 17 formalized).
-    let engine = Arc::new(conversation::ConversationEngine::new(database, lifecycle));
+    // The one conversation engine (Phase 16 flow, Phase 17 formalized). Holds
+    // the persona repo + the one context builder (Phase 20).
+    let engine = Arc::new(conversation::ConversationEngine::new(
+        database,
+        Arc::clone(&registry),
+        lifecycle,
+    ));
     app.manage(Arc::clone(&engine));
 
     // Voice (Phase 18 in + Phase 19 out): STT + TTS worker supervisors +

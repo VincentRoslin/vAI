@@ -19,6 +19,7 @@ const arrayCommands = new Set([
   'conversation_messages',
   'voice_input_devices',
   'voice_output_devices',
+  'persona_list',
 ]);
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -42,11 +43,29 @@ vi.mock('@tauri-apps/api/core', () => ({
         id: 'conv-test',
         kind: 'Persona',
         title: null,
+        persona_id: null,
         created_at: '2026-01-01T00:00:00Z',
         updated_at: '2026-01-01T00:00:00Z',
       };
     }
     if (cmd === 'chat_send' || cmd === 'chat_generate') return 'task-test';
+    if (cmd === 'persona_create') return 'persona-test';
+    if (cmd === 'chat_prompt_preview') {
+      return {
+        prompt:
+          '<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>assistant\n',
+        provenance: {
+          total_tokens: 12,
+          budget_tokens: 2816,
+          system_tokens: 12,
+          persona: 'Absent',
+          memory_items: 0,
+          memory_tokens: 0,
+          history_turns_included: 0,
+          history_turns_dropped: 0,
+        },
+      };
+    }
     if (cmd === 'chat_state') return { generating: null };
     if (cmd === 'voice_start' || cmd === 'voice_stop') return undefined;
     if (cmd === 'voice_state') return { kind: 'Idle' };

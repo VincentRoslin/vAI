@@ -11,7 +11,7 @@ use crate::contracts::conversation::{
     Conversation, ConversationKind, GenerationMeta, Message, MessageContent, Role,
 };
 use crate::contracts::generation::StopReason;
-use crate::contracts::ids::{ConversationId, MessageId};
+use crate::contracts::ids::{ConversationId, MessageId, PersonaId};
 use crate::db::Db;
 use crate::ipc::{AppError, AppResult};
 
@@ -36,6 +36,7 @@ impl ConversationRepo {
             id: new_conversation_id(),
             kind,
             title: None,
+            persona_id: None,
             created_at: now.clone(),
             updated_at: now,
         };
@@ -69,7 +70,7 @@ impl ConversationRepo {
             .read(|conn| {
                 Ok(conn
                     .prepare_cached(
-                        "SELECT id, kind, title, created_at, updated_at \
+                        "SELECT id, kind, title, persona_id, created_at, updated_at \
                          FROM conversation ORDER BY updated_at DESC, id DESC",
                     )?
                     .query_map([], RawConvo::from_row)?
@@ -98,7 +99,7 @@ impl ConversationRepo {
             .read(move |conn| {
                 Ok(conn
                     .prepare_cached(
-                        "SELECT id, kind, title, created_at, updated_at \
+                        "SELECT id, kind, title, persona_id, created_at, updated_at \
                          FROM conversation WHERE id = ?1",
                     )?
                     .query_map([key], RawConvo::from_row)?
@@ -205,6 +206,70 @@ impl ConversationRepo {
             Err(e) => Err(e.into()),
         }
     }
+
+    /// The Persona bound to a conversation, if any.
+    ///
+    /// # Errors
+    /// [`AppError::NotFound`] if the conversation does not exist; a persistence
+    /// error otherwise.
+    pub async fn persona_id(&self, id: &ConversationId) -> AppResult<Option<PersonaId>> {
+        Ok(self.get(id).await?.persona_id)
+    }
+
+    /// Bind (or clear) the Persona for a conversation. Rejected once the
+    /// conversation has any message — a persona is fixed for the life of a
+    /// conversation (FR-17).
+    ///
+    /// # Errors
+    /// [`AppError::NotFound`] for an unknown conversation or persona;
+    /// [`AppError::Conflict`] if the conversation already has a turn; a
+    /// persistence error otherwise.
+    pub async fn set_persona(
+        &self,
+        id: &ConversationId,
+        persona_id: Option<PersonaId>,
+    ) -> AppResult<()> {
+        let cid = id.to_string();
+        let new_persona = persona_id.as_ref().map(PersonaId::to_string);
+        let write = self
+            .db
+            .write(move |tx| {
+                let has_turn: bool = tx
+                    .prepare_cached("SELECT 1 FROM message WHERE conversation_id = ?1 LIMIT 1")?
+                    .exists(rusqlite::params![cid])?;
+                if has_turn {
+                    return Err(crate::db::DbError::Conflict(
+                        "conversation has a turn".to_owned(),
+                    ));
+                }
+                if let Some(pid) = &new_persona {
+                    let known: bool = tx
+                        .prepare_cached("SELECT 1 FROM persona WHERE id = ?1")?
+                        .exists(rusqlite::params![pid])?;
+                    if !known {
+                        return Err(crate::db::DbError::NotFound);
+                    }
+                }
+                let n = tx
+                    .prepare_cached("UPDATE conversation SET persona_id = ?2 WHERE id = ?1")?
+                    .execute(rusqlite::params![cid, new_persona])?;
+                if n == 0 {
+                    return Err(crate::db::DbError::NotFound);
+                }
+                Ok(())
+            })
+            .await;
+        match write {
+            Ok(()) => Ok(()),
+            Err(crate::db::DbError::Conflict(_)) => Err(AppError::Conflict(format!(
+                "conversation {id} already has a turn; its persona is fixed"
+            ))),
+            Err(crate::db::DbError::NotFound) => Err(AppError::NotFound(format!(
+                "conversation {id} or its persona"
+            ))),
+            Err(e) => Err(e.into()),
+        }
+    }
 }
 
 // ---------------------------------------------------------------- row mapping
@@ -213,6 +278,7 @@ struct RawConvo {
     id: String,
     kind: String,
     title: Option<String>,
+    persona_id: Option<String>,
     created_at: String,
     updated_at: String,
 }
@@ -223,8 +289,9 @@ impl RawConvo {
             id: r.get(0)?,
             kind: r.get(1)?,
             title: r.get(2)?,
-            created_at: r.get(3)?,
-            updated_at: r.get(4)?,
+            persona_id: r.get(3)?,
+            created_at: r.get(4)?,
+            updated_at: r.get(5)?,
         })
     }
 }
@@ -236,6 +303,7 @@ impl TryFrom<RawConvo> for Conversation {
             id: ConversationId::from_trusted(r.id),
             kind: kind_from_str(&r.kind)?,
             title: r.title,
+            persona_id: r.persona_id.map(PersonaId::from_trusted),
             created_at: r.created_at,
             updated_at: r.updated_at,
         })

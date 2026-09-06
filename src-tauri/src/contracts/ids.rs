@@ -109,6 +109,11 @@ id_newtype!(
     ConversationId
 );
 id_newtype!(
+    /// Identifies a Persona — structured behaviour data for a Tab 1
+    /// conversation (Phase 20).
+    PersonaId
+);
+id_newtype!(
     /// Identifies one message within a conversation.
     MessageId
 );

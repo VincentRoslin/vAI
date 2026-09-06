@@ -79,11 +79,20 @@ with a per-launch `--api-key` bearer (ADR-0013) under a Windows Job Object;
 deadline; **all llama.cpp JSON confined to `llm/protocol`**; `LlamaServer`
 implements `LoadedInstance` + an `LlmInstance` capability trait),
 `conversation` (**the one conversation engine** — `repo` owns all
-conversation/message SQL, `prompt` renders ChatML (text + transcribed audio),
-`ConversationEngine`: `add_user_turn(typed content)` + `generate(sink)` (voice
+conversation/message SQL (incl. the `persona_id` binding, fixed once a turn
+exists), `ConversationEngine`: holds the `context` module's `PersonaRepo` + the
+one `ContextBuilder`; `add_user_turn(typed content)` + `generate(sink)` (voice
 drives the two seams; `send` = both for text), an explicit `GenerationState`
 (`Idle`/`Generating{task,convo}`), first-class cancellation; one generation at a
-time — a concurrent `generate` is `Conflict`),
+time — a concurrent `generate` is `Conflict`; `preview_prompt` exposes the exact
+assembly for FR-34),
+`context` (**the one context builder** — `persona` (`Persona` + `PersonaRepo`,
+all `persona` SQL), `sanitize` (`strip_control` neutralises `<|…|>` control
+tokens in every untrusted string, SECURITY C2), `tokens` (deterministic estimate,
+no tokenizer dep), `builder` (`ContextBuilder::build` — deterministic ChatML
+assembly, budget shed order memory → persona-truncation → never the base system,
+`Provenance` logged at `target: "context"`; empty memory/character slots for
+P21/P26); every generation path assembles its prompt here — `AI_PIPELINES.md` §6),
 `job` (`JobObject` — every spawned child dies with the app, ADR-0013),
 `worker` (**the shared stateless-worker supervisor** — spawns `python <script>`
 under a Job Object with the ADR-0015 lockdown env; `WorkerHello` handshake;
@@ -138,7 +147,8 @@ loopback only, launched with the offline/no-telemetry env (ADR-0015).
 | Voice-activity detection / endpointing / barge-in trigger | `voice::vad` (Silero, in-core — ADR-0005) |
 | TTS clause chunking + synthesis + playback + the barge-in state machine | `voice` module (Rust core; the Chatterbox worker does synthesis only) |
 | Conversations (all modalities) | `conversation` module — the one engine (`ConversationEngine`) |
-| Prompt assembly | `context builder` (one) |
+| Prompt assembly + prompt-injection containment (sanitising untrusted sections) | `context` module — the one `ContextBuilder` (`AI_PIPELINES.md` §6) |
+| Persona data (`persona` table) | `context::persona` (`PersonaRepo`) |
 | Memory | `memory` module (FTS5, per-scope) |
 | Relationship state | `character` module (DB row is truth) |
 | Executing AI-proposed effects | Rust, via allow-listed typed actions only |

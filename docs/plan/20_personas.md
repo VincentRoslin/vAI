@@ -1,8 +1,9 @@
 # Phase 20 — Personas & Context Builder
 
-> **Status: FINALIZED AT PHASE ENTRY** (2026-09-06). Step detail derived against
-> the frozen architecture. No split — this is one Rust-side phase (a new module,
-> one migration, IPC, a minimal Settings/Persona UI). No new venv, no downloads.
+> **Status: COMPLETE** (2026-09-06). All 7 steps done, all 6 gate items pass —
+> evidence in `docs/verification/20_phase20_personas.md`. `context/` module
+> (`persona` / `sanitize` / `tokens` / `builder`), `V0005`, `PersonaId`,
+> `chat_prompt_preview` (FR-34); `conversation::prompt` deleted. No new ADR.
 
 > **Architecture frozen at Phase 5.** Governing: **ADR-0002** (IPC),
 > **ADR-0009** (persistence), Phase 7 contracts, `docs/spec/AI_PIPELINES.md` §6

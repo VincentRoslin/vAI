@@ -15,10 +15,38 @@ vi.mock('../lib/ipc', async (importOriginal) => {
       id: 'c1',
       kind: 'Persona' as const,
       title: null,
+      persona_id: null,
       created_at: 't',
       updated_at: 't',
     })),
     conversationMessages: vi.fn(async () => []),
+    conversationSetPersona: vi.fn(async () => undefined),
+    personaList: vi.fn(async () => [
+      {
+        id: 'p1',
+        name: 'Ada',
+        summary: 's',
+        personality: '',
+        tone: '',
+        style: '',
+        guidance: [],
+        created_at: 't',
+        updated_at: 't',
+      },
+    ]),
+    chatPromptPreview: vi.fn(async () => ({
+      prompt: '<|im_start|>system\nYou are Ada.<|im_end|>\n<|im_start|>assistant\n',
+      provenance: {
+        total_tokens: 10,
+        budget_tokens: 2816,
+        system_tokens: 10,
+        persona: 'Full' as const,
+        memory_items: 0,
+        memory_tokens: 0,
+        history_turns_included: 0,
+        history_turns_dropped: 0,
+      },
+    })),
     chatSend: vi.fn(),
     chatCancel: vi.fn(async () => undefined),
     modelLoad: vi.fn(async () => undefined),
@@ -68,6 +96,44 @@ describe('ChatVoice', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     expect(ipc.chatCancel).toHaveBeenCalledWith('task-1');
+  });
+
+  it('binds a persona on a fresh conversation and locks it once messages exist', async () => {
+    const { unmount } = render(<ChatVoice />);
+    const picker = (await screen.findByLabelText(/persona/i)) as HTMLSelectElement;
+    expect(picker.disabled).toBe(false);
+
+    fireEvent.change(picker, { target: { value: 'p1' } });
+    await waitFor(() => expect(ipc.conversationSetPersona).toHaveBeenCalledWith('c1', 'p1'));
+    unmount();
+
+    // Same conversation, but now with a message → picker disabled.
+    vi.mocked(ipc.conversationMessages).mockResolvedValue([
+      {
+        id: 'm1',
+        conversation_id: 'c1',
+        role: 'User',
+        content: { type: 'Text', data: { text: 'hi' } },
+        created_at: 't',
+        generation: null,
+      },
+    ] as never);
+    render(<ChatVoice />);
+    const locked = (await screen.findByLabelText(/persona/i)) as HTMLSelectElement;
+    await waitFor(() => expect(locked.disabled).toBe(true));
+  });
+
+  it('"Show prompt" fetches the assembled prompt', async () => {
+    vi.mocked(ipc.lifecycleStatus).mockResolvedValue(loadedModel);
+    vi.mocked(ipc.modelsList).mockResolvedValue([
+      { metadata: { id: 'm1', display_name: 'Qwen', kind: 'Llm' } },
+    ] as never);
+
+    render(<ChatVoice />);
+    const details = await screen.findByText(/show prompt/i);
+    fireEvent.click(details);
+    await waitFor(() => expect(ipc.chatPromptPreview).toHaveBeenCalledWith('c1', 'm1'));
+    expect(await screen.findByText(/You are Ada\./)).toBeTruthy();
   });
 
   it('the mic toggles a voice session', async () => {

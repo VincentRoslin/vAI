@@ -5,7 +5,7 @@ application state, persistence, model lifecycle, resource management, scheduling
 process supervision, and IPC. Single crate, one module per subsystem
 (`docs/decisions/0001-single-rust-crate.md`).
 
-## Current modules (Phase 19)
+## Current modules (Phase 20)
 
 | Module | What | Doc |
 | ------ | ---- | --- |
@@ -21,7 +21,8 @@ process supervision, and IPC. Single crate, one module per subsystem
 | `acquisition/` | Model acquisition — `gguf` (header parser), `hf` (HF API + range fetch), `budget` (pre-transfer guard), `download` (`reqwest` engine: `.part` + `Range` resume + SHA-256 verify + register), `AcquisitionService`, `acquire_fixed` (pinned STT/TTS bundles → short `stt` / `tts` subdirs). `model_downloads` (`V0003`). **The only runtime network egress.** | `docs/plan/12_model-acquisition.md`, ADR-0008 |
 | `resources/` | Resource manager — `probe` (`HardwareProbe`: `NvmlProbe` whole-GPU + `sysinfo` RAM, `MockProbe`), `estimate` (closed-form LLM VRAM + per-model EMA `Calibration`), `ResourceManager` (in-memory reservation ledger; `request`/`commit`/`release`/`observe`/`reconcile` behind one async `Mutex`; `request` works off a cached snapshot, never the probe). Accounts only — no loading. `resources.vram_safety_margin_mb` (config v4). | `docs/plan/13_resource-manager.md`, ADR-0007 |
 | `lifecycle/` | Model lifecycle manager — **the only loader/unloader of managed models**. `backend` (`ModelBackend` / `LoadedInstance` traits + `as_any` downcast hook; llama.cpp impl in `llm/`), `LifecycleManager` state machine (`Unloaded → Loading → Loaded ⇄ Busy → Unloading`, `Failed` recovery) behind one async `Mutex`; concurrent same-model loads coalesce; a Phase 13 reservation is acquired before the load and released on every exit path; `RetryPolicy` (3 attempts, 500 ms base); ~2 s liveness monitor → `Failed` + release. `lifecycle_status` IPC. | `docs/plan/14_model-lifecycle.md`, ADR-0007/0010 |
-| `conversation/` | **The one conversation engine** (Phase 16 flow, Phase 17 formalized): `repo` (all SQL for `conversation` + `message`, `V0004`), `prompt` (ChatML render — text + transcribed audio), `mod` (`ConversationEngine` — `add_user_turn(typed content)` + `generate(sink) -> TaskId`; `send` = both, for text; one generation at a time — 2nd → `Conflict`; explicit `GenerationState` via `generation_state()`; `cancel` / `shutdown`). `chat_*` + `conversation_*` IPC. | `docs/plan/17_conversation-engine.md` |
+| `conversation/` | **The one conversation engine** (Phase 16 flow, Phase 17 formalized): `repo` (all SQL for `conversation` + `message`, `V0004`; `persona_id` column + `set_persona` — fixed once a turn exists, `V0005`), `mod` (`ConversationEngine` — holds the `PersonaRepo` + the one `ContextBuilder`; `add_user_turn(typed content)` + `generate(sink) -> TaskId`; `send` = both, for text; one generation at a time — 2nd → `Conflict`; explicit `GenerationState`; `cancel` / `shutdown`; `preview_prompt` for FR-34). `chat_*` + `conversation_*` + `chat_prompt_preview` IPC. | `docs/plan/17_conversation-engine.md`, `docs/plan/20_personas.md` |
+| `context/` | **The one context builder** (Phase 20, `AI_PIPELINES.md` §6) — `persona` (`Persona` + `PersonaDraft` + `PersonaRepo`, all `persona` SQL, `V0005`), `sanitize` (`strip_control` — removes `<\|…\|>` control tokens from every untrusted string, SECURITY C2), `tokens` (`estimate_tokens` — cheap deterministic heuristic, no tokenizer dep), `builder` (`ContextBuilder::build(BuildInput) -> BuiltPrompt` — deterministic ChatML assembly, memory→persona-truncation shed order, `Provenance` logged at `target: "context"`; empty memory/character slots for P21/P26). `persona_*` IPC. | `docs/plan/20_personas.md`, ADR-0009 |
 | `llm/` | llama.cpp adapter (first LLM backend) — `LlamaBackend` (`ModelBackend`: spawns a supervised `llama-server` child from `runtimes.dir`), `server` (free loopback port + `--api-key` bearer + Windows Job Object kill-on-close), `client` (`/health` + `/completion` non-stream + SSE stream, per-call deadline, cancel-drops-response), `protocol` (llama.cpp JSON + SSE parser — nothing else references it), `LlamaServer` (`LoadedInstance` + `LlmInstance` generate/stream). Verified live: pinned prebuilt `b10819` + Qwen 0.5B, TTFT ≈ 23 ms. | `docs/plan/15_llama-cpp-adapter.md`, ADR-0003/0004/0013 |
 | `job.rs` | Windows `JobObject` (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) — every spawned child (`llama-server`, a stdio worker) dies with the app even on a hard crash. No-op on non-Windows. | ADR-0013 |
 | `worker/` | The **shared stateless-worker supervisor** (ADR-0013) — `WorkerSupervisor` spawns `python <script>` under a Job Object with the ADR-0015 lockdown env (`env`, one place, tested against the list), `WorkerHello` handshake (protocol + kind), request/response mux by `WorkerJobId`, `Progress` sink, cancel-abandons-wait, bounded-backoff restart → `Failed`. `layout` resolves interpreter + script (dev from `workers.*` config, ship from `current_exe()` siblings). Reused by TTS (19) + the embedder (27). | `docs/plan/18_voice-in.md`, ADR-0013/0015/0018 |
@@ -30,7 +31,7 @@ process supervision, and IPC. Single crate, one module per subsystem
 ## Modules added by later phases
 
 blob store (with the first blob feature) ·
-`context` builder (P20) · `memory` (P21) · `image` (P22) · `scheduler` (P23–24) ·
+`memory` (P21) · `image` (P22) · `scheduler` (P23–24) ·
 `characters` (P25–29). Each phase registers its module here and in
 `docs/spec/ARCHITECTURE.md` §3.
 

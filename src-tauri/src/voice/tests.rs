@@ -232,7 +232,11 @@ async fn build(tokens: Option<&[&str]>, stt: impl Fn(&Path) -> Arc<WorkerSupervi
         None
     };
 
-    let engine = Arc::new(ConversationEngine::new(db, lifecycle));
+    let engine = Arc::new(ConversationEngine::new(
+        db,
+        Arc::clone(&registry),
+        lifecycle,
+    ));
     let convo = engine.create().await.unwrap();
 
     let stt = stt(tmp.path());
