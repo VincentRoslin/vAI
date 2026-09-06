@@ -264,9 +264,10 @@ impl FixedSpec {
     }
 }
 
-/// Pinned bundles. faster-whisper size is nominally a Phase 18 call — `large-v3`
-/// CT2 is the Phase 12 default. **The exact Chatterbox Turbo repo is confirmed
-/// with the owner before the live download at step 12.8.**
+/// Pinned bundles (repos + file lists owner-confirmed 2026-09-06, both MIT).
+/// faster-whisper size is nominally a Phase 18 call — `large-v3` CT2 is the
+/// Phase 12 default. Chatterbox is the **Turbo** distill the owner uses (350M,
+/// one-step decoder, English, paralinguistic tags).
 fn fixed_spec(which: FixedModel) -> FixedSpec {
     match which {
         FixedModel::Stt => FixedSpec {
@@ -276,23 +277,29 @@ fn fixed_spec(which: FixedModel) -> FixedSpec {
                 "config.json",
                 "preprocessor_config.json",
                 "tokenizer.json",
-                "vocabulary.txt",
+                "vocabulary.json",
                 "model.bin",
             ],
             primary_file: "model.bin",
             kind: ModelKind::Stt,
         },
         FixedModel::Tts => FixedSpec {
-            // TODO(12.8): confirm the exact Chatterbox Turbo repo with the owner.
-            repo: "ResembleAI/chatterbox",
+            repo: "ResembleAI/chatterbox-turbo",
             revision: "main",
             files: &[
-                "t3_cfg.safetensors",
-                "s3gen.safetensors",
+                "t3_turbo_v1.yaml",
+                "tokenizer_config.json",
+                "vocab.json",
+                "merges.txt",
+                "added_tokens.json",
+                "special_tokens_map.json",
+                "conds.pt",
                 "ve.safetensors",
-                "tokenizer.json",
+                "s3gen.safetensors",
+                "s3gen_meanflow.safetensors",
+                "t3_turbo_v1.safetensors",
             ],
-            primary_file: "t3_cfg.safetensors",
+            primary_file: "t3_turbo_v1.safetensors",
             kind: ModelKind::Tts,
         },
     }

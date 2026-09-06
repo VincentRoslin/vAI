@@ -30,6 +30,7 @@ never depends on a domain module, and holds no behaviour.
 | `contracts::generation` | `SamplingParams` · `GenerationRequest` · `StopReason` · `GenerationEvent` | LLM request + the per-request streaming event (`TokenDelta` / `Done` / `Error` / `Cancelled`), adjacently tagged. `SamplingParams::validate()` range-checks temperature / top_p / max_tokens. |
 | `contracts::conversation` | `Role` · `MessageContent` · `GenerationMeta` · `Message` · `ConversationKind` · `Conversation` | One shape for the Persona tab and the Character tab. `MessageContent` is adjacently tagged (`Text` / `Audio` / `Image`). Timestamps are RFC-3339 **strings** — the contract carries no date library. |
 | `contracts::resource` | `ResourceKind` · `ReservationState` · `Reservation` | A resource-ledger entry (Phase 13). |
+| `contracts::acquisition` | `HfModelSummary` · `HfGgufFile` · `DownloadState` · `DownloadInfo` · `DownloadProgress` | HF search results, GGUF file listings, and download queue / progress state (Phase 12). `DownloadProgress` is the per-download Tauri Channel payload. |
 | `contracts::worker` | `WorkerKind` · `WorkerHello` · `WorkerRequest` · `WorkerResult` · `WorkerResponse` | The JSON-lines envelope every worker speaks. `payload` / `Ok.data` bodies are `serde_json::Value` — their schema belongs to each worker's own phase (STT 18, TTS 19, embedder 27). `WorkerResult` is adjacently tagged (`Ok` / `Err` / `Progress`). |
 
 `contracts::WORKER_PROTOCOL_VERSION` (currently `1`) is the version a worker

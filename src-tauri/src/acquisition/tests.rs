@@ -324,3 +324,105 @@ fn part_of(dest: &std::path::Path) -> std::path::PathBuf {
     s.push(".part");
     std::path::PathBuf::from(s)
 }
+
+// ---------------------------------------------------------------- live (gated)
+
+/// Gate item 1: a real HuggingFace GGUF, end to end. Downloads into the real app
+/// model dir (`%APPDATA%\com.localai.app\models`) so it is available for the
+/// Phase 16 vertical slice. Owner-confirmed file (2026-09-06).
+///
+/// Run explicitly: `cargo test -p localai --lib -- --ignored live_download_qwen`.
+#[tokio::test]
+#[ignore = "network + ~400 MB; run explicitly for the Phase 12 gate"]
+async fn live_download_qwen_0_5b() {
+    const REPO: &str = "unsloth/Qwen2.5-0.5B-Instruct-GGUF";
+    const FILE: &str = "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf";
+
+    let app_data =
+        std::path::PathBuf::from(std::env::var("APPDATA").unwrap()).join("com.localai.app");
+    std::fs::create_dir_all(app_data.join("models")).unwrap();
+    let db = Arc::new(Db::open(&app_data.join("localai.db")).await.unwrap());
+    db.migrate().await.unwrap();
+    let registry = Arc::new(ModelRegistry::new(Arc::clone(&db)));
+    let cfg = crate::config::ConfigManager::load(&app_data, &app_data).unwrap();
+    let svc = AcquisitionService::new(Arc::clone(&db), Arc::clone(&registry), Arc::new(cfg));
+
+    // Pull the file's size + SHA-256 from the HF file listing (proves that path too).
+    let files = svc.list_files(REPO).await.expect("list files");
+    let target = files
+        .iter()
+        .find(|f| f.filename == FILE)
+        .expect("target file listed");
+    println!(
+        "listing: {} quant={:?} ctx={:?} size={:?} sha256={:?}",
+        target.filename, target.quant, target.context_length, target.size, target.sha256
+    );
+    assert_eq!(target.quant.as_deref(), Some("Q4_K_M"));
+
+    let started = std::time::Instant::now();
+    let id = svc
+        .download_gguf(REPO, FILE, target.size, target.sha256.clone(), None)
+        .await
+        .expect("start download");
+    let state = wait_terminal_slow(svc.engine(), &id).await;
+    let elapsed = started.elapsed();
+    assert_eq!(state, DownloadState::Complete, "download failed");
+
+    #[allow(clippy::cast_precision_loss)]
+    let mb = target.size.map_or(0.0, |s| s as f64 / 1e6);
+    println!(
+        "downloaded {mb:.0} MB in {:.1}s ({:.1} MB/s)",
+        elapsed.as_secs_f64(),
+        mb / elapsed.as_secs_f64()
+    );
+
+    let models = registry.list().await.unwrap();
+    let entry = models
+        .iter()
+        .find(|m| m.path.contains("Qwen2.5-0.5B"))
+        .expect("registered");
+    assert_eq!(entry.metadata.kind, ModelKind::Llm);
+    assert_eq!(
+        entry.metadata.quant.as_ref().map(|q| q.0.as_str()),
+        Some("Q4_K_M")
+    );
+    assert_eq!(
+        entry.availability,
+        crate::contracts::model::RegistryAvailability::Ready
+    );
+    assert!(
+        std::path::Path::new(&entry.path).starts_with(app_data.join("models")),
+        "path confined to the model dir"
+    );
+    println!(
+        "registered: {} at {}",
+        entry.metadata.display_name, entry.path
+    );
+}
+
+async fn wait_terminal_slow(
+    engine: &DownloadEngine,
+    id: &crate::contracts::ids::DownloadId,
+) -> DownloadState {
+    for _ in 0..2400 {
+        // up to 20 min
+        let d = engine
+            .list()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|d| &d.id == id);
+        match d.as_ref().map(|d| d.state) {
+            Some(DownloadState::Complete | DownloadState::Failed) => {
+                if let Some(d) = &d {
+                    if let Some(e) = &d.error {
+                        eprintln!("download error: {e}");
+                    }
+                }
+                return d.unwrap().state;
+            }
+            _ => tokio::time::sleep(Duration::from_millis(500)).await,
+        }
+    }
+    panic!("live download timed out");
+}

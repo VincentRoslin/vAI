@@ -15,6 +15,7 @@ numbered file per verification event.
 | 08 | `08_phase9_persistence.md` | Phase 9 — SQLite: `db/` module, writer/reader pools, `refinery` forward-only migrations + verified backup, transactions, `DbError`, corruption check; DB baselines |
 | 09 | `09_phase10_observability.md` | Phase 10 — logging: non-blocking lossy writer, boundary secret redaction, ring buffer, config-driven reloadable level, `operation()` spans |
 | 10 | `10_phase11_registry.md` | Phase 11 — model registry: `models/` module, `model_entry` table, CRUD + capability query, path confinement, computed availability, UUIDv4 ids |
+| 11 | `11_phase12_acquisition.md` | Phase 12 — model acquisition: `acquisition/` module, reqwest download engine (resume/verify/register), budget guard, GGUF header parser, `/models` picker; gates 1/5/8 NOT EXECUTED (HF blocked from this network) |
 
 Later phases add their gate evidence here (the performance/offline/fault/security/
 dependency/maintainability audits, etc.).
