@@ -125,18 +125,30 @@ pub fn run() {
 /// thread, before the window shows.
 #[allow(clippy::too_many_lines)]
 fn setup(app: &mut tauri::App) -> Result<(), String> {
-    let config_dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|err| format!("resolve app config dir: {err}"))?;
-    let data_root = app
-        .path()
-        .app_data_dir()
-        .map_err(|err| format!("resolve app data dir: {err}"))?;
+    // `LOCALAI_DATA_DIR` (set by scripts/deploy-local.mjs) pins the config + data
+    // root explicitly — `app_config_dir()` has proven unreliable for a
+    // standalone release binary depending on the launching shell. Falls back to
+    // the Tauri-resolved dirs when unset (e.g. `tauri dev`, a packaged install).
+    let override_dir = std::env::var_os("LOCALAI_DATA_DIR").map(std::path::PathBuf::from);
+    let config_dir = match &override_dir {
+        Some(d) => d.clone(),
+        None => app
+            .path()
+            .app_config_dir()
+            .map_err(|err| format!("resolve app config dir: {err}"))?,
+    };
+    let data_root = match &override_dir {
+        Some(d) => d.clone(),
+        None => app
+            .path()
+            .app_data_dir()
+            .map_err(|err| format!("resolve app data dir: {err}"))?,
+    };
 
     tracing::info!(
         config_dir = %config_dir.display(),
         data_root = %data_root.display(),
+        overridden = override_dir.is_some(),
         "resolved app dirs"
     );
     let config_started = Instant::now();

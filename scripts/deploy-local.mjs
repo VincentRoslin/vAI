@@ -80,5 +80,12 @@ process.stdout.write(
 if (noLaunch) process.exit(0);
 
 process.stdout.write(`launching ${exe} …\n`);
-const child = spawn(exe, [], { cwd: repo, detached: true, stdio: 'ignore' });
+// Pin the config + data root — a standalone release binary's app_config_dir()
+// resolution has proven shell-dependent; this makes it deterministic.
+const child = spawn(exe, [], {
+  cwd: repo,
+  detached: true,
+  stdio: 'ignore',
+  env: { ...process.env, LOCALAI_DATA_DIR: data },
+});
 child.unref();
