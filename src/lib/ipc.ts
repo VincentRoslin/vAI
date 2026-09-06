@@ -5,15 +5,22 @@
  * wrapper here, using the DTO/error types generated from Rust by `ts-rs` into
  * `src/bindings/`. Rejected commands are normalized to a typed `AppError`.
  */
-import { invoke } from '@tauri-apps/api/core';
+import { Channel, invoke } from '@tauri-apps/api/core';
 
 import type { AppConfig } from '../bindings/AppConfig';
 import type { AppError } from '../bindings/AppError';
 import type { AppReady } from '../bindings/AppReady';
 import type { ConfigKeyInfo } from '../bindings/ConfigKeyInfo';
 import type { ConfigSet } from '../bindings/ConfigSet';
+import type { DownloadInfo } from '../bindings/DownloadInfo';
+import type { DownloadProgress } from '../bindings/DownloadProgress';
+import type { DownloadRequest } from '../bindings/DownloadRequest';
+import type { FixedModelKind } from '../bindings/FixedModelKind';
 import type { FrontendLog } from '../bindings/FrontendLog';
+import type { HfGgufFile } from '../bindings/HfGgufFile';
+import type { HfModelSummary } from '../bindings/HfModelSummary';
 import type { Pong } from '../bindings/Pong';
+import type { RegisteredModel } from '../bindings/RegisteredModel';
 
 export type { AppConfig, AppError, AppReady, ConfigKeyInfo, ConfigSet, FrontendLog, Pong };
 
@@ -74,3 +81,47 @@ export async function configKeys(): Promise<ConfigKeyInfo[]> {
     throw toAppError(err);
   }
 }
+
+// ---------------------------------------------------------------- models + acquisition
+
+async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  try {
+    return await invoke<T>(cmd, args);
+  } catch (err) {
+    throw toAppError(err);
+  }
+}
+
+/** Every registered model. */
+export const modelsList = (): Promise<RegisteredModel[]> => call('models_list');
+
+/** Delete a model (file + registry row + any download row). */
+export const modelDelete = (id: string): Promise<void> => call('model_delete', { id });
+
+/** Search HuggingFace for GGUF models. */
+export const hfSearch = (query: string, limit = 20): Promise<HfModelSummary[]> =>
+  call('hf_search', { query, limit });
+
+/** List a repo's `.gguf` files with quant / context from the header. */
+export const hfListFiles = (repo: string): Promise<HfGgufFile[]> => call('hf_list_files', { repo });
+
+/** Start a GGUF download; `onProgress` receives byte ticks over a Channel. */
+export async function downloadStart(
+  req: DownloadRequest,
+  onProgress: (p: DownloadProgress) => void,
+): Promise<string> {
+  const progress = new Channel<DownloadProgress>();
+  progress.onmessage = onProgress;
+  return call('download_start', { req, progress });
+}
+
+export const downloadPause = (id: string): Promise<void> => call('download_pause', { id });
+export const downloadResume = (id: string): Promise<void> => call('download_resume', { id });
+export const downloadCancel = (id: string): Promise<void> => call('download_cancel', { id });
+
+/** Every download row (queued / in-progress / done / failed). */
+export const downloadsList = (): Promise<DownloadInfo[]> => call('downloads_list');
+
+/** Acquire the pinned faster-whisper or Chatterbox model bundle. */
+export const acquireFixed = (which: FixedModelKind): Promise<string[]> =>
+  call('acquire_fixed', { which });

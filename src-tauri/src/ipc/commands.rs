@@ -111,7 +111,7 @@ pub fn frontend_log(entry: FrontendLog) {
 #[must_use]
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
-pub fn config_get(config: State<'_, ConfigManager>) -> AppConfig {
+pub fn config_get(config: State<'_, std::sync::Arc<ConfigManager>>) -> AppConfig {
     config.effective()
 }
 
@@ -119,7 +119,10 @@ pub fn config_get(config: State<'_, ConfigManager>) -> AppConfig {
 /// session-only override.
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
-pub fn config_set(config: State<'_, ConfigManager>, req: ConfigSet) -> AppResult<()> {
+pub fn config_set(
+    config: State<'_, std::sync::Arc<ConfigManager>>,
+    req: ConfigSet,
+) -> AppResult<()> {
     let ConfigSet {
         key,
         value,
@@ -136,8 +139,159 @@ pub fn config_set(config: State<'_, ConfigManager>, req: ConfigSet) -> AppResult
 #[must_use]
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
-pub fn config_keys(config: State<'_, ConfigManager>) -> Vec<ConfigKeyInfo> {
+pub fn config_keys(config: State<'_, std::sync::Arc<ConfigManager>>) -> Vec<ConfigKeyInfo> {
     config.keys()
+}
+
+// ---------------------------------------------------------------- models + acquisition
+//
+// `State` is injected by value (Tauri) → `needless_pass_by_value` allowed per fn.
+
+use std::sync::Arc;
+
+use tauri::ipc::Channel;
+
+use crate::acquisition::{AcquisitionService, FixedModel};
+use crate::contracts::acquisition::{DownloadInfo, DownloadProgress, HfGgufFile, HfModelSummary};
+use crate::contracts::ids::{DownloadId, ModelId};
+use crate::contracts::model::RegisteredModel;
+use crate::models::ModelRegistry;
+
+/// Every registered model.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn models_list(
+    registry: State<'_, Arc<ModelRegistry>>,
+) -> AppResult<Vec<RegisteredModel>> {
+    registry.list().await
+}
+
+/// Delete a model — its file, its registry row, and any download row.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn model_delete(
+    registry: State<'_, Arc<ModelRegistry>>,
+    db: State<'_, Arc<crate::db::Db>>,
+    id: ModelId,
+) -> AppResult<()> {
+    crate::acquisition::delete_model(&registry, &db, &id).await
+}
+
+/// Search HuggingFace for GGUF models.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn hf_search(
+    acquisition: State<'_, AcquisitionService>,
+    query: String,
+    limit: u32,
+) -> AppResult<Vec<HfModelSummary>> {
+    acquisition.search(&query, limit).await
+}
+
+/// List a repo's `.gguf` files (with header-derived quant / context).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn hf_list_files(
+    acquisition: State<'_, AcquisitionService>,
+    repo: String,
+) -> AppResult<Vec<HfGgufFile>> {
+    acquisition.list_files(&repo).await
+}
+
+/// Request body for [`download_start`].
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct DownloadRequest {
+    /// `owner/name`.
+    pub repo: String,
+    /// File within the repo.
+    pub filename: String,
+    /// Size in bytes from the file listing (for the budget check).
+    pub size: Option<u64>,
+    /// SHA-256 from the file listing (for verification).
+    pub sha256: Option<String>,
+}
+
+/// Start downloading one GGUF file. `progress` receives byte ticks.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn download_start(
+    acquisition: State<'_, AcquisitionService>,
+    req: DownloadRequest,
+    progress: Channel<DownloadProgress>,
+) -> AppResult<DownloadId> {
+    let DownloadRequest {
+        repo,
+        filename,
+        size,
+        sha256,
+    } = req;
+    acquisition
+        .download_gguf(&repo, &filename, size, sha256, Some(progress))
+        .await
+}
+
+/// Pause a running download.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn download_pause(
+    acquisition: State<'_, AcquisitionService>,
+    id: DownloadId,
+) -> AppResult<()> {
+    acquisition.pause(&id).await
+}
+
+/// Resume a paused download.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn download_resume(
+    acquisition: State<'_, AcquisitionService>,
+    id: DownloadId,
+) -> AppResult<()> {
+    acquisition.resume(&id).await
+}
+
+/// Cancel a download (deletes the `.part` + row).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn download_cancel(
+    acquisition: State<'_, AcquisitionService>,
+    id: DownloadId,
+) -> AppResult<()> {
+    acquisition.cancel(&id).await
+}
+
+/// Every download row.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn downloads_list(
+    acquisition: State<'_, AcquisitionService>,
+) -> AppResult<Vec<DownloadInfo>> {
+    acquisition.downloads().await
+}
+
+/// Which fixed model bundle to acquire.
+#[derive(Debug, Clone, Copy, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub enum FixedModelKind {
+    /// faster-whisper (STT).
+    Stt,
+    /// Chatterbox Turbo (TTS).
+    Tts,
+}
+
+/// Acquire the pinned faster-whisper or Chatterbox model bundle.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn acquire_fixed(
+    acquisition: State<'_, AcquisitionService>,
+    which: FixedModelKind,
+) -> AppResult<Vec<DownloadId>> {
+    let which = match which {
+        FixedModelKind::Stt => FixedModel::Stt,
+        FixedModelKind::Tts => FixedModel::Tts,
+    };
+    acquisition.acquire_fixed(which).await
 }
 
 #[cfg(test)]

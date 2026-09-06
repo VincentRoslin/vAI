@@ -91,19 +91,33 @@ fn migration_upgrades_a_versionless_file() {
 }
 
 #[test]
-fn migration_v1_to_v2_adds_logging_defaults() {
-    // A complete v1 document — no `logging` section.
+fn migration_forward_fills_new_sections_from_defaults() {
+    // A complete v1 document — no `logging`, no `models.min_free_gb`.
     let v1 = json!({
         "version": 1,
         "models": { "dir": if cfg!(windows) { r"C:\m" } else { "/m" }, "budget_gb": 7 },
     });
     let migrated = migrate(v1, &root()).expect("migrates");
-    assert_eq!(migrated["version"], json!(2));
-    assert_eq!(migrated["models"]["budget_gb"], json!(7));
-    assert_eq!(migrated["logging"]["level"], json!("info"));
+    assert_eq!(migrated["version"], json!(CURRENT_SCHEMA_VERSION));
+    assert_eq!(migrated["models"]["budget_gb"], json!(7)); // kept
+    assert_eq!(migrated["logging"]["level"], json!("info")); // v2 default
+    assert_eq!(migrated["models"]["min_free_gb"], json!(20)); // v3 default
 
     let cfg: AppConfig = serde_json::from_value(migrated).expect("deserializes");
     cfg.validate().expect("valid after migration");
+}
+
+#[test]
+fn migration_v2_to_v3_adds_min_free_gb() {
+    let v2 = json!({
+        "version": 2,
+        "models": { "dir": if cfg!(windows) { r"C:\m" } else { "/m" }, "budget_gb": 50 },
+        "logging": { "level": "warn" },
+    });
+    let migrated = migrate(v2, &root()).expect("migrates");
+    assert_eq!(migrated["version"], json!(3));
+    assert_eq!(migrated["models"]["min_free_gb"], json!(20));
+    assert_eq!(migrated["logging"]["level"], json!("warn")); // kept
 }
 
 #[test]

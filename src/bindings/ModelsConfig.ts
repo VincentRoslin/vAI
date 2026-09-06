@@ -11,4 +11,9 @@ dir: string,
 /**
  * Maximum disk the model directory may occupy, in GB. Must be `>= 1`.
  */
-budget_gb: number, };
+budget_gb: number, 
+/**
+ * Disk headroom (GB) to keep free — a download that would leave less than
+ * this is refused before it starts (schema v3). Must be `>= 1`.
+ */
+min_free_gb: number, };

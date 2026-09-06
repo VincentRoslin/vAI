@@ -1,0 +1,316 @@
+//! Model acquisition (Phase 12, ADR-0008): an in-app HuggingFace picker +
+//! one-shot **resumable** download for LLM GGUF, and the same download/verify
+//! path for the pinned faster-whisper + Chatterbox models. Rust owns the network
+//! calls, the transfer, verification, and the filesystem writes (confined to the
+//! model dir). Fully skippable; everything acquired works offline afterwards
+//! (`CLAUDE.md` Art. II).
+
+pub mod budget;
+pub mod download;
+pub mod gguf;
+pub mod hf;
+
+#[cfg(test)]
+mod tests;
+
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use tauri::ipc::Channel;
+
+use crate::acquisition::download::{DownloadEngine, DownloadSpec, RegisterPlan};
+use crate::config::ConfigManager;
+use crate::contracts::acquisition::{DownloadInfo, DownloadProgress, HfGgufFile, HfModelSummary};
+use crate::contracts::ids::{DownloadId, ModelId};
+use crate::contracts::model::{Device, ModelBackend, ModelKind};
+use crate::db::Db;
+use crate::ipc::{AppError, AppResult};
+use crate::models::{validate_model_path, ModelDraft, ModelRegistry};
+
+/// The `llama.cpp` backend id used for downloaded GGUF models.
+pub const LLAMA_BACKEND: &str = "llama.cpp";
+
+/// One of the two fixed (no-picker) model bundles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FixedModel {
+    /// faster-whisper (STT).
+    Stt,
+    /// Chatterbox Turbo (TTS).
+    Tts,
+}
+
+/// Orchestrates the HF client, the download engine, and the registry.
+#[derive(Debug)]
+pub struct AcquisitionService {
+    hf: hf::HfClient,
+    engine: Arc<DownloadEngine>,
+    config: Arc<ConfigManager>,
+}
+
+impl AcquisitionService {
+    /// Build the service.
+    #[must_use]
+    pub fn new(db: Arc<Db>, registry: Arc<ModelRegistry>, config: Arc<ConfigManager>) -> Self {
+        Self {
+            hf: hf::HfClient::default(),
+            engine: Arc::new(DownloadEngine::new(db, registry)),
+            config,
+        }
+    }
+
+    /// Point the HF client at a different base URL (tests).
+    #[cfg(test)]
+    #[must_use]
+    pub fn with_hf_base(mut self, base: &str) -> Self {
+        self.hf = hf::HfClient::new(base);
+        self
+    }
+
+    #[cfg(test)]
+    #[must_use]
+    pub fn engine(&self) -> &Arc<DownloadEngine> {
+        &self.engine
+    }
+
+    /// Search HuggingFace for GGUF models.
+    ///
+    /// # Errors
+    /// [`AppError::BackendUnavailable`] when offline.
+    pub async fn search(&self, query: &str, limit: u32) -> AppResult<Vec<HfModelSummary>> {
+        self.hf.search_models(query, limit).await
+    }
+
+    /// List a repo's `.gguf` files with header metadata.
+    ///
+    /// # Errors
+    /// [`AppError::BackendUnavailable`] when offline.
+    pub async fn list_files(&self, repo: &str) -> AppResult<Vec<HfGgufFile>> {
+        self.hf.list_gguf_files(repo).await
+    }
+
+    /// Start downloading one GGUF file. Budget-checked before any byte moves;
+    /// registered as an LLM on verified completion.
+    ///
+    /// # Errors
+    /// [`AppError::ResourceExhausted`] (budget), [`AppError::Validation`] (path),
+    /// or a persistence error.
+    pub async fn download_gguf(
+        &self,
+        repo: &str,
+        filename: &str,
+        expected_size: Option<u64>,
+        sha256: Option<String>,
+        channel: Option<Channel<DownloadProgress>>,
+    ) -> AppResult<DownloadId> {
+        let models = self.config.effective().models;
+        let dest = self.resolve_dest(&models.dir, repo, filename)?;
+
+        if let Some(size) = expected_size {
+            budget::check_budget(size, &models.dir, models.budget_gb, models.min_free_gb)?;
+        }
+
+        let spec = DownloadSpec {
+            url: download::hf_resolve_url(repo, "main", filename),
+            repo: repo.to_owned(),
+            revision: "main".to_owned(),
+            filename: filename.to_owned(),
+            kind: ModelKind::Llm,
+            dest_path: dest,
+            expected_size,
+            sha256_expected: sha256,
+            register: RegisterPlan::GgufLlm {
+                backend: LLAMA_BACKEND.to_owned(),
+            },
+        };
+        self.engine.start(spec, channel).await
+    }
+
+    /// Acquire a fixed model bundle (all files) via the same download path.
+    ///
+    /// # Errors
+    /// As [`AcquisitionService::download_gguf`].
+    pub async fn acquire_fixed(&self, which: FixedModel) -> AppResult<Vec<DownloadId>> {
+        let models = self.config.effective().models;
+        let spec = fixed_spec(which);
+        let base_dir = models.dir.join(sanitize(spec.repo));
+
+        let mut ids = Vec::new();
+        for (i, file) in spec.files.iter().enumerate() {
+            let dest = base_dir.join(file);
+            // The last file triggers registration once all files are in place.
+            let register = if i + 1 == spec.files.len() {
+                RegisterPlan::Fixed(Box::new(spec.draft(base_dir.join(spec.primary_file))))
+            } else {
+                RegisterPlan::None
+            };
+            let dl = DownloadSpec {
+                url: download::hf_resolve_url(spec.repo, spec.revision, file),
+                repo: spec.repo.to_owned(),
+                revision: spec.revision.to_owned(),
+                filename: (*file).to_owned(),
+                kind: spec.kind,
+                dest_path: dest,
+                expected_size: None,
+                sha256_expected: None,
+                register,
+            };
+            ids.push(self.engine.start(dl, None).await?);
+        }
+        Ok(ids)
+    }
+
+    /// Every download row.
+    ///
+    /// # Errors
+    /// A persistence error.
+    pub async fn downloads(&self) -> AppResult<Vec<DownloadInfo>> {
+        self.engine.list().await
+    }
+
+    /// Pause a running download.
+    ///
+    /// # Errors
+    /// A persistence error.
+    pub async fn pause(&self, id: &DownloadId) -> AppResult<()> {
+        self.engine.pause(id).await
+    }
+
+    /// Resume a paused download.
+    ///
+    /// # Errors
+    /// As [`DownloadEngine::resume`].
+    pub async fn resume(&self, id: &DownloadId) -> AppResult<()> {
+        self.engine.resume(id).await
+    }
+
+    /// Cancel a download (deletes the `.part` + row).
+    ///
+    /// # Errors
+    /// A persistence error.
+    pub async fn cancel(&self, id: &DownloadId) -> AppResult<()> {
+        self.engine.cancel(id).await
+    }
+
+    /// On startup: interrupted rows → `Paused`.
+    ///
+    /// # Errors
+    /// A persistence error.
+    pub async fn reconcile_on_start(&self) -> AppResult<usize> {
+        self.engine.reconcile_on_start().await
+    }
+
+    #[allow(clippy::unused_self)]
+    fn resolve_dest(
+        &self,
+        models_dir: &std::path::Path,
+        repo: &str,
+        filename: &str,
+    ) -> AppResult<PathBuf> {
+        if filename.contains("..") || repo.contains("..") {
+            return Err(AppError::Validation(
+                "repo/filename must not contain '..'".to_owned(),
+            ));
+        }
+        let dest = models_dir.join(sanitize(repo)).join(filename);
+        // The parent must resolve inside the model dir; the file itself does not
+        // exist yet, so validate the directory it will live in.
+        let parent = dest.parent().unwrap_or(models_dir);
+        std::fs::create_dir_all(parent)
+            .map_err(|e| AppError::internal("create model subdir", e))?;
+        // Re-use the registry's confinement check on the parent.
+        validate_model_path(parent, models_dir)?;
+        Ok(dest)
+    }
+}
+
+fn sanitize(repo: &str) -> String {
+    repo.replace(['/', '\\'], "__")
+}
+
+// ---------------------------------------------------------------- fixed specs
+
+struct FixedSpec {
+    repo: &'static str,
+    revision: &'static str,
+    files: &'static [&'static str],
+    /// The file the registry entry points at.
+    primary_file: &'static str,
+    kind: ModelKind,
+}
+
+impl FixedSpec {
+    fn draft(&self, primary_path: PathBuf) -> ModelDraft {
+        let (name, ctx, vram) = match self.kind {
+            ModelKind::Stt => ("faster-whisper large-v3", None, 3000),
+            ModelKind::Tts => ("Chatterbox Turbo", None, 3000),
+            _ => ("fixed model", None, 2000),
+        };
+        ModelDraft {
+            display_name: name.to_owned(),
+            kind: self.kind,
+            backend: ModelBackend(match self.kind {
+                ModelKind::Stt => "faster-whisper".to_owned(),
+                ModelKind::Tts => "chatterbox".to_owned(),
+                _ => "unknown".to_owned(),
+            }),
+            quant: None,
+            path: primary_path,
+            streaming: false,
+            context_tokens: ctx,
+            estimated_vram_mb: Some(vram),
+            devices: vec![Device::Cuda],
+            config: serde_json::json!({}),
+        }
+    }
+}
+
+/// Pinned bundles. faster-whisper size is nominally a Phase 18 call — `large-v3`
+/// CT2 is the Phase 12 default. **The exact Chatterbox Turbo repo is confirmed
+/// with the owner before the live download at step 12.8.**
+fn fixed_spec(which: FixedModel) -> FixedSpec {
+    match which {
+        FixedModel::Stt => FixedSpec {
+            repo: "Systran/faster-whisper-large-v3",
+            revision: "main",
+            files: &[
+                "config.json",
+                "preprocessor_config.json",
+                "tokenizer.json",
+                "vocabulary.txt",
+                "model.bin",
+            ],
+            primary_file: "model.bin",
+            kind: ModelKind::Stt,
+        },
+        FixedModel::Tts => FixedSpec {
+            // TODO(12.8): confirm the exact Chatterbox Turbo repo with the owner.
+            repo: "ResembleAI/chatterbox",
+            revision: "main",
+            files: &[
+                "t3_cfg.safetensors",
+                "s3gen.safetensors",
+                "ve.safetensors",
+                "tokenizer.json",
+            ],
+            primary_file: "t3_cfg.safetensors",
+            kind: ModelKind::Tts,
+        },
+    }
+}
+
+/// Remove a model: its file, its registry row, and any download row.
+///
+/// # Errors
+/// A persistence error.
+pub async fn delete_model(registry: &ModelRegistry, db: &Db, id: &ModelId) -> AppResult<()> {
+    let model = registry.get(id).await?;
+    let _ = tokio::fs::remove_file(&model.path).await;
+    registry.delete(id).await?;
+    let path = model.path.clone();
+    db.write(move |tx| {
+        tx.execute("DELETE FROM model_downloads WHERE dest_path = ?1", [path])?;
+        Ok(())
+    })
+    .await
+    .map_err(AppError::from)
+}

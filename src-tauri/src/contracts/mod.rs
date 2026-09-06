@@ -20,6 +20,7 @@
 //!
 //! No behaviour lives here: no `invoke` handlers, no persistence, no I/O.
 
+pub mod acquisition;
 pub mod conversation;
 pub mod generation;
 pub mod ids;

@@ -8,6 +8,7 @@
 //! Modules land phase by phase (`config` P8, `db` P9, `models` P11, …), each
 //! registering itself in `src-tauri/README.md` and `ARCHITECTURE.md`.
 
+pub mod acquisition;
 pub mod config;
 pub mod contracts;
 pub mod db;
@@ -55,7 +56,8 @@ pub fn run() {
             if manager.recovered() {
                 let _ = app.emit("config://recovered", ());
             }
-            app.manage(manager);
+            let manager = Arc::new(manager);
+            app.manage(Arc::clone(&manager));
 
             let db_path = data_root.join("localai.db");
             let db_started = Instant::now();
@@ -71,7 +73,19 @@ pub fn run() {
                 "database ready"
             );
             let database = Arc::new(database);
-            app.manage(models::ModelRegistry::new(Arc::clone(&database)));
+            let registry = Arc::new(models::ModelRegistry::new(Arc::clone(&database)));
+            let acquisition = acquisition::AcquisitionService::new(
+                Arc::clone(&database),
+                Arc::clone(&registry),
+                Arc::clone(&manager),
+            );
+            let reconciled =
+                tauri::async_runtime::block_on(acquisition.reconcile_on_start()).unwrap_or(0);
+            if reconciled > 0 {
+                tracing::info!(reconciled, "paused interrupted downloads from a prior run");
+            }
+            app.manage(acquisition);
+            app.manage(registry);
             app.manage(database);
 
             Ok(())
@@ -83,6 +97,16 @@ pub fn run() {
             ipc::commands::config_get,
             ipc::commands::config_set,
             ipc::commands::config_keys,
+            ipc::commands::models_list,
+            ipc::commands::model_delete,
+            ipc::commands::hf_search,
+            ipc::commands::hf_list_files,
+            ipc::commands::download_start,
+            ipc::commands::download_pause,
+            ipc::commands::download_resume,
+            ipc::commands::download_cancel,
+            ipc::commands::downloads_list,
+            ipc::commands::acquire_fixed,
         ])
         .build(tauri::generate_context!())
         .expect("error while building LocalAI");

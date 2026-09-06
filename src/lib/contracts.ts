@@ -42,6 +42,18 @@ export type { Quant } from '../bindings/Quant';
 export type { ModelCapabilities } from '../bindings/ModelCapabilities';
 export type { ModelMetadata } from '../bindings/ModelMetadata';
 export type { ModelState } from '../bindings/ModelState';
+export type { RegisteredModel } from '../bindings/RegisteredModel';
+export type { RegistryAvailability } from '../bindings/RegistryAvailability';
+export type { Device } from '../bindings/Device';
+
+// Acquisition (HF picker + downloads, Phase 12).
+export type { HfModelSummary } from '../bindings/HfModelSummary';
+export type { HfGgufFile } from '../bindings/HfGgufFile';
+export type { DownloadState } from '../bindings/DownloadState';
+export type { DownloadInfo } from '../bindings/DownloadInfo';
+export type { DownloadProgress } from '../bindings/DownloadProgress';
+export type { DownloadRequest } from '../bindings/DownloadRequest';
+export type { FixedModelKind } from '../bindings/FixedModelKind';
 
 // Generation + streaming.
 export type { SamplingParams } from '../bindings/SamplingParams';

@@ -32,11 +32,12 @@ use crate::ipc::{AppError, AppResult};
 
 /// Schema version this binary understands. A file with a higher version is
 /// refused; a lower (or absent) version is migrated forward on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
+pub const CURRENT_SCHEMA_VERSION: u32 = 3;
 
 const FILE_NAME: &str = "config.json";
 const TMP_NAME: &str = "config.json.tmp";
 const DEFAULT_MODEL_BUDGET_GB: u32 = 100;
+const DEFAULT_MIN_FREE_GB: u32 = 20;
 const DEFAULT_LOG_LEVEL: &str = "info";
 
 // ---------------------------------------------------------------- schema
@@ -71,6 +72,9 @@ pub struct ModelsConfig {
     pub dir: PathBuf,
     /// Maximum disk the model directory may occupy, in GB. Must be `>= 1`.
     pub budget_gb: u32,
+    /// Disk headroom (GB) to keep free — a download that would leave less than
+    /// this is refused before it starts (schema v3). Must be `>= 1`.
+    pub min_free_gb: u32,
 }
 
 impl AppConfig {
@@ -82,6 +86,7 @@ impl AppConfig {
             models: ModelsConfig {
                 dir: app_data_root.join("models"),
                 budget_gb: DEFAULT_MODEL_BUDGET_GB,
+                min_free_gb: DEFAULT_MIN_FREE_GB,
             },
             logging: LoggingConfig {
                 level: DEFAULT_LOG_LEVEL.to_owned(),
@@ -104,6 +109,11 @@ impl AppConfig {
         if self.models.budget_gb < 1 {
             return Err(AppError::Validation(
                 "models.budget_gb must be >= 1".to_owned(),
+            ));
+        }
+        if self.models.min_free_gb < 1 {
+            return Err(AppError::Validation(
+                "models.min_free_gb must be >= 1".to_owned(),
             ));
         }
         if self.models.dir.as_os_str().is_empty() {
@@ -176,12 +186,16 @@ fn migrate(raw: Value, app_data_root: &Path) -> AppResult<Value> {
 struct SessionOverrides {
     models_dir: Option<PathBuf>,
     models_budget_gb: Option<u32>,
+    models_min_free_gb: Option<u32>,
     logging_level: Option<String>,
 }
 
 impl SessionOverrides {
     fn is_empty(&self) -> bool {
-        self.models_dir.is_none() && self.models_budget_gb.is_none() && self.logging_level.is_none()
+        self.models_dir.is_none()
+            && self.models_budget_gb.is_none()
+            && self.models_min_free_gb.is_none()
+            && self.logging_level.is_none()
     }
 
     fn apply(&self, cfg: &mut AppConfig) {
@@ -190,6 +204,9 @@ impl SessionOverrides {
         }
         if let Some(budget) = self.models_budget_gb {
             cfg.models.budget_gb = budget;
+        }
+        if let Some(min_free) = self.models_min_free_gb {
+            cfg.models.min_free_gb = min_free;
         }
         if let Some(level) = &self.logging_level {
             cfg.logging.level.clone_from(level);
@@ -208,19 +225,27 @@ pub enum ConfigKey {
     ModelsDir,
     /// `models.budget_gb` — integer `>= 1`.
     ModelsBudgetGb,
+    /// `models.min_free_gb` — integer `>= 1`.
+    ModelsMinFreeGb,
     /// `logging.level` — a `tracing` filter directive.
     LoggingLevel,
 }
 
 impl ConfigKey {
     /// Every overridable key.
-    pub const ALL: [Self; 3] = [Self::ModelsDir, Self::ModelsBudgetGb, Self::LoggingLevel];
+    pub const ALL: [Self; 4] = [
+        Self::ModelsDir,
+        Self::ModelsBudgetGb,
+        Self::ModelsMinFreeGb,
+        Self::LoggingLevel,
+    ];
 
     #[must_use]
     fn dotted(self) -> &'static str {
         match self {
             Self::ModelsDir => "models.dir",
             Self::ModelsBudgetGb => "models.budget_gb",
+            Self::ModelsMinFreeGb => "models.min_free_gb",
             Self::LoggingLevel => "logging.level",
         }
     }
@@ -229,7 +254,7 @@ impl ConfigKey {
     fn value_type(self) -> &'static str {
         match self {
             Self::ModelsDir => "path",
-            Self::ModelsBudgetGb => "integer",
+            Self::ModelsBudgetGb | Self::ModelsMinFreeGb => "integer",
             Self::LoggingLevel => "log-directive",
         }
     }
@@ -238,6 +263,7 @@ impl ConfigKey {
         match self {
             Self::ModelsDir => cfg.models.dir.display().to_string(),
             Self::ModelsBudgetGb => cfg.models.budget_gb.to_string(),
+            Self::ModelsMinFreeGb => cfg.models.min_free_gb.to_string(),
             Self::LoggingLevel => cfg.logging.level.clone(),
         }
     }
@@ -251,6 +277,13 @@ fn apply_kv(cfg: &mut AppConfig, key: ConfigKey, raw: &str) -> AppResult<()> {
         ConfigKey::ModelsBudgetGb => {
             cfg.models.budget_gb = raw.trim().parse().map_err(|_| {
                 AppError::Validation(format!("models.budget_gb must be an integer, got {raw:?}"))
+            })?;
+        }
+        ConfigKey::ModelsMinFreeGb => {
+            cfg.models.min_free_gb = raw.trim().parse().map_err(|_| {
+                AppError::Validation(format!(
+                    "models.min_free_gb must be an integer, got {raw:?}"
+                ))
             })?;
         }
         ConfigKey::LoggingLevel => raw.trim().clone_into(&mut cfg.logging.level),
@@ -413,6 +446,9 @@ impl ConfigManager {
             ConfigKey::ModelsDir => state.session.models_dir = Some(PathBuf::from(raw)),
             ConfigKey::ModelsBudgetGb => {
                 state.session.models_budget_gb = Some(probe.models.budget_gb);
+            }
+            ConfigKey::ModelsMinFreeGb => {
+                state.session.models_min_free_gb = Some(probe.models.min_free_gb);
             }
             ConfigKey::LoggingLevel => {
                 state.session.logging_level = Some(probe.logging.level.clone());
