@@ -270,6 +270,29 @@ volunteers in chat.
 - Local commits only. **Never** push, add a remote, or create a GitHub repo
   without an explicit instruction — pushing publishes the code.
 
+### Session hygiene (keep usage down)
+
+A long transcript costs tokens on every turn even when cached. The repo is the
+memory — lean on it instead of the conversation.
+
+- **`/clear` at every task boundary.** When a change lands (checks pass +
+  committed) and the next request is unrelated, tell the owner it's a good point
+  to `/clear`, or `/clear` before starting if they've already moved on. Don't
+  carry a finished task's history into the next one.
+- **`/compact` mid-task** when one task's transcript has grown large (many file
+  reads, repeated build/test cycles) but isn't done. A summary is enough to
+  continue.
+- **Read narrowly.** Grep/Glob to locate, then read the specific lines or
+  function — not whole large files, and never a file just edited (the harness
+  tracks it).
+- **Verify in tiers.** Scoped tests (`cargo test --lib <module>`, one vitest
+  file) while iterating; the full `node scripts/check.mjs` once near the end —
+  not after every micro-edit.
+- **Batch tool calls** — independent reads/searches in one turn.
+- **`deploy-local.mjs` is a ~2–3 min release compile.** Run it only when the
+  owner needs to live-test a change, not to confirm correctness (`cargo check` +
+  tests do that). Don't poll a running background build — wait for the notice.
+
 ### Before acting on any prompt
 
 1. Read `ROADMAP.md` — current state (§1), and §7 open decisions.
