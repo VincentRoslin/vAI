@@ -43,7 +43,7 @@ granular, individually-verifiable steps.
 | 18.5 | `18.5_deploy-diagnostics.md` | full (owner-requested insert; deploy + local probes, pulled forward from P37) |
 | 19 | `19_voice-out.md` | full (finalized at phase entry; split 19.A / 19.B) |
 | 20 | `20_personas.md` | full (finalized at phase entry) |
-| 21 | `21_memory.md` | outline |
+| 21 | `21_memory.md` | full (finalized at phase entry) |
 | 22 | `22_image-generation.md` | outline |
 | 23 | `23_model-hot-swapping.md` | outline |
 | 24 | `24_scheduler.md` | outline |
