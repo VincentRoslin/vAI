@@ -7,7 +7,8 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use super::conversation::{
-    Conversation, ConversationKind, GenerationMeta, Message, MessageContent, Role,
+    Conversation, ConversationKind, GenerationHandle, GenerationMeta, GenerationState, Message,
+    MessageContent, Role,
 };
 use super::generation::{GenerationEvent, GenerationRequest, SamplingParams, StopReason};
 use super::ids::{
@@ -387,6 +388,14 @@ fn conversation_contracts_round_trip() {
         title: Some("First chat".into()),
         created_at: "2026-09-06T00:00:00Z".into(),
         updated_at: "2026-09-06T00:01:00Z".into(),
+    });
+
+    round_trip(&GenerationState { generating: None });
+    round_trip(&GenerationState {
+        generating: Some(GenerationHandle {
+            task_id: task_id(),
+            conversation_id: conversation_id(),
+        }),
     });
 }
 

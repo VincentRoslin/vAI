@@ -351,18 +351,18 @@ pub async fn model_unload(
     lifecycle.unload(&id).await
 }
 
-// ---------------------------------------------------------------- chat (Phase 16)
+// ---------------------------------------------------------------- chat (Phase 16 / 17)
 
-use crate::contracts::conversation::{Conversation, Message};
+use crate::contracts::conversation::{Conversation, GenerationState, Message};
 use crate::contracts::generation::GenerationEvent;
 use crate::contracts::ids::{ConversationId, TaskId};
-use crate::conversation::ConversationService;
+use crate::conversation::ConversationEngine;
 
 /// Start a new conversation.
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
 pub async fn conversation_create(
-    chat: State<'_, Arc<ConversationService>>,
+    chat: State<'_, Arc<ConversationEngine>>,
 ) -> AppResult<Conversation> {
     chat.create().await
 }
@@ -371,7 +371,7 @@ pub async fn conversation_create(
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
 pub async fn conversation_list(
-    chat: State<'_, Arc<ConversationService>>,
+    chat: State<'_, Arc<ConversationEngine>>,
 ) -> AppResult<Vec<Conversation>> {
     chat.list().await
 }
@@ -380,7 +380,7 @@ pub async fn conversation_list(
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
 pub async fn conversation_messages(
-    chat: State<'_, Arc<ConversationService>>,
+    chat: State<'_, Arc<ConversationEngine>>,
     id: ConversationId,
 ) -> AppResult<Vec<Message>> {
     chat.messages(&id).await
@@ -403,7 +403,7 @@ pub struct ChatSendRequest {
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
 pub async fn chat_send(
-    chat: State<'_, Arc<ConversationService>>,
+    chat: State<'_, Arc<ConversationEngine>>,
     req: ChatSendRequest,
     events: Channel<GenerationEvent>,
 ) -> AppResult<TaskId> {
@@ -418,11 +418,19 @@ pub async fn chat_send(
     .await
 }
 
+/// The engine's streaming state — whether a generation is running and, if so,
+/// its task + conversation.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn chat_state(chat: State<'_, Arc<ConversationEngine>>) -> AppResult<GenerationState> {
+    Ok(chat.generation_state().await)
+}
+
 /// Cancel an in-flight generation.
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
 pub async fn chat_cancel(
-    chat: State<'_, Arc<ConversationService>>,
+    chat: State<'_, Arc<ConversationEngine>>,
     task_id: TaskId,
 ) -> AppResult<()> {
     chat.cancel(&task_id).await

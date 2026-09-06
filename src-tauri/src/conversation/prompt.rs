@@ -11,18 +11,35 @@ use crate::contracts::conversation::{Message, MessageContent, Role};
 pub const DEFAULT_SYSTEM: &str = "You are a helpful assistant.";
 
 /// Render `messages` (in order) into a ChatML prompt ending with the open
-/// assistant turn. Non-text message content is skipped (Phase 18-22 add it).
+/// assistant turn. A turn contributes text when it is [`MessageContent::Text`]
+/// or a transcribed [`MessageContent::Audio`] (voice, Phase 18); an image turn
+/// or an untranscribed audio turn is skipped.
 #[must_use]
 pub fn render_chatml(messages: &[Message], system: &str) -> String {
     let mut out = String::new();
     push_turn(&mut out, "system", system);
     for msg in messages {
-        if let MessageContent::Text { text } = &msg.content {
+        if let Some(text) = turn_text(&msg.content) {
             push_turn(&mut out, role_tag(msg.role), text);
         }
     }
     out.push_str("<|im_start|>assistant\n");
     out
+}
+
+/// The text a turn contributes to the prompt, if any.
+fn turn_text(content: &MessageContent) -> Option<&str> {
+    match content {
+        MessageContent::Text { text } => Some(text),
+        MessageContent::Audio {
+            transcript: Some(t),
+            ..
+        } => Some(t),
+        MessageContent::Audio {
+            transcript: None, ..
+        }
+        | MessageContent::Image { .. } => None,
+    }
 }
 
 fn push_turn(out: &mut String, role: &str, content: &str) {

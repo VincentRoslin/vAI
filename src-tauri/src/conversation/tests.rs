@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::repo::ConversationRepo;
-use super::{prompt, ConversationService};
+use super::{prompt, ConversationEngine};
 use crate::contracts::conversation::{ConversationKind, MessageContent, Role};
 use crate::contracts::generation::{GenerationEvent, SamplingParams, StopReason};
 use crate::contracts::ids::ModelId;
@@ -112,6 +112,54 @@ fn chatml_render_is_exact() {
     assert_eq!(
         prompt::render_chatml(&[], "S"),
         "<|im_start|>system\nS<|im_end|>\n<|im_start|>assistant\n"
+    );
+}
+
+#[test]
+fn chatml_renders_transcribed_audio_and_skips_the_rest() {
+    use crate::contracts::conversation::Message;
+    use crate::contracts::ids::{AssetId, ConversationId, MessageId};
+    let mk = |role, content| Message {
+        id: MessageId::from_trusted("m"),
+        conversation_id: ConversationId::from_trusted("c"),
+        role,
+        content,
+        created_at: "t".to_owned(),
+        generation: None,
+    };
+    let rendered = prompt::render_chatml(
+        &[
+            mk(Role::User, text("typed")),
+            mk(
+                Role::User,
+                MessageContent::Audio {
+                    asset: AssetId::from_trusted("sha-a"),
+                    transcript: Some("spoken".to_owned()),
+                },
+            ),
+            mk(
+                Role::User,
+                MessageContent::Audio {
+                    asset: AssetId::from_trusted("sha-b"),
+                    transcript: None,
+                },
+            ),
+            mk(
+                Role::Assistant,
+                MessageContent::Image {
+                    asset: AssetId::from_trusted("sha-c"),
+                    caption: None,
+                },
+            ),
+        ],
+        "S",
+    );
+    assert_eq!(
+        rendered,
+        "<|im_start|>system\nS<|im_end|>\n\
+         <|im_start|>user\ntyped<|im_end|>\n\
+         <|im_start|>user\nspoken<|im_end|>\n\
+         <|im_start|>assistant\n"
     );
 }
 
@@ -237,7 +285,7 @@ impl LlmInstance for ScriptedInstance {
 
 struct Fixture {
     _tmp: tempfile::TempDir,
-    service: Arc<ConversationService>,
+    service: Arc<ConversationEngine>,
     model: ModelId,
     loads: Arc<AtomicU32>,
 }
@@ -291,7 +339,7 @@ async fn fixture(tokens: &[&str], ending: Ending) -> Fixture {
     );
     lifecycle.load(&model).await.expect("model loads");
 
-    let service = Arc::new(ConversationService::new(db, lifecycle));
+    let service = Arc::new(ConversationEngine::new(db, lifecycle));
     Fixture {
         _tmp: tmp,
         service,
@@ -313,6 +361,97 @@ async fn collect(mut rx: mpsc::UnboundedReceiver<GenerationEvent>) -> Vec<Genera
         out.push(ev);
     }
     out
+}
+
+// ---------------------------------------------------------------- state machine + split API
+
+#[tokio::test]
+async fn generation_state_tracks_idle_then_generating_then_idle() {
+    let f = fixture(&["a", "b", "c"], Ending::Done).await;
+    let convo = f.service.create().await.unwrap();
+    assert_eq!(f.service.generation_state().await.generating, None);
+
+    let (tx, rx) = sink_channel();
+    let task = f
+        .service
+        .send(
+            convo.id.clone(),
+            f.model.clone(),
+            "hi".to_owned(),
+            move |ev| {
+                let _ = tx.send(ev);
+            },
+        )
+        .await
+        .unwrap();
+
+    // Generating — with the right task + conversation.
+    let st = f
+        .service
+        .generation_state()
+        .await
+        .generating
+        .expect("generating");
+    assert_eq!(st.task_id, task);
+    assert_eq!(st.conversation_id, convo.id);
+
+    let _ = collect(rx).await;
+    wait_for_idle(&f.service).await;
+    assert_eq!(f.service.generation_state().await.generating, None);
+}
+
+#[tokio::test]
+async fn add_user_turn_then_generate_streams_and_persists() {
+    let f = fixture(&["Hi ", "there"], Ending::Done).await;
+    let convo = f.service.create().await.unwrap();
+
+    // A typed turn added on its own (this is the seam voice/STT uses).
+    f.service
+        .add_user_turn(&convo.id, text("question"))
+        .await
+        .expect("turn persisted");
+    assert_eq!(f.service.messages(&convo.id).await.unwrap().len(), 1);
+
+    let (tx, rx) = sink_channel();
+    f.service
+        .generate(convo.id.clone(), f.model.clone(), move |ev| {
+            let _ = tx.send(ev);
+        })
+        .await
+        .expect("generate accepted");
+    assert!(matches!(
+        collect(rx).await.last(),
+        Some(GenerationEvent::Done { .. })
+    ));
+    wait_for_idle(&f.service).await;
+
+    let msgs = f.service.messages(&convo.id).await.unwrap();
+    assert_eq!(msgs.len(), 2);
+    assert_eq!(
+        msgs[1].content,
+        MessageContent::Text {
+            text: "Hi there".to_owned()
+        }
+    );
+}
+
+#[tokio::test]
+async fn add_user_turn_rejects_empty_text_and_a_missing_conversation() {
+    let f = fixture(&["x"], Ending::Done).await;
+    let convo = f.service.create().await.unwrap();
+    assert!(matches!(
+        f.service.add_user_turn(&convo.id, text("  ")).await,
+        Err(AppError::Validation(_))
+    ));
+    assert!(matches!(
+        f.service
+            .add_user_turn(
+                &crate::contracts::ids::ConversationId::from_trusted("nope"),
+                text("hi"),
+            )
+            .await,
+        Err(AppError::NotFound(_))
+    ));
 }
 
 // ---------------------------------------------------------------- send / stream
@@ -518,7 +657,7 @@ async fn a_backend_error_persists_a_truncated_turn_and_recovers() {
 
 // ---------------------------------------------------------------- helpers
 
-async fn wait_for_idle(service: &ConversationService) {
+async fn wait_for_idle(service: &ConversationEngine) {
     for _ in 0..200 {
         if !service.is_generating().await {
             return;

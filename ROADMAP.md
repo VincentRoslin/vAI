@@ -24,11 +24,11 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 17 — Conversation Engine                                |
-| **Stage**        | 17.1 — Rename + module framing                          |
-| **Status**       | `IN PROGRESS`                                           |
-| **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/17_conversation-engine.md` (finalized)       |
+| **Phase**        | 18 — Voice: capture · Silero VAD · faster-whisper STT   |
+| **Stage**        | 18.1 — (finalize at phase entry)                        |
+| **Status**       | `NOT STARTED`                                           |
+| **Blocked by**   | Phase 12 gate 5 (faster-whisper model) — see §6         |
+| **Plan doc**     | `docs/plan/18_voice-in.md`                              |
 | **Last updated** | 2026-09-06                                              |
 | **Updated by**   | phase-17-engine                                         |
 
@@ -64,6 +64,14 @@ traits + `FakeBackend`; state machine `Unloaded→Loading→Loaded⇄Busy→Unlo
 reservation held across the load, released on every exit; bounded retry; ~2 s
 liveness monitor. `ModelState::Busy` added additively. No real backend yet —
 Phase 15.
+**Phase 17 done** — conversation engine (`conversation/` module,
+`docs/verification/16_phase17_engine.md`). `ConversationService` →
+`ConversationEngine` (one path); `send` split into `add_user_turn(typed content)`
++ `generate(sink)`; explicit `GenerationState` (`Idle`/`Generating{task,convo}`)
++ `chat_state` IPC; `render_chatml` renders transcribed audio too (voice-ready).
+All 6 gate items pass — the Phase 16 live gate re-run on the re-hosted engine,
+TTFT ≈ 44 ms (no regression). Content taxonomy resolved by the frozen Phase 7
+contract (media = content-addressed blob via `AssetId`).
 **Phase 16 done** — first vertical slice / text chat (`conversation/` module,
 `docs/verification/15_phase16_slice.md`). V0004 (`conversation` + `message`);
 `ConversationService` (persist user turn → stream one generation via `LlmInstance`
@@ -270,13 +278,15 @@ during gen; concurrent-gen handled per policy (**reject**). **All 9 pass** — a
 live full-stack Rust test on the RTX 5080; end-to-end TTFT ≈ 33 ms. **First real
 milestone.**
 
-### Phase 17 — Conversation Engine *(current pointer)* — `IN PROGRESS` (17.1) — `docs/plan/17_conversation-engine.md`
+### Phase 17 — Conversation Engine — `COMPLETE` — `docs/verification/16_phase17_engine.md`
 Formalize the one shared engine (lifecycle, messages, roles, content, timestamps,
 streaming state, cancellation, generation metadata, persistence). No second engine.
 Gate: engine unit tests (lifecycle + streaming + cancel + persistence); text chat
-re-hosted on it, Phase 16 gate still passes.
+re-hosted on it, Phase 16 gate still passes. **All 6 pass** — `ConversationEngine`
+(one path), `send` split into `add_user_turn` + `generate`, explicit
+`GenerationState`; Phase 16 live gate re-run, TTFT ≈ 44 ms.
 
-### Phase 18 — Voice: capture · Silero VAD · faster-whisper STT — `NOT STARTED` — `docs/plan/18_voice-in.md`
+### Phase 18 — Voice: capture · Silero VAD · faster-whisper STT *(current pointer)* — `NOT STARTED` — `docs/plan/18_voice-in.md`
 Mic capture → VAD endpointing → STT worker → user message on the engine.
 Gate: device discovery + selection; capture → VAD → STT produces a transcript;
 partial + final transcripts; STT failure / worker crash / missing device handled;
@@ -449,6 +459,7 @@ Newest first. One line per state transition (§3 rule 6).
 | ---------- | ---- | -- | -- | ---- |
 | 2026-09-06 | Phase 16 `NOT STARTED` | Phase 16 / 16.1 `IN PROGRESS` | phase-16 | Phase entry: `docs/plan/16_vertical-slice-text-chat.md` finalized (12 steps, 9 gate items). New `src-tauri/src/conversation/` — thin service (`repo` = all SQL, `prompt` = ChatML render, `mod` = `ConversationService` + in-flight registry). V0004 migration (`conversation` + `message`). Flow: `chat_send` persists the user msg, spawns a task (`begin_use` → render → `LlmInstance::stream` → forward `GenerationEvent`s over a Channel → persist assistant msg on terminal → `end_use`), returns a `TaskId`. **Concurrency = reject** (one model / one slot → 2nd `chat_send` = `Conflict`; queue is Phase 24; no ADR). Cancellation via a `CancellationToken` per in-flight gen. `AcquisitionService::register_local_gguf` + `model_register_local`/`model_load`/`model_unload` IPC. `ChatVoice.tsx` becomes the real chat page. Exit hook cancels the in-flight gen + unloads models. No new ADR; not a second engine (Phase 17 generalizes). |
 | 2026-09-06 | Phase 15 `COMPLETE` (split — 15.D deferred) | Phase 15 `COMPLETE` (all gates) | phase-15 | **Plan 15.D run.** Owner call: a **pinned official prebuilt** instead of the ADR-0004 source build — **ADR-0004 amended** (prebuilt = primary path for v1, source build stays documented). Pin: `ggml-org/llama.cpp` `b10819` (commit `6a1a922d2`), `llama-b10819-bin-win-cuda-13.3-x64.zip` (sha `c9069222…`) + `cudart-…-13.3-x64.zip` (sha `1462a050…`); CUDA 13.3 → Blackwell sm_120 OK. Config schema **v5**: `runtimes.dir` (`RuntimesConfig`, `ConfigKey::RuntimesDir`, session override, default `<app_data>/runtimes`). Owner wants no runtime blobs outside the repo → the machine's `config.json` points `runtimes.dir` + `models.dir` at `<repo>/runtime/llama-server` + `<repo>/models` (both `.gitignore`d, ~1 GB); DB + config.json stay in `%APPDATA%`. `--flash-attn` dropped from the argv (`b10819` made it take an arg; `auto` default is right). 4 `#[ignore]`d live tests (`llm::live_tests`, env-var-gated) on the RTX 5080: **gate 1** load+`/health` ≈ 775 ms · **gate 2** non-stream "red, blue, yellow" + 12-delta stream · **gate 3** cancel → `Cancelled`, slot frees (next gen works) · **gate 5** `taskkill` → `health()` Err · **gate 6** no orphan (`tasklist`) · **gate 8** TTFT ≈ 23 ms, ≈ 278 tok/s (Qwen 0.5B Q4_K_M). WDDM hang not observed over 4 cycles. 212 rust tests (+3; 5 ignored), check suite green, `tauri dev` registers the backend. Evidence `docs/verification/14_phase15_llama.md`. |
+| 2026-09-06 | Phase 17 / 17.1 `IN PROGRESS` | Phase 17 `COMPLETE` → Phase 18 / 18.1 `NOT STARTED` | phase-17 | Conversation engine formalized. `ConversationService` → **`ConversationEngine`** (rename; `git grep` clean — one path since Phase 16). `send` split into `add_user_turn(id, content: MessageContent)` (typed — voice/STT seam) + `generate(id, model, sink) -> TaskId`; `send` stays a text convenience. Explicit **`GenerationState`** (`Mutex<Option<Running>>` carrying `GenerationHandle { task_id, conversation_id }`; `generation_state()` → `Idle`/`Generating`; `chat_state` IPC + `chatState()` wrapper). `render_chatml` now renders `MessageContent::Audio { transcript: Some }` too (skips `Image` / untranscribed audio) — voice turns render with no engine change. Contracts (additive): `GenerationHandle`, `GenerationState`. **All 6 gate items PASS** — 19 unit/contract tests (scripted `LlmInstance`; state-machine, `add_user_turn`+`generate` split, typed-audio render) + the Phase 16 `#[ignore]`d live test re-run on the RTX 5080 with a `generation_state` assertion (register → real `llama-server` → "pong" → state `Generating`→`Idle` → restart recovery → cancel → reuse). **End-to-end TTFT ≈ 44 ms** (Phase 16 ≈ 33 ms; timer noise, no regression). 226 rust tests, 9 vitest, check suite green. **No new ADR** — content taxonomy resolved by the frozen Phase 7 contract (media = content-addressed blob via `AssetId`; blob store lands with the first blob feature, P18/P22). Evidence `docs/verification/16_phase17_engine.md`. |
 | 2026-09-06 | Phase 17 `NOT STARTED` | Phase 17 / 17.1 `IN PROGRESS` | phase-17 | Phase entry: `docs/plan/17_conversation-engine.md` finalized (7 steps, 6 gate items). The Phase 16 `conversation/` module *is* the single path — Phase 17 reshapes it: `ConversationService` → **`ConversationEngine`**; `send` splits into `add_user_turn(id, content: MessageContent)` + `generate(id, model, sink)` (voice will use the two separately; `send` stays a text convenience); an explicit `GenerationState` (`Idle` / `Generating { task_id, conversation_id }`) + `chat_state` IPC; `render_chatml` also renders `Audio { transcript: Some }`. **No new ADR** — the message-content taxonomy is the frozen Phase 7 contract (media = content-addressed blob via `AssetId`; blob store lands with the first blob feature). |
 | 2026-09-06 | Phase 16 / 16.1 `IN PROGRESS` | Phase 16 `COMPLETE` → Phase 17 / 17.1 `NOT STARTED` | phase-16 | **First vertical slice landed.** New `src-tauri/src/conversation/` — `repo` (all SQL for `conversation` + `message`, `V0004`), `prompt` (`render_chatml` — minimal, Phase 20 does the real builder), `mod` (`ConversationService`: `send` persists the user turn, spawns a generation that streams `GenerationEvent`s to a sink + accumulates + persists the assistant turn + `end_use`; **concurrency = reject** — a 2nd `send` → `Conflict`, a queue is Phase 24; `cancel` trips a per-generation `CancellationToken`; `shutdown` for the exit hook). `lifecycle::backend` gained `LlmInstance` + `Completion` (moved from `llm/`) with `LoadedInstance::as_llm()` default `None` (replaces the Phase-15 `Any` downcast); `LifecycleManager::instance()` + `unload_all()`. `acquisition::register_local_gguf`. IPC: `conversation_create`/`list`/`messages`, `chat_send`(Channel)/`chat_cancel`, `model_register_local`/`load`/`unload`. `ChatVoice.tsx` rebuilt (model bar, streaming transcript, composer/Stop). `lib.rs` `setup()` → free fn; exit hook cancels the in-flight gen + unloads. **All 9 gate items PASS** — 7 unit tests (scripted `LlmInstance`) + 1 `#[ignore]`d live test running the whole real stack on the RTX 5080 (register local GGUF → real `llama-server` load → send "pong" → stream → persist → fresh-service restart recovery → cancel a long gen → partial persisted → model reused) + a `ChatVoice` component test. **End-to-end TTFT ≈ 33 ms.** 220 rust tests, 9 vitest, check suite green, `tauri dev` clean (V0004 applied). No new ADR. Bug fixed mid-phase: a `tokio::join!(stream, recv)` deadlock (recv now breaks on the terminal frame). Evidence `docs/verification/15_phase16_slice.md`. |
 | 2026-09-06 | (no state change) | — | owner-approved | **Docs tidy:** the 7 frozen spec docs (`PROJECT`, `ARCHITECTURE`, `AI_PIPELINES`, `SECURITY`, `PERFORMANCE`, `UI_GUIDELINES`, `DEVELOPMENT`) moved from the repo root to `docs/spec/` (+ `docs/spec/README.md` index). Root `.md` is now just `README` / `CLAUDE` / `ROADMAP`. Organisational only — no content change. Verified: zero markdown-link references repo-wide (all mentions are bare unique names), so nothing broke; `CLAUDE.md` Document Map + nav table, `README.md`, `docs/spec/DEVELOPMENT.md` §2 layout, and `scripts/check.mjs` updated. |

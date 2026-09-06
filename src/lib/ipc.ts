@@ -22,6 +22,7 @@ import type { HfModelSummary } from '../bindings/HfModelSummary';
 import type { Pong } from '../bindings/Pong';
 import type { Conversation } from '../bindings/Conversation';
 import type { GenerationEvent } from '../bindings/GenerationEvent';
+import type { GenerationState } from '../bindings/GenerationState';
 import type { LifecycleStatus } from '../bindings/LifecycleStatus';
 import type { Message } from '../bindings/Message';
 import type { RegisteredModel } from '../bindings/RegisteredModel';
@@ -180,6 +181,9 @@ export async function chatSend(
     events,
   });
 }
+
+/** The engine's streaming state (whether a generation is running). */
+export const chatState = (): Promise<GenerationState> => call('chat_state');
 
 /** Cancel an in-flight generation. */
 export const chatCancel = (taskId: string): Promise<void> => call('chat_cancel', { taskId });

@@ -60,6 +60,7 @@ pub fn run() {
             ipc::commands::conversation_list,
             ipc::commands::conversation_messages,
             ipc::commands::chat_send,
+            ipc::commands::chat_state,
             ipc::commands::chat_cancel,
         ])
         .build(tauri::generate_context!())
@@ -69,7 +70,7 @@ pub fn run() {
         if let RunEvent::ExitRequested { .. } = event {
             // Cancel any in-flight generation, unload models (the Job Object also
             // kills llama-server), then checkpoint the WAL.
-            if let Some(chat) = handle.try_state::<Arc<conversation::ConversationService>>() {
+            if let Some(chat) = handle.try_state::<Arc<conversation::ConversationEngine>>() {
                 tauri::async_runtime::block_on(chat.shutdown());
             }
             if let Some(lifecycle) = handle.try_state::<Arc<lifecycle::LifecycleManager>>() {
@@ -150,8 +151,8 @@ fn setup(app: &mut tauri::App) -> Result<(), String> {
         start_lifecycle_manager(Arc::clone(&registry), resources, &effective.runtimes.dir);
     app.manage(Arc::clone(&lifecycle));
 
-    // Conversation service (Phase 16) — the vertical slice's orchestrator.
-    app.manage(Arc::new(conversation::ConversationService::new(
+    // The one conversation engine (Phase 16 flow, Phase 17 formalized).
+    app.manage(Arc::new(conversation::ConversationEngine::new(
         database, lifecycle,
     )));
 

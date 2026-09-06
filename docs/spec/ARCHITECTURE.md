@@ -50,7 +50,7 @@ blob store, model lifecycle, resource/VRAM/RAM management, scheduling, task
 management, process supervision, IPC, security-sensitive operations, business
 logic. Single crate (`src-tauri/`); modules interact through defined interfaces.
 
-Modules (see `src-tauri/README.md` for the live list): **as of Phase 16** —
+Modules (see `src-tauri/README.md` for the live list): **as of Phase 17** —
 `lib.rs` (Tauri builder + a `setup()` fn wiring config/DB/logging/registry/acquisition/
 resources/lifecycle/llm/conversation into managed state; exit hook cancels the in-flight
 generation + unloads models + checkpoints the WAL), `logging` (JSON stdout, non-blocking lossy, boundary secret
@@ -78,11 +78,12 @@ with a per-launch `--api-key` bearer (ADR-0013) under a Windows Job Object;
 `/health` + `/completion` non-stream + SSE stream client with a per-call
 deadline; **all llama.cpp JSON confined to `llm/protocol`**; `LlamaServer`
 implements `LoadedInstance` + an `LlmInstance` capability trait),
-`conversation` (the Phase 16 vertical-slice service — **not** the shared engine,
-Phase 17 generalizes it: `repo` owns all conversation/message SQL, `prompt`
-renders minimal ChatML, `ConversationService::send` persists the user turn then
-streams one generation via `LlmInstance` and persists the assistant turn;
-one generation at a time — a concurrent `send` is `Conflict`). Each later
+`conversation` (**the one conversation engine** — `repo` owns all
+conversation/message SQL, `prompt` renders ChatML (text + transcribed audio),
+`ConversationEngine`: `add_user_turn(typed content)` + `generate(sink)` (voice
+drives the two seams; `send` = both for text), an explicit `GenerationState`
+(`Idle`/`Generating{task,convo}`), first-class cancellation; one generation at a
+time — a concurrent `generate` is `Conflict`). Each later
 phase adds its module and registers it in `src-tauri/README.md` and §3 here.
 
 ### React / TypeScript — presentation only
@@ -118,7 +119,7 @@ loopback only, launched with the offline/no-telemetry env (ADR-0015).
 | GPU/VRAM + system-RAM accounting | `resources` module (`resource manager`) |
 | GPU job ordering + eviction | `scheduler` |
 | Process spawn / health / restart | `worker supervisor` |
-| Conversations (all modalities) | `conversation` module (one; thin service at P16 → shared engine at P17) |
+| Conversations (all modalities) | `conversation` module — the one engine (`ConversationEngine`) |
 | Prompt assembly | `context builder` (one) |
 | Memory | `memory` module (FTS5, per-scope) |
 | Relationship state | `character` module (DB row is truth) |

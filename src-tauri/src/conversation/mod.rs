@@ -1,13 +1,19 @@
-//! Conversation service — the **thin** orchestration for the Phase 16 vertical
-//! slice: persist a user message, run one generation against the loaded model,
-//! stream the tokens out, persist the assistant message.
+//! Conversation engine — **the one** engine that every conversational surface
+//! runs on: text chat now (Phase 16 proved the flow), voice turns (18/19),
+//! persona/character conversations (20/25/26). There is no second engine.
 //!
-//! This is **not** the shared conversation engine (Phase 17 generalizes it).
-//! It owns conversation/message state (via [`repo`]); the lifecycle manager owns
-//! the model.
+//! It owns conversation + message state (via [`repo`]); the lifecycle manager
+//! owns the model. Responsibilities:
+//! - conversation lifecycle (`create` / `list` / `latest` / `messages`),
+//! - **typed** user turns ([`ConversationEngine::add_user_turn`] — text now,
+//!   audio/image references later without a schema break),
+//! - one LLM generation at a time ([`ConversationEngine::generate`]) with a
+//!   first-class streaming state machine ([`ConversationEngine::generation_state`])
+//!   and cancellation,
+//! - persisting the assistant turn (partial or complete) on the terminal frame.
 //!
-//! Concurrency (v1): **one generation at a time** — a second `send` while one is
-//! running returns [`AppError::Conflict`]. A queue is Phase 24.
+//! Concurrency (v1): **one generation at a time** — a second `generate` while one
+//! runs returns [`AppError::Conflict`]. A queue is Phase 24.
 
 pub mod prompt;
 pub mod repo;
@@ -25,7 +31,8 @@ use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
 use crate::contracts::conversation::{
-    Conversation, ConversationKind, GenerationMeta, Message, MessageContent, Role,
+    Conversation, ConversationKind, GenerationHandle, GenerationMeta, GenerationState, Message,
+    MessageContent, Role,
 };
 use crate::contracts::generation::{GenerationEvent, SamplingParams, StopReason};
 use crate::contracts::ids::{ConversationId, ModelId, TaskId};
@@ -34,32 +41,34 @@ use crate::ipc::{AppError, AppResult};
 use crate::lifecycle::LifecycleManager;
 use repo::ConversationRepo;
 
-/// Hard cap on tokens per turn for the slice (Phase 20 makes it configurable).
+/// Hard cap on tokens per turn for now (Phase 20 makes it configurable).
 const MAX_TOKENS: u32 = 1024;
 
-/// The single in-flight generation, if any.
-struct InFlight {
-    task_id: TaskId,
+/// The in-flight generation, if any — the engine's streaming state.
+struct Running {
+    handle: GenerationHandle,
     cancel: CancellationToken,
 }
 
-/// Conversation + generation orchestration. Held in managed state as
-/// `Arc<ConversationService>`.
-pub struct ConversationService {
+/// The one conversation engine. Held in managed state as
+/// `Arc<ConversationEngine>`.
+pub struct ConversationEngine {
     repo: ConversationRepo,
     lifecycle: Arc<LifecycleManager>,
-    in_flight: Mutex<Option<InFlight>>,
+    running: Mutex<Option<Running>>,
 }
 
-impl ConversationService {
+impl ConversationEngine {
     #[must_use]
     pub fn new(db: Arc<Db>, lifecycle: Arc<LifecycleManager>) -> Self {
         Self {
             repo: ConversationRepo::new(db),
             lifecycle,
-            in_flight: Mutex::new(None),
+            running: Mutex::new(None),
         }
     }
+
+    // ---------------------------------------------------------------- lifecycle
 
     /// Create a new (Persona) conversation.
     ///
@@ -93,58 +102,84 @@ impl ConversationService {
         self.repo.messages(id).await
     }
 
-    /// Whether a generation is currently running.
-    pub async fn is_generating(&self) -> bool {
-        self.in_flight.lock().await.is_some()
+    // ---------------------------------------------------------------- state
+
+    /// The engine's streaming state: whether a generation is running and, if so,
+    /// which task / conversation.
+    pub async fn generation_state(&self) -> GenerationState {
+        GenerationState {
+            generating: self.running.lock().await.as_ref().map(|r| r.handle.clone()),
+        }
     }
 
-    /// Send `text` as a user message and start generating a reply. The user
-    /// message is persisted before this returns; `sink` receives each
-    /// [`GenerationEvent`] as the reply streams; the assistant message is
-    /// persisted when the stream terminates.
+    /// Convenience: whether a generation is currently running.
+    pub async fn is_generating(&self) -> bool {
+        self.running.lock().await.is_some()
+    }
+
+    // ---------------------------------------------------------------- turns
+
+    /// Persist one user turn with **typed** content. `Text` must be non-empty;
+    /// `Audio` / `Image` are accepted as-is (Phase 18/22).
+    ///
+    /// # Errors
+    /// [`AppError::Validation`] for empty text; [`AppError::NotFound`] for an
+    /// unknown conversation; a persistence error.
+    pub async fn add_user_turn(
+        &self,
+        conversation_id: &ConversationId,
+        content: MessageContent,
+    ) -> AppResult<Message> {
+        if let MessageContent::Text { text } = &content {
+            if text.trim().is_empty() {
+                return Err(AppError::Validation("message text is empty".to_owned()));
+            }
+        }
+        self.repo
+            .append(conversation_id, Role::User, content, None)
+            .await
+    }
+
+    /// Run one LLM generation over the conversation's history. `sink` receives
+    /// each [`GenerationEvent`]; the assistant turn is persisted (partial or
+    /// complete) when the stream terminates. Returns immediately with the
+    /// generation's task id.
     ///
     /// # Errors
     /// - [`AppError::Conflict`] — a generation is already running.
-    /// - [`AppError::Validation`] — empty `text`.
     /// - [`AppError::NotFound`] — no such conversation.
+    /// - [`AppError::BackendUnavailable`] / [`AppError::Validation`] — the model
+    ///   is not loaded / not an LLM.
     /// - a persistence error.
-    pub async fn send<F>(
+    pub async fn generate<F>(
         self: &Arc<Self>,
         conversation_id: ConversationId,
         model_id: ModelId,
-        text: String,
         sink: F,
     ) -> AppResult<TaskId>
     where
         F: Fn(GenerationEvent) + Send + Sync + 'static,
     {
-        if text.trim().is_empty() {
-            return Err(AppError::Validation("message text is empty".to_owned()));
-        }
-        let mut guard = self.in_flight.lock().await;
+        let mut guard = self.running.lock().await;
         if guard.is_some() {
             return Err(AppError::Conflict(
                 "a generation is already running".to_owned(),
             ));
         }
-
-        // Persist the user message first — it is durable even if generation fails.
-        self.repo
-            .append(
-                &conversation_id,
-                Role::User,
-                MessageContent::Text { text },
-                None,
-            )
-            .await?;
+        // Fail fast on a missing conversation before we mark ourselves busy.
+        self.repo.get(&conversation_id).await?;
 
         let task_id = TaskId::from_trusted(uuid::Uuid::new_v4().hyphenated().to_string());
         let cancel = CancellationToken::new();
-        *guard = Some(InFlight {
-            task_id: task_id.clone(),
+        *guard = Some(Running {
+            handle: GenerationHandle {
+                task_id: task_id.clone(),
+                conversation_id: conversation_id.clone(),
+            },
             cancel: cancel.clone(),
         });
         drop(guard);
+        tracing::info!(task_id = %task_id, conversation = %conversation_id, "generation started");
 
         let this = Arc::clone(self);
         let tid = task_id.clone();
@@ -156,27 +191,54 @@ impl ConversationService {
         Ok(task_id)
     }
 
-    /// Cancel the in-flight generation identified by `task_id`.
+    /// Add a text user turn and start generating a reply — the convenience the
+    /// text chat UI uses.
+    ///
+    /// # Errors
+    /// As [`ConversationEngine::add_user_turn`] + [`ConversationEngine::generate`].
+    pub async fn send<F>(
+        self: &Arc<Self>,
+        conversation_id: ConversationId,
+        model_id: ModelId,
+        text: String,
+        sink: F,
+    ) -> AppResult<TaskId>
+    where
+        F: Fn(GenerationEvent) + Send + Sync + 'static,
+    {
+        if self.is_generating().await {
+            return Err(AppError::Conflict(
+                "a generation is already running".to_owned(),
+            ));
+        }
+        self.add_user_turn(&conversation_id, MessageContent::Text { text })
+            .await?;
+        self.generate(conversation_id, model_id, sink).await
+    }
+
+    /// Cancel the running generation identified by `task_id`.
     ///
     /// # Errors
     /// [`AppError::NotFound`] if no generation with that id is running.
     pub async fn cancel(&self, task_id: &TaskId) -> AppResult<()> {
-        let guard = self.in_flight.lock().await;
+        let guard = self.running.lock().await;
         match guard.as_ref() {
-            Some(f) if &f.task_id == task_id => {
-                f.cancel.cancel();
+            Some(r) if &r.handle.task_id == task_id => {
+                r.cancel.cancel();
                 Ok(())
             }
             _ => Err(AppError::NotFound(format!("generation {task_id}"))),
         }
     }
 
-    /// Cancel any in-flight generation (called on app exit).
+    /// Cancel any running generation (called on app exit).
     pub async fn shutdown(&self) {
-        if let Some(f) = self.in_flight.lock().await.as_ref() {
-            f.cancel.cancel();
+        if let Some(r) = self.running.lock().await.as_ref() {
+            r.cancel.cancel();
         }
     }
+
+    // ---------------------------------------------------------------- internals
 
     async fn run_generation<F>(
         self: Arc<Self>,
@@ -188,9 +250,9 @@ impl ConversationService {
     ) where
         F: Fn(GenerationEvent) + Send + Sync + 'static,
     {
-        let op = crate::logging::operation(Some(&task_id), "chat_generation");
+        let op = crate::logging::operation(Some(&task_id), "conversation_generate");
         let status = match self
-            .generate(&conversation_id, &model_id, &cancel, &sink)
+            .stream_once(&conversation_id, &model_id, &cancel, &sink)
             .await
         {
             // The stream ran (possibly ending in Error/Cancelled) — persist the
@@ -223,13 +285,12 @@ impl ConversationService {
             }
         };
 
-        *self.in_flight.lock().await = None;
+        *self.running.lock().await = None;
         op.finish(status);
     }
 
-    /// The generation proper: resolve the loaded instance, render the prompt,
-    /// stream, accumulate. Returns the accumulated text + its `GenerationMeta`.
-    async fn generate<F>(
+    /// Resolve the loaded instance, render the prompt, stream, accumulate.
+    async fn stream_once<F>(
         &self,
         conversation_id: &ConversationId,
         model_id: &ModelId,
@@ -265,9 +326,9 @@ impl ConversationService {
         let mut text = String::new();
         let mut stop_reason = StopReason::Error;
         let mut tokens = 0u32;
-        // Drain events, forwarding each to `sink`, until a terminal frame. We
-        // stop on the terminal (not on channel close) so `join!` can drop the
-        // completed `stream_fut` — and its `tx` — without a stall.
+        // Drain events to `sink` until the terminal frame. We stop on the
+        // terminal (not on channel close) so `join!` can drop the completed
+        // `stream_fut` — and its `tx` — without a stall.
         let recv_fut = async {
             while let Some(ev) = rx.recv().await {
                 let terminal = match &ev {

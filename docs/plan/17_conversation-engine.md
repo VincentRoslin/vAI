@@ -1,7 +1,9 @@
 # Phase 17 — Conversation Engine
 
-> **Status: IN PROGRESS** — step detail finalized at phase entry (2026-09-06)
-> against the frozen architecture + `docs/verification/15_phase16_slice.md`.
+> **Status: COMPLETE** (2026-09-06) — all 6 gate items pass. Evidence
+> `docs/verification/16_phase17_engine.md`. `ConversationEngine` is the one
+> formalized path; the Phase 16 live gate re-ran on it with no regression
+> (TTFT ≈ 44 ms).
 
 > **Architecture frozen at Phase 5.** Governing: **ADR-0002** (IPC), **ADR-0009**
 > (persistence), Phase 7 contracts (`Conversation` / `Message` / `MessageContent`

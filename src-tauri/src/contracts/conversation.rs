@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::contracts::generation::StopReason;
-use crate::contracts::ids::{AssetId, ConversationId, MessageId, ModelId};
+use crate::contracts::ids::{AssetId, ConversationId, MessageId, ModelId, TaskId};
 
 /// Who authored a message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -89,6 +89,25 @@ pub enum ConversationKind {
     Persona,
     /// Discovery tab — bound to a persistent Character.
     Character,
+}
+
+/// The running generation, when the engine has one (Phase 17).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct GenerationHandle {
+    /// The generation's task id — pass it to `chat_cancel`.
+    pub task_id: TaskId,
+    /// The conversation the reply is being generated for.
+    pub conversation_id: ConversationId,
+}
+
+/// The conversation engine's streaming state. `generating` is `Some` while a
+/// reply is being produced, `None` at rest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct GenerationState {
+    /// The running generation, if any.
+    pub generating: Option<GenerationHandle>,
 }
 
 /// A conversation header (messages are fetched separately).

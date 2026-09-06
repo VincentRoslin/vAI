@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
 
-use super::ConversationService;
+use super::ConversationEngine;
 use crate::acquisition::AcquisitionService;
 use crate::config::ConfigManager;
 use crate::contracts::conversation::Role;
@@ -30,7 +30,7 @@ use crate::resources::ResourceManager;
 
 struct Rig {
     _tmp: tempfile::TempDir,
-    service: Arc<ConversationService>,
+    service: Arc<ConversationEngine>,
     lifecycle: Arc<LifecycleManager>,
     model: crate::contracts::ids::ModelId,
     db_path: PathBuf,
@@ -73,7 +73,7 @@ async fn rig() -> Rig {
     lifecycle.register_backend(BACKEND_KEY, Arc::new(LlamaBackend::new(bin)));
     lifecycle.load(&model).await.expect("real model loads");
 
-    let service = Arc::new(ConversationService::new(db, Arc::clone(&lifecycle)));
+    let service = Arc::new(ConversationEngine::new(db, Arc::clone(&lifecycle)));
     Rig {
         _tmp: tmp,
         service,
@@ -92,7 +92,7 @@ fn drain(rx: &mut mpsc::UnboundedReceiver<GenerationEvent>) -> Vec<GenerationEve
 }
 
 #[tokio::test]
-#[ignore = "needs a real llama-server + GGUF (Phase 16 gate)"]
+#[ignore = "needs a real llama-server + GGUF (Phase 17 gate — re-hosted chat)"]
 #[allow(clippy::too_many_lines)]
 async fn live_send_streams_persists_and_recovers_on_restart() {
     let rig = rig().await;
@@ -122,6 +122,13 @@ async fn live_send_streams_persists_and_recovers_on_restart() {
         .await
         .expect("send accepted");
 
+    // state machine: it should report Generating for this conversation
+    let st = rig.service.generation_state().await;
+    assert_eq!(
+        st.generating.as_ref().map(|h| &h.conversation_id),
+        Some(&convo.id)
+    );
+
     // wait for completion
     for _ in 0..600 {
         if !rig.service.is_generating().await {
@@ -130,6 +137,7 @@ async fn live_send_streams_persists_and_recovers_on_restart() {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     assert!(!rig.service.is_generating().await, "generation finished");
+    assert_eq!(rig.service.generation_state().await.generating, None);
     let events = drain(&mut rx);
     let deltas = events
         .iter()
@@ -138,7 +146,7 @@ async fn live_send_streams_persists_and_recovers_on_restart() {
     assert!(deltas > 0, "streamed at least one token");
     assert!(matches!(events.last(), Some(GenerationEvent::Done { .. })));
     let ttft = first_delta.lock().unwrap().expect("a first token");
-    println!("[16] end-to-end TTFT (send → first delta) {ttft:?} · {deltas} deltas");
+    println!("[17] end-to-end TTFT (send → first delta) {ttft:?} · {deltas} deltas");
 
     let msgs = rig.service.messages(&convo.id).await.unwrap();
     assert_eq!(msgs.len(), 2);
@@ -147,7 +155,7 @@ async fn live_send_streams_persists_and_recovers_on_restart() {
     assert_eq!(m1.stop_reason, StopReason::EndOfText);
     assert!(m1.tokens > 0);
     if let crate::contracts::conversation::MessageContent::Text { text } = &msgs[1].content {
-        println!("[16] assistant said: {:?}", text.trim());
+        println!("[17] assistant said: {:?}", text.trim());
         assert!(!text.trim().is_empty());
     }
 
@@ -155,19 +163,19 @@ async fn live_send_streams_persists_and_recovers_on_restart() {
     drop(rig.service);
     let db2 = Arc::new(Db::open(&rig.db_path).await.unwrap());
     db2.migrate().await.unwrap();
-    let reopened = ConversationService::new(db2, Arc::clone(&rig.lifecycle));
+    let reopened = ConversationEngine::new(db2, Arc::clone(&rig.lifecycle));
     let restored = reopened.messages(&convo.id).await.unwrap();
     assert_eq!(restored.len(), 2);
     assert_eq!(reopened.latest().await.unwrap().unwrap().id, convo.id);
     println!(
-        "[16] restart recovery: transcript restored ({} messages)",
+        "[17] restart recovery: transcript restored ({} messages)",
         restored.len()
     );
 
     // --- gate 3: cancel mid-generation, partial persisted, model reusable ---
     let cvo = reopened.create().await.unwrap();
     let (tx2, mut rx2) = mpsc::unbounded_channel();
-    let cancel_svc: Arc<ConversationService> = Arc::new(reopened);
+    let cancel_svc: Arc<ConversationEngine> = Arc::new(reopened);
     let task = cancel_svc
         .send(
             cvo.id.clone(),
@@ -194,7 +202,7 @@ async fn live_send_streams_persists_and_recovers_on_restart() {
         cm[1].generation.as_ref().unwrap().stop_reason,
         StopReason::Cancelled
     );
-    println!("[16] cancel: partial turn persisted as Cancelled");
+    println!("[17] cancel: partial turn persisted as Cancelled");
 
     // model still usable
     let (tx3, mut rx3) = mpsc::unbounded_channel();
@@ -219,7 +227,7 @@ async fn live_send_streams_persists_and_recovers_on_restart() {
         drain(&mut rx3).last(),
         Some(GenerationEvent::Done { .. })
     ));
-    println!("[16] model reusable after cancel — OK");
+    println!("[17] model reusable after cancel — OK");
 
     rig.lifecycle.unload_all().await;
 }

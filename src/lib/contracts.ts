@@ -72,6 +72,8 @@ export type { Message } from '../bindings/Message';
 export type { ConversationKind } from '../bindings/ConversationKind';
 export type { Conversation } from '../bindings/Conversation';
 export type { ChatSendRequest } from '../bindings/ChatSendRequest';
+export type { GenerationHandle } from '../bindings/GenerationHandle';
+export type { GenerationState } from '../bindings/GenerationState';
 
 // Resource reservations + the manager snapshot (Phase 13, ADR-0007).
 export type { ResourceKind } from '../bindings/ResourceKind';

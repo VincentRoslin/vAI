@@ -43,6 +43,7 @@ vi.mock('@tauri-apps/api/core', () => ({
       };
     }
     if (cmd === 'chat_send') return 'task-test';
+    if (cmd === 'chat_state') return { generating: null };
     if (arrayCommands.has(cmd)) return [];
     return undefined;
   }),
