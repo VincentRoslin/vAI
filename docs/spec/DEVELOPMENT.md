@@ -23,8 +23,18 @@ machine:
 
 **Package manager:** npm (default; `corepack` available for pnpm if a concrete
 reason appears — Phase 6 decision, ADR if changed).
-**Python env:** `uv`-managed venv per the packaging plan; the shipped app bundles
-an embedded CPython + one shared frozen venv (ADR-0014).
+**Python env:** one `uv`-managed venv at `<repo>/.venv` from the pinned
+`workers/requirements.txt` (**ADR-0018**), shared by every worker. Create/refresh:
+
+```
+python -m pip install --user uv      # once
+node scripts/setup-venv.mjs           # creates .venv, installs, checks CUDA
+```
+
+`.venv/` is gitignored (~2.2 GB). CI running the `worker::` / `voice::` unit
+tests needs no venv — those use `workers/stt_fake.py` (stdlib); only the
+`#[ignore]`d live gates need the real venv + GPU. The shipped app does not use
+`.venv` — it bundles an embedded CPython + the same frozen set (ADR-0014).
 
 ## 2. Repository layout (target, post-bootstrap)
 

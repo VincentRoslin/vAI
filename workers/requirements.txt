@@ -1,0 +1,26 @@
+# LocalAI Python worker dependencies (dev venv — <repo>/.venv).
+# The shipped app bundles an embedded CPython + this same frozen set (ADR-0014).
+# Every worker runs under the ADR-0015 "hostile network" env; nothing here is
+# allowed to reach the network at runtime.
+#
+# Recreate the venv:
+#   node scripts/setup-venv.mjs        (or: python -m uv venv .venv --python 3.11
+#                                       && python -m uv pip install --python .venv
+#                                       -r workers/requirements.txt)
+#
+# Exact pins — resolved 2026-09-06, Python 3.11, win_amd64.
+#
+# --- Phase 18: STT — faster-whisper large-v3, fp16, CUDA 12 / cuDNN 9 ---
+faster-whisper==1.2.1
+ctranslate2==4.8.2
+av==18.1.0
+tokenizers==0.23.2
+huggingface-hub==1.30.0
+onnxruntime==1.29.0
+numpy==2.4.6
+# CUDA 12 user-space libs CTranslate2 links (the box has a CUDA 13 driver; CT2
+# needs the CUDA 12 + cuDNN 9 libraries). workers/stt.py prepends their bin dirs
+# to PATH before importing ctranslate2.
+nvidia-cublas-cu12==12.9.2.10
+nvidia-cudnn-cu12==9.25.1.1
+nvidia-cuda-nvrtc-cu12==12.9.86

@@ -16,9 +16,13 @@ npm-debug.log*
 *.local
 
 # Large runtime assets kept in-project (owner preference) — NOT committed.
-# llama-server(.exe) + CUDA DLLs (~540 MB); downloaded GGUF models.
+# llama-server(.exe) + CUDA DLLs (~540 MB); downloaded GGUF + STT/TTS/VAD models.
 /runtime/
 /models/
+
+# Python worker venv (~2.2 GB: faster-whisper + CUDA 12 libs). Recreate from
+# workers/requirements.txt — see scripts/setup-venv.mjs (ADR-0018).
+/.venv/
 
 # Editor
 .idea/
