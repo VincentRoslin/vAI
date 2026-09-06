@@ -1,5 +1,9 @@
 # Phase 22 — Image Generation (FLUX.1 Krea)
 
+> **Status: COMPLETE (2026-09-06)** — 22.A + 22.B offline-verified, 22.C live gate
+> passed on the RTX 5080. Evidence: `docs/verification/22_phase22_image-generation.md`.
+> ADR-0019 `ACCEPTED`; ADR-0018 amended (two venvs).
+>
 > **Architecture frozen at Phase 5.** Governing: **ADR-0006** (diffusers sidecar,
 > Krea 2 Turbo, **NF4 quant cache required**, `generate`-only / no self-managed
 > VRAM), **ADR-0013** (transport — model server = loopback HTTP + per-launch
@@ -443,10 +447,18 @@ the real load are all **22.C** (RTX 5080 + owner go-ahead).
    (the blob is backend-private, ADR-0017). No config schema change (v9 stands).
    Verify: `node scripts/check.mjs` green; counts recorded.
 
-### 22.C — Live gate on the RTX 5080  *(BLOCKED on owner: venv install + go-ahead)*
+### 22.C — Live gate on the RTX 5080  *(COMPLETE 2026-09-06)*
 
-**`src-tauri/src/image/live_tests.rs` is written** (4 `#[ignore]`d tests, gated
-on `LOCALAI_RUN_IMAGE_LIVE=1`). Owner steps on the box:
+**All 6 gate items pass** — `image/live_tests.rs`, 4 `#[ignore]`d tests, run
+twice end to end (`--test-threads=1`). Base + Realism-LoRA batch=2 generate;
+VRAM 2.1 GB → **peak 11 446 MB** → restored with the LLM reloaded; cancel writes
+nothing; sidecar crash → typed `Error` + LLM restored; `acquire_image` 9 ms, no
+download. `estimated_vram_mb = 11_750` confirmed. **LLM-coexistence answer: an
+8B LLM + Krea 2's 11.45 GB peak overflow 16 GB → Phase 23** (ROADMAP §7).
+ADR-0019 → `ACCEPTED`. Evidence:
+`docs/verification/22_phase22_image-generation.md`.
+
+Steps executed on the box:
 
 0. `node scripts/setup-venv.mjs image` — build `.venv-image` (~6–8 GB). Staged
    assets are already at `<repo>/models/image/` (quant cache + 3 LoRAs) and the

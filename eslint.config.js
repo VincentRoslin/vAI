@@ -13,6 +13,7 @@ export default tseslint.config(
       'src/bindings/',
       'coverage/',
       '.venv/',
+      '.venv-image/',
       'runtime/',
       'models/',
     ],

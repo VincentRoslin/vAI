@@ -35,7 +35,7 @@ added at Phase 8** to close a question Phase 3 deferred (config format).
 | 0016 | Configuration: one JSON file, layered, versioned, Rust-owned | ACCEPTED (Phase 8) |
 | 0017 | Entity ID generation: UUIDv4 | ACCEPTED (Phase 11) |
 | 0018 | Python worker dev environment: `uv` venv(s), pinned — **amended Phase 22.B: two venvs** (`.venv` workers + `.venv-image` image sidecar) | ACCEPTED (Phase 18, amended 22.B) |
-| 0019 | Image sidecar: Krea 2-only adaptation (typed contract, LoRA registry, path exchange, manual evict until P23) | PROPOSED (Phase 22) |
+| 0019 | Image sidecar: Krea 2-only adaptation (typed contract, LoRA registry, path exchange, manual evict until P23) | ACCEPTED (Phase 22.C) |
 
 ### Decided during implementation (no ADR — implements frozen policy)
 

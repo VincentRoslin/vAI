@@ -1,6 +1,9 @@
 # ADR-0019 — Image sidecar: Krea 2-only adaptation of the owner's reference
 
-- **Status:** PROPOSED (Phase 22.A, 2026-09-06) — ACCEPTED once the live gate (22.C) passes
+- **Status:** ACCEPTED (Phase 22.C, 2026-09-06) — the live gate passed on the
+  RTX 5080 (`docs/verification/22_phase22_image-generation.md`): all 6 items,
+  peak VRAM 11.45 GB (≈ the 11 750 estimate), evict/restore + cancel + crash all
+  clean. The measured 11.45 GB peak confirms an 8B LLM cannot coexist → Phase 23.
 - **Governs:** the concrete shape of the image subsystem `docs/decisions/0006`
   froze in principle. Refines, does not change, ADR-0006 / ADR-0013 / ADR-0010.
 - **Reference:** the owner's sibling project `ClaudeAI/assistant/image_gen/`

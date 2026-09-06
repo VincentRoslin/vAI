@@ -24,13 +24,13 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 22 — Image Generation (FLUX.1 Krea)                     |
-| **Stage**        | 22.C (`BLOCKED`) — 22.A + 22.B `COMPLETE`               |
-| **Status**       | `BLOCKED`                                               |
-| **Blocked by**   | owner: run `node scripts/setup-venv.mjs` (now builds `.venv-image` too) on the RTX 5080 box + give the go-ahead for the 22.C live gate. 22.A/22.B code is all in; 22.C = venv install + `acquire_image` end to end + the live generate/VRAM/evict/cancel/crash gate. |
-| **Plan doc**     | `docs/plan/22_image-generation.md`                      |
+| **Phase**        | 23 — Model Hot-Swapping                                 |
+| **Stage**        | 23.1 (`NOT STARTED`) — Phase 22 `COMPLETE`              |
+| **Status**       | `NOT STARTED`                                           |
+| **Blocked by**   | — (Phase 22 done; the 22.C live gate proved an 8B LLM + Krea 2's 11.45 GB peak overflow 16 GB → hot-swap is the answer, ROADMAP §7) |
+| **Plan doc**     | `docs/plan/23_model-hot-swapping.md`                    |
 | **Last updated** | 2026-09-06                                              |
-| **Updated by**   | phase-22b                                               |
+| **Updated by**   | phase-22c                                               |
 
 **Architecture frozen (Phase 5).** Binding: `docs/spec/` (the 7 spec docs —
 `PROJECT`, `ARCHITECTURE`, `AI_PIPELINES`, `SECURITY`, `PERFORMANCE`,
@@ -408,7 +408,7 @@ SQLite + FTS5 keyword retrieval; embeddings deferred (measured trigger, ADR-0012
 `MemoryService`), `V0006` (`memory` + standalone `memory_fts`), `MemoryId`,
 `contracts::memory`; builder `max_memory_tokens` sub-budget; `memory_*` IPC.
 
-### Phase 22 — Image Generation (FLUX.1 Krea) *(current pointer)* — `BLOCKED` (22.A + 22.B `COMPLETE`, 22.C `BLOCKED` on owner) — `docs/plan/22_image-generation.md`
+### Phase 22 — Image Generation (FLUX.1 Krea) — `COMPLETE` (2026-09-06) — `docs/plan/22_image-generation.md` · `docs/verification/22_phase22_image-generation.md`
 Local image generation as a resource-managed workload. **22.A done** — `blob/`
 (content-addressed store, deferred since Phase 9), `image/` (`Krea2Backend` +
 `ImageInstance` trait + supervised sidecar + `ImageRepo` LoRA/preset registries
@@ -418,17 +418,21 @@ config v9, 6 IPC commands, `ImageGenerator.tsx`, stdlib fake sidecar. ADR-0019
 amended to two venvs (`.venv` + `.venv-image`), `scripts/setup-venv.mjs` builds
 both; `acquisition::acquire_image` + `acquire_image_model` IPC (verify HF cache /
 quantize once / register `krea2-diffusers`, downloads nothing). Manual LLM
-evict/restore here — Phase 23 automates it. **22.C blocked** — owner runs the
-venv install on the RTX 5080 + gives the go-ahead for the live gate.
+evict/restore here — Phase 23 automates it. **22.C done** — the RTX 5080 live
+gate: all 6 items pass (`image/live_tests.rs`). Base + Realism-LoRA batch=2
+generate; VRAM 2.1 GB → **peak 11.45 GB** → restored, LLM reloaded; cancel writes
+nothing; sidecar crash → typed `Error` + LLM restored; `acquire_image` 9 ms, no
+download. **`estimated_vram_mb = 11_750` confirmed. An 8B LLM + Krea 2's 11.45 GB
+peak overflow the 16 GB card ⇒ Phase 23 is required** (§7). ADR-0019 `ACCEPTED`.
 Gate: generate an image via a worker; VRAM reserved/released around the job;
 binary in the file vault + metadata/path/hash in SQLite; cancel mid-gen releases;
-worker crash handled.
+worker crash handled. **All met.**
 
 ---
 
 ### EPOCH 3 — Resource Arbitration & Characters (Phases 23–29)
 
-### Phase 23 — Model Hot-Swapping — `NOT STARTED` — `docs/plan/23_model-hot-swapping.md`
+### Phase 23 — Model Hot-Swapping *(current pointer)* — `NOT STARTED` — `docs/plan/23_model-hot-swapping.md`
 Share limited VRAM: suspend/unload LLM → load image model → generate → release →
 restore LLM. Handle runtimes that can't suspend cleanly.
 Gate: swap observed via real VRAM measurement; swap refused when eviction can't
@@ -562,6 +566,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 22.C `BLOCKED` | **Phase 22 `COMPLETE`** → Phase 23 / 23.1 `NOT STARTED` | phase-22c | **22.C live gate passed on the RTX 5080** (`image/live_tests.rs`, 4 `#[ignore]`d tests, 6 gate items). `.venv-image` built (`diffusers 0.41.0.dev0` / `transformers 5.16.1` / `torch 2.11.0+cu128`, `Krea2Pipeline` imports); the fix `setup-venv.mjs` needed — `uv` is a `--user` pip install, resolved via `sysconfig` `nt_user` scripts dir, not the broken `python -m uv`. Staged assets moved from `%APPDATA%\com.localai.app\models\image\` → `<repo>\models\image\` (where `config.json` points). **Results:** base `unsloth/Krea-2-Turbo` NF4 1024²/8-step → PNG in the blob store + `generated_image` row, ~31 s (load-dominated); Realism LoRA `batch_count=2` → 2 more, ~53 s; phases `Evicting→Loading→Generating→Restoring` in order; **whole-GPU VRAM 2.1 GB (Qwen resident) → peak 11 446 MB during generate → 2.1 GB + LLM `Loaded` after** (`ResourceManager::observe()` re-probes NVML; `snapshot()` returns the last observation — a poller bug caught + fixed mid-run). Cancel mid-generate → `Cancelled`, no blob, no row, LLM restored. Sidecar `taskkill` mid-generate → typed `ImageEvent::Error`, LLM restored, image model not left `Loaded`. `acquire_image` end to end in 9 ms (staged cache reused, no `quantize.py`, idempotent). **`estimated_vram_mb = 11_750` confirmed accurate.** **LLM/image coexistence answer: an 8B LLM (~6–9 GB) + Krea 2's 11.45 GB peak > 16 GB → Phase 23 hot-swap is required** (§7). ADR-0019 → **ACCEPTED**. Evidence `docs/verification/22_phase22_image-generation.md`. Commits: `<22.C tests>` + `<22.C poller>` + `<22.C docs>` + 3 `setup-venv.mjs` fixes. |
 | 2026-09-06 | Phase 22.B `IN PROGRESS` | Phase 22.B `COMPLETE` → 22.C `BLOCKED` (owner) | phase-22b | **22.B landed** (5 commits: `471f7cf` real `image_gen/server.py` + `quantize.py`; `32a0c84` two-venv decision; `22.B.3` venv build; `22.B.4` acquisition; `22.B.5` docs). **ADR-0018 amended → two venvs** — `chatterbox-tts 0.1.7` hard-pins `torch`/`transformers`/`diffusers`/`safetensors` against Krea 2's needs, so `.venv` (workers) stays and `.venv-image` (image sidecar only, `image_gen/requirements.txt` + `workers/overrides.txt`) is added; `scripts/setup-venv.mjs` builds both (`workers`/`image` arg builds one); `image::image_venv_python` swaps the `.venv` path component. **`acquisition/krea2.rs`** — `acquire_image` + `acquire_image_model` IPC: locate the `unsloth/Krea-2-Turbo` snapshot (`model_index.json`) under `$HF_HUB_CACHE`/`$HF_HOME/hub`/`~/.cache/huggingface/hub` (**never pulled** — `NotFound` if absent); run `image_gen/quantize.py` in `.venv-image` only when the quant-cache layout is absent/incomplete (a fingerprint-stale cache is caught by the sidecar's load-time 503); register `ModelKind::Image` / `backend "krea2-diffusers"` / `estimated_vram_mb 11_750` / `path` = a `<models.dir>/image/krea2` marker dir / `config = {model_id, hf_snapshot, quant_cache_dir}`; idempotent. `Krea2Backend::load` passes the repo id as `--model-path` for a marker dir. `import_image_lora` **dropped** (owner staged the 3 LoRAs; `ImageRepo::seed` registers them; a URL-download helper is dead weight — Article IV). 376 rust tests (+3 `acquisition::krea2`), 23 vitest, check suite green. No config schema change (v9 stands); ADR-0019 stays `PROPOSED`. **22.C blocked on the owner** — run `node scripts/setup-venv.mjs` on the RTX 5080 box + go-ahead. |
 | 2026-09-06 | Phase 22.B `BLOCKED` | Phase 22.B `IN PROGRESS` | phase-22b | 4 phase-entry questions resolved (owner): reuse `unsloth/Krea-2-Turbo` HF cache; NF4 quant cache (~9.6 GB) + 3 realism LoRAs copied into `<models.dir>/image/`; venv deps approved (`diffusers` pinned to a commit SHA, `bitsandbytes`, `peft`). Q2 rec was "regenerate for provenance" — owner chose copy to skip the ~24 GB RAM spike; `quantize.py` still built + exercised at 22.C. `docs/plan/22` §Phase-entry updated. |
 | 2026-09-06 | Phase 22 / 22.A `IN PROGRESS` | Phase 22 / 22.A `COMPLETE` → 22.B `BLOCKED` | phase-22a | **22.A landed** (6 commits `86aa50b`→`0ab87cb`). New `src-tauri/src/blob/` — the content-addressed blob store (`BlobStore` over `app_data/blobs/<sha[0:2]>/<sha>`; `put` = sha256→tmp→fsync→rename, dedupes, **no SQLite** — caller commits the `asset` row after, ADR-0009 write order; `get`/`read`/`contains` confine to 64-hex; `reconcile` orphan/dangling). New `src-tauri/src/image/` — `protocol`/`server`/`client` (Rust-supervised sidecar child on a free loopback port + per-launch bearer token on every endpoint + Job Object + ADR-0015 env + `ready`+protocol-version handshake; all diffusers/Krea JSON confined — ARCHITECTURE §2), `Krea2Backend` (`ModelBackend`), `Krea2Server` (`LoadedInstance` + the new **`ImageInstance`** capability trait via `as_image()`; `generate` writes to a Rust-dictated per-call `out_dir` — **binary exchange by path, no inline bytes / no base64**, Article I — polls `/progress`, reads the PNGs, blob-stores, cleans up), `repo` (`ImageRepo` — `image_lora` + `image_preset` registries seeded from the confined loras dir [present files only; curated names/tags for the 3 shipped LoRAs; format sniffed from the safetensors header], `generated_image` + image-side `asset` rows), `orchestrator` (`ImageOrchestrator` — **the manual evict-every-resident-non-image-model → settle-wait → load Krea 2 → generate → blob+rows → restore sequence, one at a time, guard-restored on success/error/cancel; refuses to start during an interactive chat generation; reads the resource snapshot but never the RM mutating API — ADR-0010 lock order; written to be deleted at Phase 23**). `V0007__blob_and_image.sql` (`asset` / `image_lora` / `image_preset` / `generated_image`, STRICT, UUIDv4). `contracts::image` (`ImageRequest`+`validate` — dims /16 in 512..1664, steps 1..50, batch 1..8, ≤1 LoRA in v1; `LoraSelection`, `ImageEvent` adjacently tagged mirroring `GenerationEvent`, `ImageProgress`+`ImagePhase`, `GeneratedImageRow`, `ImageLora`, `ImagePreset`) + ids `ImageLoraId`/`ImagePresetId`/`GeneratedImageId`. **Config schema v9** — `image.{loras_dir,quant_cache_dir,idle_shutdown_s}` (dir overrides file-only, `null` ⇒ a subdir of `models.dir`); generic `step_forward` migrates v8→v9. IPC: `image_generate`(Channel<ImageEvent>) / `image_cancel` / `image_loras` / `image_presets` / `image_history` / `image_bytes` (blob.read — no path on the wire). `lib.rs::start_image` builds the blob store + seeds the registry + registers `Krea2Backend` **only if `image_gen/server.py` exists** (Phase 22.B — until then `image_generate` → clean "no image model registered") + the orchestrator. `image_gen/server_fake.py` — stdlib fake sidecar (bearer-auth, solid-PNG output, fake progress, `--protocol` override). `src/pages/ImageGenerator.tsx` (+ `.css`, `.test.tsx`) — prompt/negative, size segmented control, count 1–8, seed, LoRA select + weight slider, Generate/Cancel, phase-labelled progress, result grid, recent strip; design tokens; no existing-page behavior touched. **`lifecycle::backend`** gains `as_image()` + `ImageInstance` (additive). **`models::Model::availability()`** now `path.exists()` not `is_file()` (a diffusers model is a directory). **ADR-0019** `PROPOSED` — Krea 2-only adaptation: what's reused vs rewritten, typed contract, LoRA registry, path exchange, bearer-auth, manual-evict-until-23. `docs/contracts.md` + `ARCHITECTURE.md` map + `src-tauri/README.md` + `docs/decisions/README.md` updated. 373 rust tests (16 `image`, incl. 4 orchestrator against a `FakeBackend` LLM + the real `Krea2Backend`/fake sidecar: evict+generate+restore with phases in order + LoRA name; cancel restores the LLM + writes nothing; 2nd concurrent gen = `Conflict`; invalid req = `Validation`), 23 vitest, check suite green. **22.B blocked** on owner answers to the 4 phase-entry questions. |
@@ -625,18 +630,13 @@ Newest first. One line per state transition (§3 rule 6).
 
 ## 6. Open Blockers
 
-- **Phase 22.C — image live gate (owner).** 22.A + 22.B code is all in and the
-  check suite is green; nothing more lands without the box. 22.C needs the owner
-  to, on the RTX 5080 machine: (1) `node scripts/setup-venv.mjs` (builds `.venv`
-  + `.venv-image` — the second is the ~6–8 GB diffusers/Krea 2 install);
-  (2) call the `acquire_image_model` IPC (or the 22.C harness) — it verifies the
-  `unsloth/Krea-2-Turbo` HF cache, reuses the staged NF4 quant cache, registers
-  Krea 2; (3) give the go-ahead to run the `image::live_tests` gate (generate,
-  VRAM reserve/release, LLM evict/restore, cancel, sidecar crash) + record the
-  Performance-notes figures + the LLM-coexistence answer (→ §7 / Phase 23).
-  Phase-entry questions resolved 2026-09-06 (reuse HF cache; NF4 cache + 3 LoRAs
-  staged into `<models.dir>/image/`). No UI for `acquire_image_model` yet —
-  deferred to the 22.C session / a Models-page button.
+- **Phase 22.C — image live gate — `DONE` (2026-09-06).** `.venv-image` built on
+  the RTX 5080; `image/live_tests.rs` all 6 items pass (base + Realism-LoRA
+  batch=2 generate, VRAM 2.1 GB → peak 11.45 GB → restored, cancel writes
+  nothing, sidecar crash → typed error + LLM restored, `acquire_image` 9 ms no
+  download). Evidence `docs/verification/22_phase22_image-generation.md`. Follow-up
+  carried forward: **no UI for `acquire_image_model`** — add a Models-page button
+  in a later UI pass (the IPC command exists).
 
 - **Phase 12 gate 5 — fixed STT/TTS models — `DONE` (2026-09-06).** Run on the
   owner's "Download fresh versions" go-ahead ahead of Phase 18.
@@ -663,7 +663,7 @@ Newest first. One line per state transition (§3 rule 6).
 ## 7. Decisions & open items
 
 **The architecture is frozen (Phase 5, 2026-09-05).** The binding record is
-`docs/spec/` (the 7 spec docs) + `docs/decisions/` (ADR-0001…0018, all
+`docs/spec/` (the 7 spec docs) + `docs/decisions/` (ADR-0001…0019, all
 `ACCEPTED`). Changes need STOP → propose → approve → ADR.
 
 ### Course inserts (owner-approved, additive — not architectural)
@@ -692,9 +692,22 @@ Newest first. One line per state transition (§3 rule 6).
 | O6 character identity bar | prompt-based, **no LoRA training** (ADR-0011); FR-C90 scoped to portraits/selfies — owner-confirmed |
 | O7 Krea 2 quant | NF4 (cached) for v1; benchmark torchao NVFP4 at Phase 22 |
 
+### Phase 22 outcome — LLM/image VRAM coexistence (feeds Phase 23)
+
+Measured on the RTX 5080 (16 303 MB) at the 22.C live gate
+(`docs/verification/22_phase22_image-generation.md`): **Krea 2 NF4 peak ≈
+11.45 GB** for a 1024²/8-step generation (CPU offload; the `estimated_vram_mb =
+11_750` registry value is accurate). With an 8B-class LLM also resident (~6–9 GB)
+total demand is **~17–20 GB — over the card.** ⇒ **Phase 23 (model hot-swapping)
+is required**; the manual `ImageOrchestrator` eviction is the interim (ADR-0019
+§6, written to be deleted). The 22.C gate only passes with a resident LLM because
+Qwen 0.5B (~1.4 GB) is a stand-in.
+
 ### Deferred (decide during implementation — not architectural)
 
-- NVFP4 vs NF4 for Krea 2 → Phase 22.
+- NVFP4 vs NF4 for Krea 2 → **still deferred** (O7). NF4 shipped at Phase 22
+  (measured, works); the torchao NVFP4 load+generate comparison was not run at
+  22.C (not cheap enough) and stays a future optimisation.
 - `synchronous=FULL` on the DB writer → Phase 9 with measurements.
 - Named pipe vs token'd TCP for `llama-server` → Phase 15 (confirm upstream).
 - npm vs pnpm → Phase 6.
