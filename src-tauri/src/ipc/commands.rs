@@ -315,13 +315,117 @@ use crate::contracts::model::LifecycleStatus;
 use crate::lifecycle::LifecycleManager;
 
 /// Every model the lifecycle manager is tracking, with its runtime state
-/// (Phase 14). Read-only — loading is driven by later phases.
+/// (Phase 14).
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
 pub async fn lifecycle_status(
     lifecycle: State<'_, Arc<LifecycleManager>>,
 ) -> AppResult<Vec<LifecycleStatus>> {
     Ok(lifecycle.statuses().await)
+}
+
+/// Register a GGUF already present in the model directory (no download).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn model_register_local(
+    acquisition: State<'_, AcquisitionService>,
+    filename: String,
+) -> AppResult<ModelId> {
+    acquisition.register_local_gguf(&filename).await
+}
+
+/// Load a registered model into memory (Phase 14).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn model_load(lifecycle: State<'_, Arc<LifecycleManager>>, id: ModelId) -> AppResult<()> {
+    lifecycle.load(&id).await
+}
+
+/// Unload a model.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn model_unload(
+    lifecycle: State<'_, Arc<LifecycleManager>>,
+    id: ModelId,
+) -> AppResult<()> {
+    lifecycle.unload(&id).await
+}
+
+// ---------------------------------------------------------------- chat (Phase 16)
+
+use crate::contracts::conversation::{Conversation, Message};
+use crate::contracts::generation::GenerationEvent;
+use crate::contracts::ids::{ConversationId, TaskId};
+use crate::conversation::ConversationService;
+
+/// Start a new conversation.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn conversation_create(
+    chat: State<'_, Arc<ConversationService>>,
+) -> AppResult<Conversation> {
+    chat.create().await
+}
+
+/// Every conversation, newest activity first.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn conversation_list(
+    chat: State<'_, Arc<ConversationService>>,
+) -> AppResult<Vec<Conversation>> {
+    chat.list().await
+}
+
+/// A conversation's messages, in order.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn conversation_messages(
+    chat: State<'_, Arc<ConversationService>>,
+    id: ConversationId,
+) -> AppResult<Vec<Message>> {
+    chat.messages(&id).await
+}
+
+/// Request body for [`chat_send`].
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct ChatSendRequest {
+    /// Which conversation.
+    pub conversation_id: ConversationId,
+    /// Which loaded model to generate with.
+    pub model_id: ModelId,
+    /// The user's message.
+    pub text: String,
+}
+
+/// Send a user message and stream the assistant reply over `events`. Returns the
+/// generation's task id (for [`chat_cancel`]).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn chat_send(
+    chat: State<'_, Arc<ConversationService>>,
+    req: ChatSendRequest,
+    events: Channel<GenerationEvent>,
+) -> AppResult<TaskId> {
+    let ChatSendRequest {
+        conversation_id,
+        model_id,
+        text,
+    } = req;
+    chat.send(conversation_id, model_id, text, move |ev| {
+        let _ = events.send(ev);
+    })
+    .await
+}
+
+/// Cancel an in-flight generation.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn chat_cancel(
+    chat: State<'_, Arc<ConversationService>>,
+    task_id: TaskId,
+) -> AppResult<()> {
+    chat.cancel(&task_id).await
 }
 
 #[cfg(test)]

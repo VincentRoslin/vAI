@@ -1,8 +1,9 @@
 # Phase 16 — First Vertical Slice / Text Chat
 
-> **Status: IN PROGRESS** — step detail finalized at phase entry (2026-09-06)
-> against the frozen architecture + `docs/verification/14_phase15_llama.md`
-> (llama.cpp adapter live; Qwen 0.5B in `models/`).
+> **Status: COMPLETE** (2026-09-06) — all 9 gate items pass. Evidence
+> `docs/verification/15_phase16_slice.md`. A live full-stack Rust test on the
+> RTX 5080 (register → real `llama-server` → send → stream → persist → restart
+> recovery → cancel → reuse); end-to-end TTFT ≈ 33 ms. First real milestone.
 
 > **Architecture frozen at Phase 5.** Governing: **ADR-0002** (IPC —
 > Commands/Events/Channels, one `AppError`), **ADR-0009** (persistence),

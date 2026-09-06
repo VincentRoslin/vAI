@@ -16,8 +16,8 @@ targets, validated per hardware+model combination.
 | Metric | Target | Measured at |
 | ------ | ------ | ----------- |
 | Cold app start → window interactive | < ~3 s | Phase 6 baseline, tracked every phase |
-| User message appears in UI | immediate (< ~50 ms) | Phase 16 |
-| LLM time-to-first-token (model loaded) | < ~1–2 s | Phase 15 (backend), Phase 16 (end-to-end). **Backend measured (15.D):** Qwen 0.5B Q4_K_M on RTX 5080 → **TTFT ≈ 23 ms**; model load + `/health` ready ≈ **775 ms** |
+| User message appears in UI | immediate (< ~50 ms) | Phase 16 — optimistic append, no round-trip |
+| LLM time-to-first-token (model loaded) | < ~1–2 s | **Backend (15.D):** Qwen 0.5B Q4_K_M on RTX 5080 → TTFT ≈ 23 ms; load + `/health` ≈ 775 ms. **End-to-end (Phase 16, service `send` → first delta):** ≈ **33 ms** |
 | LLM tokens/sec | model-dependent; recorded per model | Phase 15. **Measured (15.D):** Qwen 0.5B Q4_K_M `-ngl -1` ctx 4096 → **≈ 278 tok/s** (a larger chat model sets the real baseline at Phase 16) |
 | UI during streaming | never frozen; no dropped frames | Phase 16, Phase 30 |
 | Voice: speech-end → first audio | ~1–3 s | Phase 18+19 |

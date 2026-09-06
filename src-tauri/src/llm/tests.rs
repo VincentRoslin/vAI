@@ -304,7 +304,7 @@ async fn a_llama_server_instance_generates_and_downcasts() {
     instance.health().await.expect("healthy");
     assert_eq!(instance.measured_vram_mb(), Some(4_096));
 
-    let llm = super::as_llm(&instance).expect("is an LlmInstance");
+    let llm = instance.as_llm().expect("is an LlmInstance");
     let out = llm
         .generate("hi".to_owned(), params(), CancellationToken::new())
         .await

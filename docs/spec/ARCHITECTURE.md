@@ -50,9 +50,10 @@ blob store, model lifecycle, resource/VRAM/RAM management, scheduling, task
 management, process supervision, IPC, security-sensitive operations, business
 logic. Single crate (`src-tauri/`); modules interact through defined interfaces.
 
-Modules (see `src-tauri/README.md` for the live list): **as of Phase 15** —
-`lib.rs` (Tauri builder + config/DB/logging/registry/acquisition/resources/lifecycle/llm
-wiring in `setup()`, WAL checkpoint on exit), `logging` (JSON stdout, non-blocking lossy, boundary secret
+Modules (see `src-tauri/README.md` for the live list): **as of Phase 16** —
+`lib.rs` (Tauri builder + a `setup()` fn wiring config/DB/logging/registry/acquisition/
+resources/lifecycle/llm/conversation into managed state; exit hook cancels the in-flight
+generation + unloads models + checkpoints the WAL), `logging` (JSON stdout, non-blocking lossy, boundary secret
 redaction, ring buffer, config-driven reloadable level — no network sink), `ipc`
 (`commands`, `error::{AppError, ErrorEnvelope}`), `contracts` (the serializable
 vocabulary for the IPC **and** worker boundaries — `docs/contracts.md`; no
@@ -76,7 +77,12 @@ path; bounded retry; a ~2 s liveness monitor), `llm` (the llama.cpp adapter —
 with a per-launch `--api-key` bearer (ADR-0013) under a Windows Job Object;
 `/health` + `/completion` non-stream + SSE stream client with a per-call
 deadline; **all llama.cpp JSON confined to `llm/protocol`**; `LlamaServer`
-implements `LoadedInstance` + an `LlmInstance` capability trait). Each later
+implements `LoadedInstance` + an `LlmInstance` capability trait),
+`conversation` (the Phase 16 vertical-slice service — **not** the shared engine,
+Phase 17 generalizes it: `repo` owns all conversation/message SQL, `prompt`
+renders minimal ChatML, `ConversationService::send` persists the user turn then
+streams one generation via `LlmInstance` and persists the assistant turn;
+one generation at a time — a concurrent `send` is `Conflict`). Each later
 phase adds its module and registers it in `src-tauri/README.md` and §3 here.
 
 ### React / TypeScript — presentation only
@@ -112,7 +118,7 @@ loopback only, launched with the offline/no-telemetry env (ADR-0015).
 | GPU/VRAM + system-RAM accounting | `resources` module (`resource manager`) |
 | GPU job ordering + eviction | `scheduler` |
 | Process spawn / health / restart | `worker supervisor` |
-| Conversations (all modalities) | `conversation engine` (one) |
+| Conversations (all modalities) | `conversation` module (one; thin service at P16 → shared engine at P17) |
 | Prompt assembly | `context builder` (one) |
 | Memory | `memory` module (FTS5, per-scope) |
 | Relationship state | `character` module (DB row is truth) |

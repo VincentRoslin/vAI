@@ -20,7 +20,6 @@ mod tests;
 mod live_tests;
 
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -29,8 +28,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::contracts::generation::{GenerationEvent, SamplingParams};
 use crate::ipc::{AppError, AppResult};
-use crate::lifecycle::backend::{LoadRequest, LoadedInstance, ModelBackend};
-use client::{Completion, LlamaClient};
+use crate::lifecycle::backend::{
+    Completion, LlmInstance, LoadRequest, LoadedInstance, ModelBackend,
+};
+use client::LlamaClient;
 use protocol::CompletionRequest;
 use server::{bearer_token, pick_free_port, ServerArgs, ServerProcess};
 
@@ -42,41 +43,6 @@ const DEFAULT_CTX_TOKENS: u32 = 4_096;
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const DEFAULT_LOAD_TIMEOUT: Duration = Duration::from_secs(120);
 const DEFAULT_CALL_DEADLINE: Duration = Duration::from_secs(300);
-
-/// A generation capability on top of a [`LoadedInstance`]. Phase 16 reaches it
-/// with [`as_llm`].
-#[async_trait]
-pub trait LlmInstance: Send + Sync {
-    /// One non-streaming generation.
-    ///
-    /// # Errors
-    /// Transport / timeout / cancellation / server errors, mapped to [`AppError`].
-    async fn generate(
-        &self,
-        prompt: String,
-        params: SamplingParams,
-        cancel: CancellationToken,
-    ) -> AppResult<Completion>;
-
-    /// Streaming generation — events land in `tx` (ordered `TokenDelta`s then one
-    /// terminal). Returns once the terminal has been sent.
-    async fn stream(
-        &self,
-        prompt: String,
-        params: SamplingParams,
-        tx: mpsc::Sender<GenerationEvent>,
-        cancel: CancellationToken,
-    );
-}
-
-/// Downcast a lifecycle-manager instance to its LLM capability, if it has one.
-#[must_use]
-pub fn as_llm(instance: &Arc<dyn LoadedInstance>) -> Option<&dyn LlmInstance> {
-    instance
-        .as_any()
-        .downcast_ref::<LlamaServer>()
-        .map(|s| s as &dyn LlmInstance)
-}
 
 /// Spawns `llama-server` children. One per managed GGUF model.
 pub struct LlamaBackend {
@@ -213,6 +179,10 @@ impl LoadedInstance for LlamaServer {
         if let Some(process) = self.process.lock().await.take() {
             process.shutdown().await;
         }
+    }
+
+    fn as_llm(&self) -> Option<&dyn LlmInstance> {
+        Some(self)
     }
 
     fn as_any(&self) -> &(dyn std::any::Any + Send + Sync) {

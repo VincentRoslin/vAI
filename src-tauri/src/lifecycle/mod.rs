@@ -140,6 +140,17 @@ impl LifecycleManager {
             .map_or(ModelState::Unloaded, |e| e.state)
     }
 
+    /// The loaded instance for `id`, if it is `Loaded` or `Busy`. Callers that
+    /// need a capability (e.g. `llm::as_llm`) downcast via
+    /// [`backend::LoadedInstance::as_any`].
+    pub async fn instance(&self, id: &ModelId) -> Option<Arc<dyn LoadedInstance>> {
+        let entries = self.entries.lock().await;
+        entries.get(id).and_then(|e| match e.state {
+            ModelState::Loaded | ModelState::Busy => e.instance.clone(),
+            _ => None,
+        })
+    }
+
     /// A snapshot of every model the manager is tracking.
     pub async fn statuses(&self) -> Vec<LifecycleStatus> {
         self.entries
@@ -393,6 +404,33 @@ impl LifecycleManager {
             other => Err(AppError::Conflict(format!(
                 "model {id} is {other:?}, not Loaded"
             ))),
+        }
+    }
+
+    /// Unload every `Loaded`/`Failed` model (called on app exit). A `Busy` model
+    /// is unloaded too — the process is going away regardless.
+    pub async fn unload_all(&self) {
+        let ids: Vec<ModelId> = {
+            let entries = self.entries.lock().await;
+            entries
+                .iter()
+                .filter(|(_, e)| e.instance.is_some() || e.reservation.is_some())
+                .map(|(id, _)| id.clone())
+                .collect()
+        };
+        for id in ids {
+            // Force it out of Busy first so `unload` doesn't refuse.
+            {
+                let mut entries = self.entries.lock().await;
+                if let Some(e) = entries.get_mut(&id) {
+                    if e.state == ModelState::Busy {
+                        e.state = ModelState::Loaded;
+                    }
+                }
+            }
+            if let Err(err) = self.unload(&id).await {
+                err.log("unload model on exit");
+            }
         }
     }
 

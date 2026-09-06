@@ -12,6 +12,7 @@ use tokio_util::sync::CancellationToken;
 use super::protocol::{parse_chunk, parse_sse_line, CompletionRequest, SseEvent};
 use crate::contracts::generation::{GenerationEvent, StopReason};
 use crate::ipc::{AppError, AppResult};
+use crate::lifecycle::backend::Completion;
 
 /// Talks to one `llama-server` instance.
 pub struct LlamaClient {
@@ -20,14 +21,6 @@ pub struct LlamaClient {
     http: reqwest::Client,
     /// Deadline for a whole non-streaming call / for stream inactivity.
     deadline: Duration,
-}
-
-/// The result of a non-streaming `/completion`.
-#[derive(Debug, Clone)]
-pub struct Completion {
-    pub text: String,
-    pub tokens: u32,
-    pub stop_reason: StopReason,
 }
 
 impl LlamaClient {

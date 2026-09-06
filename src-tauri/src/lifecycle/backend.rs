@@ -10,8 +10,10 @@
 use std::any::Any;
 
 use async_trait::async_trait;
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use crate::contracts::generation::{GenerationEvent, SamplingParams, StopReason};
 use crate::contracts::model::RegisteredModel;
 use crate::ipc::AppResult;
 
@@ -60,9 +62,53 @@ pub trait LoadedInstance: Send + Sync {
     /// Stop the instance and free its resources. Best-effort; must not panic.
     async fn shutdown(&self);
 
-    /// Downcast hook for a capability trait — e.g. the `llm` module's
-    /// `LlmInstance` (Phase 15). Every impl is `{ self }`.
+    /// The instance's LLM generation capability, if it is a language model.
+    /// Non-LLM instances (STT / TTS / image, later phases) return `None`.
+    fn as_llm(&self) -> Option<&dyn LlmInstance> {
+        None
+    }
+
+    /// Escape hatch for a future capability trait not modelled here. Every impl
+    /// is `{ self }`.
     fn as_any(&self) -> &(dyn Any + Send + Sync);
+}
+
+/// The result of a non-streaming generation.
+#[derive(Debug, Clone)]
+pub struct Completion {
+    /// The generated text.
+    pub text: String,
+    /// Tokens generated.
+    pub tokens: u32,
+    /// Why generation stopped.
+    pub stop_reason: StopReason,
+}
+
+/// LLM generation on top of a [`LoadedInstance`]. Reached via
+/// [`LoadedInstance::as_llm`].
+#[async_trait]
+pub trait LlmInstance: Send + Sync {
+    /// One non-streaming generation.
+    ///
+    /// # Errors
+    /// Transport / timeout / cancellation / backend errors as [`crate::ipc::AppError`].
+    async fn generate(
+        &self,
+        prompt: String,
+        params: SamplingParams,
+        cancel: CancellationToken,
+    ) -> AppResult<Completion>;
+
+    /// Streaming generation — events land in `tx` (ordered `TokenDelta`s then one
+    /// terminal: `Done` / `Cancelled` / `Error`). Returns once the terminal has
+    /// been sent.
+    async fn stream(
+        &self,
+        prompt: String,
+        params: SamplingParams,
+        tx: mpsc::Sender<GenerationEvent>,
+        cancel: CancellationToken,
+    );
 }
 
 #[cfg(test)]

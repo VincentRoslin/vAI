@@ -201,6 +201,51 @@ impl AcquisitionService {
         self.engine.reconcile_on_start().await
     }
 
+    /// Register a GGUF that already sits directly in the model directory (no
+    /// download). `filename` is a bare file name — no path separators.
+    ///
+    /// # Errors
+    /// [`AppError::Validation`] for a bad name / non-file / truncated GGUF;
+    /// [`AppError::NotFound`] if the file is missing; a persistence error.
+    pub async fn register_local_gguf(&self, filename: &str) -> AppResult<ModelId> {
+        if filename.is_empty()
+            || std::path::Path::new(filename).components().count() != 1
+            || filename.contains(['/', '\\'])
+        {
+            return Err(AppError::Validation(format!(
+                "expected a bare file name, got {filename:?}"
+            )));
+        }
+        let models_dir = self.config.effective().models.dir;
+        let path = validate_model_path(&models_dir.join(filename), &models_dir)?;
+
+        let bytes = tokio::fs::read(&path)
+            .await
+            .map_err(|e| AppError::internal("read local gguf", e))?;
+        let header = match gguf::parse_header(&bytes)? {
+            gguf::GgufParse::Header(h) => h,
+            gguf::GgufParse::Incomplete => {
+                return Err(AppError::Validation(format!(
+                    "{filename} is a truncated GGUF"
+                )))
+            }
+        };
+        let size_mb = u32::try_from(bytes.len() / (1024 * 1024)).unwrap_or(u32::MAX);
+        let draft = ModelDraft {
+            display_name: filename.to_owned(),
+            kind: ModelKind::Llm,
+            backend: ModelBackend(LLAMA_BACKEND.to_owned()),
+            quant: header.quant.map(crate::contracts::model::Quant),
+            path,
+            streaming: true,
+            context_tokens: header.context_length,
+            estimated_vram_mb: Some(size_mb.saturating_add(1024)),
+            devices: vec![Device::Cuda, Device::Cpu],
+            config: serde_json::json!({}),
+        };
+        self.engine.registry().register(draft, &models_dir).await
+    }
+
     #[allow(clippy::unused_self)]
     fn resolve_dest(
         &self,

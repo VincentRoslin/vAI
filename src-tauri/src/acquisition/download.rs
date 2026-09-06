@@ -83,6 +83,12 @@ impl std::fmt::Debug for DownloadEngine {
 }
 
 impl DownloadEngine {
+    /// The shared model registry (for callers that register without downloading).
+    #[must_use]
+    pub fn registry(&self) -> &Arc<ModelRegistry> {
+        &self.registry
+    }
+
     /// Build an engine over `db` + `registry`.
     #[must_use]
     pub fn new(db: Arc<Db>, registry: Arc<ModelRegistry>) -> Self {

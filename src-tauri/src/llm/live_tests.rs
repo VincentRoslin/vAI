@@ -15,7 +15,7 @@ use serde_json::json;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::{as_llm, LlamaBackend};
+use super::LlamaBackend;
 use crate::contracts::generation::{GenerationEvent, SamplingParams, StopReason};
 use crate::contracts::model::{Device, ModelBackend as BackendName, ModelKind};
 use crate::db::Db;
@@ -96,7 +96,7 @@ fn params(max: u32) -> SamplingParams {
 #[ignore = "needs a real llama-server + GGUF (plan 15.D)"]
 async fn live_startup_and_non_streaming_generation() {
     let (instance, _tmp) = load_model().await;
-    let llm = as_llm(&instance).expect("LlmInstance");
+    let llm = instance.as_llm().expect("LlmInstance");
     let out = llm
         .generate(prompt(), params(64), CancellationToken::new())
         .await
@@ -118,7 +118,7 @@ async fn live_startup_and_non_streaming_generation() {
 #[ignore = "needs a real llama-server + GGUF (plan 15.D)"]
 async fn live_streaming_generation_with_ttft_and_throughput() {
     let (instance, _tmp) = load_model().await;
-    let llm = as_llm(&instance).expect("LlmInstance");
+    let llm = instance.as_llm().expect("LlmInstance");
 
     let (tx, mut rx) = mpsc::channel(256);
     let started = Instant::now();
@@ -169,7 +169,7 @@ async fn live_streaming_generation_with_ttft_and_throughput() {
 #[ignore = "needs a real llama-server + GGUF (plan 15.D)"]
 async fn live_cancel_frees_the_slot() {
     let (instance, _tmp) = load_model().await;
-    let llm = as_llm(&instance).expect("LlmInstance");
+    let llm = instance.as_llm().expect("LlmInstance");
 
     // Start a long generation, cancel it after the first tokens.
     let cancel = CancellationToken::new();
@@ -190,7 +190,7 @@ async fn live_cancel_frees_the_slot() {
     assert!(saw_cancelled, "stream ended with Cancelled");
 
     // The slot must be free again — a fresh non-stream generation succeeds.
-    let llm2 = as_llm(&instance).expect("LlmInstance");
+    let llm2 = instance.as_llm().expect("LlmInstance");
     let out = llm2
         .generate(prompt(), params(32), CancellationToken::new())
         .await

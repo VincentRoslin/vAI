@@ -15,6 +15,8 @@ const arrayCommands = new Set([
   'hf_search',
   'hf_list_files',
   'lifecycle_status',
+  'conversation_list',
+  'conversation_messages',
 ]);
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -31,6 +33,16 @@ vi.mock('@tauri-apps/api/core', () => ({
         runtimes: { dir: '/tmp/runtimes' },
       };
     }
+    if (cmd === 'conversation_create') {
+      return {
+        id: 'conv-test',
+        kind: 'Persona',
+        title: null,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      };
+    }
+    if (cmd === 'chat_send') return 'task-test';
     if (arrayCommands.has(cmd)) return [];
     return undefined;
   }),

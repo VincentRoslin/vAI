@@ -1,0 +1,117 @@
+.chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.chat__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--border);
+}
+
+.chat__model {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.chat__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.chat__dot--on {
+  background: var(--ok);
+}
+
+.chat__notice {
+  padding: var(--space-2) var(--space-6);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--border);
+}
+
+.chat__transcript {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.chat__empty {
+  margin: auto;
+  color: var(--text-muted);
+}
+
+.chat__row {
+  display: flex;
+  flex-direction: column;
+  max-width: min(var(--content-max), 100%);
+}
+.chat__row--user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+.chat__row--assistant {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.chat__bubble {
+  padding: 12px 16px;
+  border-radius: var(--radius-bubble);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.chat__row--user .chat__bubble {
+  background: var(--bg-elevated);
+}
+.chat__row--assistant .chat__bubble {
+  background: var(--bg-sunken);
+}
+.chat__bubble--streaming::after {
+  content: '▋';
+  margin-left: 2px;
+  opacity: 0.5;
+}
+
+.chat__meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: var(--space-1);
+}
+
+.chat__composer {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--border);
+}
+
+.chat__composer textarea {
+  flex: 1;
+  resize: none;
+  font: inherit;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.chat__composer button {
+  align-self: flex-end;
+}

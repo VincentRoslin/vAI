@@ -24,11 +24,11 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 16 — First Vertical Slice / Text Chat                   |
-| **Stage**        | 16.1 — V0004 migration                                  |
-| **Status**       | `IN PROGRESS`                                           |
+| **Phase**        | 17 — Conversation Engine                                |
+| **Stage**        | 17.1 — (finalize at phase entry)                        |
+| **Status**       | `NOT STARTED`                                           |
 | **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/16_vertical-slice-text-chat.md` (finalized)  |
+| **Plan doc**     | `docs/plan/17_conversation-engine.md`                   |
 | **Last updated** | 2026-09-06                                              |
 | **Updated by**   | phase-16-slice                                          |
 
@@ -64,6 +64,14 @@ traits + `FakeBackend`; state machine `Unloaded→Loading→Loaded⇄Busy→Unlo
 reservation held across the load, released on every exit; bounded retry; ~2 s
 liveness monitor. `ModelState::Busy` added additively. No real backend yet —
 Phase 15.
+**Phase 16 done** — first vertical slice / text chat (`conversation/` module,
+`docs/verification/15_phase16_slice.md`). V0004 (`conversation` + `message`);
+`ConversationService` (persist user turn → stream one generation via `LlmInstance`
+→ persist assistant turn; **reject** a concurrent `send`); `chat_send` streaming
+Channel + `chat_cancel`; `register_local_gguf`; rebuilt `ChatVoice.tsx`. **All 9
+gate items pass** — a live Rust test runs the whole stack on the RTX 5080
+(register → real `llama-server` → "pong" → persist → restart recovery → cancel →
+reuse); **end-to-end TTFT ≈ 33 ms**. First real product milestone.
 **Phase 15 done** — llama.cpp adapter (`llm/` module, ADR-0003/0004 amended/0013,
 `docs/verification/14_phase15_llama.md`). `LlamaBackend`/`LlamaServer`; supervised
 `llama-server` child on a free loopback port + `--api-key` bearer + Windows Job
@@ -253,14 +261,16 @@ TTFT ≈ 23 ms, ≈ 278 tok/s). ADR-0004 amended (pinned prebuilt for v1).
 
 ### EPOCH 2 — First Slice & Modalities (Phases 16–22)
 
-### Phase 16 — First Vertical Slice / Text Chat *(current pointer)* — `IN PROGRESS` (16.1) — `docs/plan/16_vertical-slice-text-chat.md`
+### Phase 16 — First Vertical Slice / Text Chat — `COMPLETE` — `docs/verification/15_phase16_slice.md`
 The whole path: React → IPC → Rust → conversation service → LLM → llama.cpp →
 streamed tokens → UI. Text chat only. Reliability over features.
 Gate: send → streamed reply; cancel mid-gen, model reusable; conversation
 persists; restart restores it; kill llama.cpp mid-gen → recovers; clean shutdown
-during gen; concurrent-gen handled per policy. **First real milestone.**
+during gen; concurrent-gen handled per policy (**reject**). **All 9 pass** — a
+live full-stack Rust test on the RTX 5080; end-to-end TTFT ≈ 33 ms. **First real
+milestone.**
 
-### Phase 17 — Conversation Engine — `NOT STARTED` — `docs/plan/17_conversation-engine.md`
+### Phase 17 — Conversation Engine *(current pointer)* — `NOT STARTED` — `docs/plan/17_conversation-engine.md`
 Formalize the one shared engine (lifecycle, messages, roles, content, timestamps,
 streaming state, cancellation, generation metadata, persistence). No second engine.
 Gate: engine unit tests (lifecycle + streaming + cancel + persistence); text chat
@@ -439,6 +449,7 @@ Newest first. One line per state transition (§3 rule 6).
 | ---------- | ---- | -- | -- | ---- |
 | 2026-09-06 | Phase 16 `NOT STARTED` | Phase 16 / 16.1 `IN PROGRESS` | phase-16 | Phase entry: `docs/plan/16_vertical-slice-text-chat.md` finalized (12 steps, 9 gate items). New `src-tauri/src/conversation/` — thin service (`repo` = all SQL, `prompt` = ChatML render, `mod` = `ConversationService` + in-flight registry). V0004 migration (`conversation` + `message`). Flow: `chat_send` persists the user msg, spawns a task (`begin_use` → render → `LlmInstance::stream` → forward `GenerationEvent`s over a Channel → persist assistant msg on terminal → `end_use`), returns a `TaskId`. **Concurrency = reject** (one model / one slot → 2nd `chat_send` = `Conflict`; queue is Phase 24; no ADR). Cancellation via a `CancellationToken` per in-flight gen. `AcquisitionService::register_local_gguf` + `model_register_local`/`model_load`/`model_unload` IPC. `ChatVoice.tsx` becomes the real chat page. Exit hook cancels the in-flight gen + unloads models. No new ADR; not a second engine (Phase 17 generalizes). |
 | 2026-09-06 | Phase 15 `COMPLETE` (split — 15.D deferred) | Phase 15 `COMPLETE` (all gates) | phase-15 | **Plan 15.D run.** Owner call: a **pinned official prebuilt** instead of the ADR-0004 source build — **ADR-0004 amended** (prebuilt = primary path for v1, source build stays documented). Pin: `ggml-org/llama.cpp` `b10819` (commit `6a1a922d2`), `llama-b10819-bin-win-cuda-13.3-x64.zip` (sha `c9069222…`) + `cudart-…-13.3-x64.zip` (sha `1462a050…`); CUDA 13.3 → Blackwell sm_120 OK. Config schema **v5**: `runtimes.dir` (`RuntimesConfig`, `ConfigKey::RuntimesDir`, session override, default `<app_data>/runtimes`). Owner wants no runtime blobs outside the repo → the machine's `config.json` points `runtimes.dir` + `models.dir` at `<repo>/runtime/llama-server` + `<repo>/models` (both `.gitignore`d, ~1 GB); DB + config.json stay in `%APPDATA%`. `--flash-attn` dropped from the argv (`b10819` made it take an arg; `auto` default is right). 4 `#[ignore]`d live tests (`llm::live_tests`, env-var-gated) on the RTX 5080: **gate 1** load+`/health` ≈ 775 ms · **gate 2** non-stream "red, blue, yellow" + 12-delta stream · **gate 3** cancel → `Cancelled`, slot frees (next gen works) · **gate 5** `taskkill` → `health()` Err · **gate 6** no orphan (`tasklist`) · **gate 8** TTFT ≈ 23 ms, ≈ 278 tok/s (Qwen 0.5B Q4_K_M). WDDM hang not observed over 4 cycles. 212 rust tests (+3; 5 ignored), check suite green, `tauri dev` registers the backend. Evidence `docs/verification/14_phase15_llama.md`. |
+| 2026-09-06 | Phase 16 / 16.1 `IN PROGRESS` | Phase 16 `COMPLETE` → Phase 17 / 17.1 `NOT STARTED` | phase-16 | **First vertical slice landed.** New `src-tauri/src/conversation/` — `repo` (all SQL for `conversation` + `message`, `V0004`), `prompt` (`render_chatml` — minimal, Phase 20 does the real builder), `mod` (`ConversationService`: `send` persists the user turn, spawns a generation that streams `GenerationEvent`s to a sink + accumulates + persists the assistant turn + `end_use`; **concurrency = reject** — a 2nd `send` → `Conflict`, a queue is Phase 24; `cancel` trips a per-generation `CancellationToken`; `shutdown` for the exit hook). `lifecycle::backend` gained `LlmInstance` + `Completion` (moved from `llm/`) with `LoadedInstance::as_llm()` default `None` (replaces the Phase-15 `Any` downcast); `LifecycleManager::instance()` + `unload_all()`. `acquisition::register_local_gguf`. IPC: `conversation_create`/`list`/`messages`, `chat_send`(Channel)/`chat_cancel`, `model_register_local`/`load`/`unload`. `ChatVoice.tsx` rebuilt (model bar, streaming transcript, composer/Stop). `lib.rs` `setup()` → free fn; exit hook cancels the in-flight gen + unloads. **All 9 gate items PASS** — 7 unit tests (scripted `LlmInstance`) + 1 `#[ignore]`d live test running the whole real stack on the RTX 5080 (register local GGUF → real `llama-server` load → send "pong" → stream → persist → fresh-service restart recovery → cancel a long gen → partial persisted → model reused) + a `ChatVoice` component test. **End-to-end TTFT ≈ 33 ms.** 220 rust tests, 9 vitest, check suite green, `tauri dev` clean (V0004 applied). No new ADR. Bug fixed mid-phase: a `tokio::join!(stream, recv)` deadlock (recv now breaks on the terminal frame). Evidence `docs/verification/15_phase16_slice.md`. |
 | 2026-09-06 | (no state change) | — | owner-approved | **Docs tidy:** the 7 frozen spec docs (`PROJECT`, `ARCHITECTURE`, `AI_PIPELINES`, `SECURITY`, `PERFORMANCE`, `UI_GUIDELINES`, `DEVELOPMENT`) moved from the repo root to `docs/spec/` (+ `docs/spec/README.md` index). Root `.md` is now just `README` / `CLAUDE` / `ROADMAP`. Organisational only — no content change. Verified: zero markdown-link references repo-wide (all mentions are bare unique names), so nothing broke; `CLAUDE.md` Document Map + nav table, `README.md`, `docs/spec/DEVELOPMENT.md` §2 layout, and `scripts/check.mjs` updated. |
 | 2026-09-06 | Phase 15 / 15.1 `IN PROGRESS` (split) | Phase 15 `COMPLETE` (split — 15.D deferred) → Phase 16 / 16.1 `NOT STARTED` | phase-15 | llama.cpp adapter landed (split scope): `src-tauri/src/llm/` — `protocol` (llama.cpp `/completion` JSON + SSE parser + `stop_type`→`StopReason` — the **only** file with llama.cpp shapes), `server` (`pick_free_port`, `bearer_token` 64-hex/launch, `ServerArgs::to_argv`, `ServerProcess` spawn-under-Job-Object + `try_wait` + graceful-kill), `job` (Windows Job Object `KILL_ON_JOB_CLOSE`; non-Windows no-op), `client` (`LlamaClient` `/health` + non-stream + SSE stream, bearer on every call, per-call `Timeout`, `select!` on `CancellationToken` → `Cancelled` + response drop), `mod` (`LlamaBackend: ModelBackend`; `LlamaServer: LoadedInstance + LlmInstance`; `as_llm` downcast helper; `BACKEND_KEY="llama.cpp"`). `lifecycle::backend::LoadedInstance` gains `as_any` (additive internal hook for Phase 16). `lib.rs` registers the backend iff `<app_data>/runtimes/llama-server.exe` exists (logs + skips otherwise). Deps: `windows` (JobObjects — already transitive) + `tokio` `process` feature (+`signal-hook-registry`). **Gate 4/7/9 + stub sides of 2/3/6 PASS** (13 tests vs an in-process `tiny_http` stub); **1/5/8 + real 2/3/6 NOT EXECUTED — deferred `15.D`** (no CUDA `llama-server`; ADR-0004 build needs a ~3 GB Toolkit; owner wants it fresh; run before Phase 16, with the real Qwen 0.5B GGUF, owner-cleared). 209 rust tests (+13), 7 vitest, check suite green. `tauri dev` clean. No new ADR (confirms ADR-0013). Build recipe → `DEVELOPMENT.md` §5. Evidence `docs/verification/14_phase15_llama.md`. |
 | 2026-09-06 | Phase 15 `NOT STARTED` | Phase 15 / 15.1 `IN PROGRESS` (split) | phase-15 | Phase entry: `docs/plan/15_llama-cpp-adapter.md` finalized (10 steps + a deferred `15.D`). **Owner decision: split the phase** — the machine has no CUDA Toolkit / `nvcc` (ADR-0004 build needs a ~3 GB install), and the owner wants a *fresh* llama.cpp, not one reused from another project. New `src-tauri/src/llm/` module built + tested against an **in-process `tiny_http` stub `llama-server`** now: `ModelBackend` impl, process supervision (free port + `--api-key` bearer per ADR-0013 — `llama-server` is upstream HTTP, no named pipe — + Windows Job Object kill-on-close), `/health` poll, `/completion` non-stream + SSE stream client, cancellation + timeout, `LlmInstance` capability trait + `as_any` downcast hook on `LoadedInstance` (additive). Gate items **4, 7, 9 + the stub sides of 2/3/6** PASS now; **1, real-2, real-3, 5, 6-real, 8** (real CUDA `llama-server` + real Qwen 0.5B GGUF) **deferred → §6**. Owner cleared downloading project assets for `15.D`. Deps to add: `windows` (JobObjects), `getrandom`. No new ADR (confirms ADR-0013). |
@@ -490,15 +501,17 @@ _None blocking._
   register, 50.6 MB/s). Run `acquire_fixed` (via the `/models` UI or a live test)
   before **Phase 18**, when voice needs the models. Does not block Phase 13+.
 
-- **Phase 15 watch item**: WDDM hang risk on the first sustained `llama-server`
-  generation (Hyper-V enabled on host). **Not observed** in 15.D over 4 back-to-back
-  load+generate cycles — but those were short. Keep the 3-step mitigation ladder
-  (`docs/verification/02_phase3_probes.md`) in reach for longer runs at Phase 16.
+- **Watch item — WDDM hang** on a *sustained* `llama-server` generation (Hyper-V
+  on host). **Not observed** in 15.D or Phase 16 (short generations). Keep the
+  3-step mitigation ladder (`docs/verification/02_phase3_probes.md`) in reach for
+  the longer generations Phase 17+ will produce.
 
-- **Phase 16 entry — register the Qwen 0.5B GGUF in the app DB.** The file is at
-  `<repo>/models/qwen2.5-0.5b-instruct-q4_k_m.gguf`; the 15.D live tests used a
-  throwaway DB. Phase 16 needs it in the real registry (add a "register a local
-  file" path, or a dev seed).
+- **Manual UI click-through of the chat slice** (recommended, owner). The full
+  stack is covered by an automated live Rust test + a component test; a hands-on
+  `tauri dev` pass (Load model → type → Send → watch stream → Stop) is a good
+  final confidence check. `model_register_local("qwen2.5-0.5b-instruct-q4_k_m.gguf")`
+  registers the in-repo GGUF; the Chat tab's "Load model" button does this
+  automatically.
 - Phase 1's deferred tooling (formatter/linter/hooks/README) → **done in Phase 6.**
 
 ---

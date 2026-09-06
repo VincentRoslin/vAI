@@ -20,7 +20,10 @@ import type { FrontendLog } from '../bindings/FrontendLog';
 import type { HfGgufFile } from '../bindings/HfGgufFile';
 import type { HfModelSummary } from '../bindings/HfModelSummary';
 import type { Pong } from '../bindings/Pong';
+import type { Conversation } from '../bindings/Conversation';
+import type { GenerationEvent } from '../bindings/GenerationEvent';
 import type { LifecycleStatus } from '../bindings/LifecycleStatus';
+import type { Message } from '../bindings/Message';
 import type { RegisteredModel } from '../bindings/RegisteredModel';
 import type { ResourceSnapshot } from '../bindings/ResourceSnapshot';
 
@@ -137,3 +140,46 @@ export const resourcesSnapshot = (): Promise<ResourceSnapshot> => call('resource
 
 /** Every model the lifecycle manager is tracking, with its runtime state. */
 export const lifecycleStatus = (): Promise<LifecycleStatus[]> => call('lifecycle_status');
+
+/** Register a GGUF that already sits in the model directory (no download). */
+export const modelRegisterLocal = (filename: string): Promise<string> =>
+  call('model_register_local', { filename });
+
+/** Load a registered model into memory. */
+export const modelLoad = (id: string): Promise<void> => call('model_load', { id });
+
+/** Unload a model. */
+export const modelUnload = (id: string): Promise<void> => call('model_unload', { id });
+
+// ---------------------------------------------------------------- chat (Phase 16)
+
+/** Start a new conversation. */
+export const conversationCreate = (): Promise<Conversation> => call('conversation_create');
+
+/** Every conversation, newest activity first. */
+export const conversationList = (): Promise<Conversation[]> => call('conversation_list');
+
+/** A conversation's messages, in order. */
+export const conversationMessages = (id: string): Promise<Message[]> =>
+  call('conversation_messages', { id });
+
+/** Send a user message; `onEvent` receives streamed generation events. Returns
+ * the generation's task id (for {@link chatCancel}). */
+export async function chatSend(
+  input: { conversationId: string; modelId: string; text: string },
+  onEvent: (e: GenerationEvent) => void,
+): Promise<string> {
+  const events = new Channel<GenerationEvent>();
+  events.onmessage = onEvent;
+  return call('chat_send', {
+    req: {
+      conversation_id: input.conversationId,
+      model_id: input.modelId,
+      text: input.text,
+    },
+    events,
+  });
+}
+
+/** Cancel an in-flight generation. */
+export const chatCancel = (taskId: string): Promise<void> => call('chat_cancel', { taskId });
