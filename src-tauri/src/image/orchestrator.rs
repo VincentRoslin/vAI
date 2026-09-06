@@ -12,9 +12,13 @@
 //! load, released on every exit path, Phase 14). Here we only *read* the
 //! resource snapshot for the WDDM settle-wait between unload and load.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use time::format_description::FormatItem;
+use time::macros::format_description;
+use time::OffsetDateTime;
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
@@ -39,6 +43,9 @@ const DEFAULT_GUIDANCE: f32 = 0.0;
 const SETTLE_TIMEOUT: Duration = Duration::from_secs(20);
 const SETTLE_POLL: Duration = Duration::from_millis(400);
 
+/// `20260906-221530` — local time, for the browsable PNG copies.
+const STAMP: &[FormatItem<'_>] = format_description!("[year][month][day]-[hour][minute][second]");
+
 struct Running {
     task_id: TaskId,
     cancel: CancellationToken,
@@ -52,6 +59,9 @@ pub struct ImageOrchestrator {
     engine: Arc<ConversationEngine>,
     blob: Arc<BlobStore>,
     repo: ImageRepo,
+    /// A browsable folder every generated PNG is also written to (in addition to
+    /// the content-addressed blob store). `<app_data>/images/`.
+    output_dir: PathBuf,
     running: Mutex<Option<Running>>,
     settle_timeout: Duration,
 }
@@ -65,6 +75,7 @@ impl ImageOrchestrator {
         engine: Arc<ConversationEngine>,
         blob: Arc<BlobStore>,
         repo: ImageRepo,
+        output_dir: PathBuf,
     ) -> Self {
         Self {
             lifecycle,
@@ -73,9 +84,16 @@ impl ImageOrchestrator {
             engine,
             blob,
             repo,
+            output_dir,
             running: Mutex::new(None),
             settle_timeout: SETTLE_TIMEOUT,
         }
+    }
+
+    /// The browsable folder generated PNGs are written to.
+    #[must_use]
+    pub fn output_dir(&self) -> &std::path::Path {
+        &self.output_dir
     }
 
     /// Start a generation. Streams [`ImageEvent`]s into `sink` — progress
@@ -272,6 +290,7 @@ impl ImageOrchestrator {
         let mut rows = Vec::with_capacity(pngs.len());
         for png in pngs {
             let asset = self.blob.put(&png.bytes, "image/png")?;
+            self.write_browsable_copy(&png.bytes, png.seed).await;
             let gen_id = self
                 .repo
                 .record_generation(NewGeneratedImage {
@@ -300,6 +319,23 @@ impl ImageOrchestrator {
             });
         }
         Ok(rows)
+    }
+
+    /// Write a human-named PNG into `output_dir` next to the blob copy. The blob
+    /// store is the source of truth; this is a convenience so the user can open
+    /// the folder. Failure is logged, never fatal.
+    async fn write_browsable_copy(&self, bytes: &[u8], seed: i64) {
+        let stamp = OffsetDateTime::now_utc()
+            .format(STAMP)
+            .unwrap_or_else(|_| "image".to_owned());
+        let path = self.output_dir.join(format!("{stamp}-{seed}.png"));
+        if let Err(err) = tokio::fs::create_dir_all(&self.output_dir).await {
+            tracing::warn!(target: "image", %err, "create image output dir");
+            return;
+        }
+        if let Err(err) = tokio::fs::write(&path, bytes).await {
+            tracing::warn!(target: "image", %err, path = %path.display(), "write browsable image copy");
+        }
     }
 
     async fn resolve_image_model(&self) -> AppResult<ModelId> {

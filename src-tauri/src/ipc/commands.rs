@@ -759,6 +759,32 @@ pub async fn image_bytes(blob: State<'_, Arc<BlobStore>>, asset: AssetId) -> App
     blob.read(&asset)
 }
 
+/// The browsable folder every generated PNG is written to, as a display string.
+#[must_use]
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub fn image_output_dir(image: State<'_, Arc<ImageOrchestrator>>) -> String {
+    image.output_dir().display().to_string()
+}
+
+/// Open the image output folder in the OS file browser (creating it first).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub fn image_open_output_dir(image: State<'_, Arc<ImageOrchestrator>>) -> AppResult<()> {
+    let dir = image.output_dir().to_path_buf();
+    std::fs::create_dir_all(&dir).map_err(|e| AppError::internal("create image output dir", e))?;
+    #[cfg(windows)]
+    let spawned = std::process::Command::new("explorer").arg(&dir).spawn();
+    #[cfg(target_os = "macos")]
+    let spawned = std::process::Command::new("open").arg(&dir).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let spawned = std::process::Command::new("xdg-open").arg(&dir).spawn();
+    // `explorer` exits non-zero even on success — spawning is enough.
+    spawned
+        .map(|_| ())
+        .map_err(|e| AppError::internal("open file browser", e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

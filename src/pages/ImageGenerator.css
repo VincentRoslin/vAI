@@ -1,16 +1,24 @@
 .imagegen {
-  padding: var(--space-6);
-  max-width: 860px;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  overflow: hidden;
 }
 
-.imagegen h1 {
-  margin: 0 0 var(--space-6);
-}
-
-.imagegen__form {
+/* ── Left control panel ─────────────────────────────────── */
+.imagegen__panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  padding: var(--space-5) var(--space-5) var(--space-6);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.imagegen__panel h1 {
+  margin: 0;
+  font-size: 1.1rem;
 }
 
 .imagegen__field {
@@ -20,15 +28,22 @@
 }
 
 .imagegen__field > span,
-.imagegen__inline > span {
-  font-size: 0.85rem;
+.imagegen__inline > span,
+.imagegen__label {
+  font-size: 0.82rem;
   color: var(--text-muted);
+}
+
+.imagegen__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .imagegen__row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-4);
+  gap: var(--space-3);
   align-items: flex-end;
 }
 
@@ -39,33 +54,56 @@
 }
 
 .imagegen__inline input[type='number'],
-.imagegen__inline input[type='text'] {
-  width: 8rem;
+.imagegen__inline input[type='text'],
+.imagegen__inline select {
+  width: 9rem;
 }
 
 .imagegen__weight {
   flex: 1;
-  min-width: 12rem;
+  min-width: 10rem;
 }
 
 .imagegen__weight input[type='range'] {
   width: 100%;
 }
 
+/* chips (styles + presets) */
+.imagegen__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.imagegen__chips button {
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.imagegen__chips button:hover {
+  background: var(--surface-hover);
+}
+
 .imagegen__seg {
-  display: inline-flex;
-  gap: 0;
+  display: flex;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   overflow: hidden;
 }
 
 .imagegen__seg button {
+  flex: 1;
   border: none;
   border-radius: 0;
   border-right: 1px solid var(--border);
   background: var(--surface);
-  padding: var(--space-2) var(--space-4);
+  color: var(--text);
+  padding: var(--space-2);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -84,20 +122,26 @@
 
 .imagegen__seg em {
   font-style: normal;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   opacity: 0.7;
 }
 
 .imagegen__actions {
   display: flex;
   gap: var(--space-3);
+  position: sticky;
+  bottom: 0;
+  padding-top: var(--space-2);
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
 }
 
 .imagegen__go,
 .imagegen__cancel {
-  padding: var(--space-2) var(--space-6);
+  flex: 1;
+  padding: var(--space-3);
   border-radius: var(--radius-control);
   cursor: pointer;
+  font-weight: 500;
 }
 
 .imagegen__go {
@@ -113,16 +157,13 @@
 
 .imagegen__cancel {
   background: var(--surface);
+  color: var(--text);
   border: 1px solid var(--border);
-}
-
-.imagegen__status {
-  margin-top: var(--space-6);
 }
 
 .imagegen__status p {
   margin: 0 0 var(--space-2);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   color: var(--text-muted);
 }
 
@@ -153,76 +194,185 @@
 }
 
 .imagegen__error {
-  margin-top: var(--space-4);
-  color: #d1443b;
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+/* ── Right side: viewer + library ───────────────────────── */
+.imagegen__main {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-width: 0;
+  background: var(--bg-sunken);
+}
+
+.imagegen__viewer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.imagegen__canvas {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.imagegen__canvas img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-card);
+  box-shadow: 0 2px 16px rgb(0 0 0 / 0.18);
+}
+
+.imagegen__meta {
+  text-align: center;
+  max-width: 60ch;
+}
+
+.imagegen__meta-prompt {
+  margin: 0;
   font-size: 0.9rem;
 }
 
-.imagegen__grid {
-  margin-top: var(--space-6);
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--space-4);
-}
-
-.imagegen__grid figure {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.imagegen__grid img,
-.imagegen__ph {
-  width: 100%;
-  aspect-ratio: 1;
-  object-fit: contain;
-  background: var(--surface-hover);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-}
-
-.imagegen__grid figcaption {
+.imagegen__meta-sub {
+  margin: 2px 0 0;
   font-size: 0.78rem;
   color: var(--text-muted);
 }
 
-.imagegen__history {
-  margin-top: var(--space-8);
+.imagegen__filmstrip {
+  display: flex;
+  gap: var(--space-2);
 }
 
-.imagegen__history h2 {
-  font-size: 0.95rem;
-  color: var(--text-muted);
-  margin: 0 0 var(--space-3);
-}
-
-.imagegen__history ul {
-  list-style: none;
-  margin: 0;
+.imagegen__filmstrip button {
+  width: 64px;
+  height: 64px;
   padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  background: var(--surface-hover);
+  cursor: pointer;
+}
+
+.imagegen__filmstrip button.is-active {
+  border-color: var(--accent);
+}
+
+.imagegen__filmstrip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.imagegen__empty {
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.imagegen__empty p {
+  margin: 0 0 var(--space-2);
+  font-size: 0.95rem;
+}
+
+.imagegen__empty span {
+  font-size: 0.82rem;
+}
+
+/* library */
+.imagegen__library {
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  padding: var(--space-3) var(--space-5) var(--space-4);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
-.imagegen__history li {
+.imagegen__library header {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
-.imagegen__hist-prompt {
-  font-size: 0.88rem;
+.imagegen__library h2 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.imagegen__lib-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.imagegen__lib-actions span {
+  font-size: 0.74rem;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 40ch;
+  direction: rtl;
 }
 
-.imagegen__hist-meta {
-  font-size: 0.76rem;
+.imagegen__lib-actions button {
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.imagegen__lib-empty {
+  margin: 0;
+  font-size: 0.82rem;
   color: var(--text-muted);
+}
+
+.imagegen__lib-grid {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+}
+
+.imagegen__lib-grid button {
+  flex: 0 0 auto;
+  width: 84px;
+  height: 84px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  background: var(--surface-hover);
+  cursor: pointer;
+}
+
+.imagegen__lib-grid button.is-active {
+  border-color: var(--accent);
+}
+
+.imagegen__lib-grid img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }

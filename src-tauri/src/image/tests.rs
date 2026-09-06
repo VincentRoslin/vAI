@@ -370,6 +370,7 @@ struct Harness {
     repo: ImageRepo,
 }
 
+#[allow(clippy::too_many_lines)]
 async fn harness() -> Option<Harness> {
     let python = which_python()?;
     let tmp = tempfile::tempdir().unwrap();
@@ -464,6 +465,7 @@ async fn harness() -> Option<Harness> {
         engine,
         Arc::clone(&blob),
         repo.clone(),
+        tmp.path().join("images"),
     ));
     let _ = krea2_id;
     Some(Harness {

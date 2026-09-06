@@ -178,6 +178,7 @@ async fn live() -> Option<Live> {
         engine,
         Arc::clone(&blob),
         repo.clone(),
+        tmp.path().join("images"),
     ));
 
     Some(Live {

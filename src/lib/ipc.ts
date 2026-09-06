@@ -334,3 +334,9 @@ export async function imageObjectUrl(asset: string): Promise<string> {
   const blob = new Blob([new Uint8Array(bytes)], { type: 'image/png' });
   return URL.createObjectURL(blob);
 }
+
+/** The browsable folder generated PNGs are written to (display path). */
+export const imageOutputDir = (): Promise<string> => call('image_output_dir');
+
+/** Open the image output folder in the OS file browser. */
+export const imageOpenOutputDir = (): Promise<void> => call('image_open_output_dir');

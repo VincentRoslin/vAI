@@ -95,6 +95,8 @@ pub fn run() {
             ipc::commands::image_presets,
             ipc::commands::image_history,
             ipc::commands::image_bytes,
+            ipc::commands::image_output_dir,
+            ipc::commands::image_open_output_dir,
         ])
         .build(tauri::generate_context!())
         .expect("error while building LocalAI");
@@ -301,6 +303,7 @@ fn start_image(
         Arc::clone(engine),
         Arc::clone(&blob),
         repo,
+        data_root.join("images"),
     ));
     (orchestrator, blob)
 }
