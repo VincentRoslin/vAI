@@ -443,22 +443,34 @@ the real load are all **22.C** (RTX 5080 + owner go-ahead).
    (the blob is backend-private, ADR-0017). No config schema change (v9 stands).
    Verify: `node scripts/check.mjs` green; counts recorded.
 
-### 22.C — Live gate on the RTX 5080  *(blocked on 22.B + owner go-ahead)*
+### 22.C — Live gate on the RTX 5080  *(BLOCKED on owner: venv install + go-ahead)*
 
-1. Run acquisition for Krea 2 end to end (reuse the owner's HF cache + quant
-   cache per the phase-entry answer; else quantize live and time it).
-   Verify: registry row present; quant cache fingerprint valid.
-2. `image::live_tests` (`#[ignore]`, `LOCALAI_RUN_IMAGE_LIVE`): base-model
-   generate; realism-LoRA generate; a 2nd LoRA-format file if available;
-   `batch_count = 2`; cancel mid-generate; `taskkill` the sidecar mid-generate.
-   Verify: each records — image in the blob store, `generated_image` row
-   correct, VRAM reserved-then-released (resource-manager snapshot before /
-   during / after), LLM evicted then restored, cancel leaves **no** partial
-   blob + LLM restored, crash → typed error + GPU released + LLM restored.
-3. Record all Performance-notes figures; write the LLM-coexistence answer to
-   `ROADMAP.md` §7.
-   Verify: `docs/verification/22_phase22_image-generation.md` complete; ADR-0019
-   → **ACCEPTED**.
+**`src-tauri/src/image/live_tests.rs` is written** (4 `#[ignore]`d tests, gated
+on `LOCALAI_RUN_IMAGE_LIVE=1`). Owner steps on the box:
+
+0. `node scripts/setup-venv.mjs image` — build `.venv-image` (~6–8 GB). Staged
+   assets are already at `<repo>/models/image/` (quant cache + 3 LoRAs) and the
+   `unsloth/Krea-2-Turbo` HF cache is present.
+1. `live_acquire_image_registers_without_downloading` — `AcquisitionService::
+   acquire_image` end to end (reuses the staged quant cache, no quantize;
+   registry row + idempotency). *`quantize.py` itself is exercised only if a
+   machine's libs don't match the fingerprint — the owner's do.*
+2. `live_generate_evicts_the_llm_and_restores_it` — base 1024²/8-step generate +
+   a Realism-LoRA `batch_count=2`; asserts image in the blob store,
+   `generated_image` rows, `Evicting→Loading→Generating→Restoring` in order, LLM
+   back to `Loaded`, VRAM snapshots printed (before / after load / after
+   restore). `live_cancel_mid_generate_…` (no partial blob + LLM restored) and
+   `live_sidecar_crash_…` (`taskkill` via a PowerShell CIM query → typed `Error`
+   + LLM restored + image model not left `Loaded`).
+   Run: `set LOCALAI_RUN_IMAGE_LIVE=1 && set LOCALAI_LLAMA_SERVER=…\runtime\
+   llama-server\llama-server.exe && set LOCALAI_TEST_GGUF=…\models\Qwen__Qwen2.5-
+   0.5B-Instruct-GGUF\qwen2.5-0.5b-instruct-q4_k_m.gguf && cargo test
+   --manifest-path src-tauri/Cargo.toml image::live_tests -- --ignored
+   --nocapture --test-threads=1`
+3. Record all Performance-notes figures (load time, idle + peak VRAM, per-image
+   time base + LoRA, eviction round-trip); write the LLM-coexistence answer to
+   `ROADMAP.md` §7. `docs/verification/22_phase22_image-generation.md` complete;
+   ADR-0019 → **ACCEPTED**.
 
 ## Verification gate (physically executed — `CLAUDE.md` Article IV)
 
