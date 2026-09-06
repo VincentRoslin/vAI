@@ -35,7 +35,7 @@ granular, individually-verifiable steps.
 | 11 | `11_model-registry.md` | outline |
 | 12 | `12_model-acquisition.md` | full |
 | 13 | `13_resource-manager.md` | full (finalized at phase entry) |
-| 14 | `14_model-lifecycle.md` | outline |
+| 14 | `14_model-lifecycle.md` | full (finalized at phase entry) |
 | 15 | `15_llama-cpp-adapter.md` | outline |
 | 16 | `16_vertical-slice-text-chat.md` | outline |
 | 17 | `17_conversation-engine.md` | outline |
