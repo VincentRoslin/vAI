@@ -38,7 +38,7 @@ granular, individually-verifiable steps.
 | 14 | `14_model-lifecycle.md` | full (finalized at phase entry) |
 | 15 | `15_llama-cpp-adapter.md` | full (finalized at phase entry) |
 | 16 | `16_vertical-slice-text-chat.md` | full (finalized at phase entry) |
-| 17 | `17_conversation-engine.md` | outline |
+| 17 | `17_conversation-engine.md` | full (finalized at phase entry) |
 | 18 | `18_voice-in.md` | outline |
 | 19 | `19_voice-out.md` | outline |
 | 20 | `20_personas.md` | outline |
