@@ -418,6 +418,90 @@ async fn live_download_qwen_0_5b() {
     );
 }
 
+/// Gate item 5 (Phase 12): the two pinned fixed bundles — faster-whisper
+/// large-v3 (STT) and Chatterbox Turbo (TTS) — acquired via the same
+/// download/register path, no picker. Writes into the real app model dir
+/// (`<project>\models\`, per the owner's `config.json`). Owner go-ahead
+/// 2026-09-06 ("Download fresh versions"; keep inside the project folder).
+///
+/// Run explicitly:
+/// `cargo test -p localai --lib -- --ignored live_acquire_fixed_models`
+#[tokio::test]
+#[ignore = "network + ~5 GB; run explicitly for the Phase 12 gate 5"]
+async fn live_acquire_fixed_models() {
+    use super::FixedModel;
+
+    let app_data =
+        std::path::PathBuf::from(std::env::var("APPDATA").unwrap()).join("com.localai.app");
+    let db = Arc::new(Db::open(&app_data.join("localai.db")).await.unwrap());
+    db.migrate().await.unwrap();
+    let registry = Arc::new(ModelRegistry::new(Arc::clone(&db)));
+    let cfg = crate::config::ConfigManager::load(&app_data, &app_data).unwrap();
+    let models_dir = cfg.effective().models.dir;
+    std::fs::create_dir_all(&models_dir).unwrap();
+    let svc = AcquisitionService::new(Arc::clone(&db), Arc::clone(&registry), Arc::new(cfg));
+
+    for which in [FixedModel::Stt, FixedModel::Tts] {
+        let kind = match which {
+            FixedModel::Stt => ModelKind::Stt,
+            FixedModel::Tts => ModelKind::Tts,
+        };
+        // Idempotent: drop any prior registry row for this kind.
+        for m in registry.list().await.unwrap() {
+            if m.metadata.kind == kind {
+                let _ = crate::acquisition::delete_model(&registry, &db, &m.metadata.id).await;
+            }
+        }
+
+        let started = std::time::Instant::now();
+        let ids = svc.acquire_fixed(which).await.expect("start fixed bundle");
+        for id in &ids {
+            let state = wait_terminal_slow(svc.engine(), id).await;
+            assert_eq!(state, DownloadState::Complete, "a {kind:?} file failed");
+        }
+        println!(
+            "{kind:?}: {} files in {:.1}s",
+            ids.len(),
+            started.elapsed().as_secs_f64()
+        );
+
+        // Registration runs in the download task just after it reports Complete;
+        // give it a moment to land.
+        let mut entry = None;
+        for _ in 0..20 {
+            if let Some(m) = registry
+                .list()
+                .await
+                .unwrap()
+                .into_iter()
+                .find(|m| m.metadata.kind == kind)
+            {
+                entry = Some(m);
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        let entry = entry.expect("registered");
+        assert_eq!(
+            entry.availability,
+            crate::contracts::model::RegistryAvailability::Ready,
+            "{kind:?} primary file missing after acquire"
+        );
+        let dir = crate::models::strip_verbatim(models_dir.canonicalize().unwrap());
+        let stored = crate::models::strip_verbatim(
+            std::path::Path::new(&entry.path).canonicalize().unwrap(),
+        );
+        assert!(
+            stored.starts_with(&dir),
+            "path {stored:?} not confined to {dir:?}"
+        );
+        println!(
+            "registered {kind:?}: {} at {}",
+            entry.metadata.display_name, entry.path
+        );
+    }
+}
+
 async fn wait_terminal_slow(
     engine: &DownloadEngine,
     id: &crate::contracts::ids::DownloadId,

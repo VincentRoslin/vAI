@@ -133,7 +133,7 @@ impl AcquisitionService {
     pub async fn acquire_fixed(&self, which: FixedModel) -> AppResult<Vec<DownloadId>> {
         let models = self.config.effective().models;
         let spec = fixed_spec(which);
-        let base_dir = models.dir.join(sanitize(spec.repo));
+        let base_dir = models.dir.join(spec.dir);
 
         let mut ids = Vec::new();
         for (i, file) in spec.files.iter().enumerate() {
@@ -279,6 +279,8 @@ fn sanitize(repo: &str) -> String {
 struct FixedSpec {
     repo: &'static str,
     revision: &'static str,
+    /// Short subdirectory under the model dir (`stt` / `tts`).
+    dir: &'static str,
     files: &'static [&'static str],
     /// The file the registry entry points at.
     primary_file: &'static str,
@@ -312,6 +314,7 @@ impl FixedSpec {
 }
 
 /// Pinned bundles (repos + file lists owner-confirmed 2026-09-06, both MIT).
+/// Each lands in a short subdir of the model dir (`stt` / `tts`).
 /// faster-whisper size is nominally a Phase 18 call — `large-v3` CT2 is the
 /// Phase 12 default. Chatterbox is the **Turbo** distill the owner uses (350M,
 /// one-step decoder, English, paralinguistic tags).
@@ -320,6 +323,7 @@ fn fixed_spec(which: FixedModel) -> FixedSpec {
         FixedModel::Stt => FixedSpec {
             repo: "Systran/faster-whisper-large-v3",
             revision: "main",
+            dir: "stt",
             files: &[
                 "config.json",
                 "preprocessor_config.json",
@@ -333,6 +337,7 @@ fn fixed_spec(which: FixedModel) -> FixedSpec {
         FixedModel::Tts => FixedSpec {
             repo: "ResembleAI/chatterbox-turbo",
             revision: "main",
+            dir: "tts",
             files: &[
                 "t3_turbo_v1.yaml",
                 "tokenizer_config.json",

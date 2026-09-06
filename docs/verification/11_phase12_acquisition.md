@@ -50,7 +50,7 @@ ADR-0009, ADR-0016. Plan: `docs/plan/12_model-acquisition.md`.
 | 2 | Resume an interrupted download → byte-identical result | **PASS** — `resume_completes_from_a_partial_part_file`: 30 KB pre-written to `.part`, engine `Range`-requests `bytes=30000-`, appends, verifies — final bytes exactly match the whole body. |
 | 3 | Checksum mismatch rejected + cleaned up | **PASS** — `checksum_mismatch_fails_and_cleans_up`: a wrong `sha256_expected` → state `Failed`, `.part` deleted, no final file. |
 | 4 | Insufficient disk / over-budget refused **before** transfer | **PASS** — `service_refuses_an_over_budget_download` + `budget::tests::*`: a 2 GB file vs a 1 GB budget → `ResourceExhausted("…budget…")`; a huge `min_free_gb` → `ResourceExhausted("…free-space…")`; the check runs before any HTTP request. |
-| 5 | faster-whisper + Chatterbox Turbo acquired via the same path | **NOT EXECUTED — deferred (size + owner go-ahead).** `acquire_fixed` is implemented with the owner-confirmed repos + exact file lists: `Systran/faster-whisper-large-v3` (`config.json`, `preprocessor_config.json`, `tokenizer.json`, `vocabulary.json`, `model.bin` ≈ 3.1 GB) and `ResembleAI/chatterbox-turbo` (11 files incl. `t3_turbo_v1.safetensors`) — both MIT. Its multi-file orchestration is the same engine proven live in gate 1. ~5 GB total — run when the owner wants the models present (e.g. before Phase 18). |
+| 5 | faster-whisper + Chatterbox Turbo acquired via the same path | **PASS (live, 2026-09-06)** — `live_acquire_fixed_models` (`#[ignore]`d), owner go-ahead "Download fresh versions". `acquire_fixed(Stt)` pulled all **5** files of `Systran/faster-whisper-large-v3` in **28.1 s** (`model.bin` 3 087 284 237 B); `acquire_fixed(Tts)` pulled all **11** files of `ResembleAI/chatterbox-turbo` in **38.3 s** (`t3_turbo_v1.safetensors` primary). Each bundle registered one entry — `faster-whisper large-v3` (`Stt`) at `models\stt\model.bin`, `Chatterbox Turbo` (`Tts`) at `models\tts\t3_turbo_v1.safetensors` — `availability = Ready`, path confined to the model dir. Same multi-file engine as gate 1; **2.9 GB + 3.8 GB** on disk, in-project (`models/`, gitignored) in short `stt` / `tts` subdirs per owner preference. No per-file SHA (HF listing hash not fetched for the fixed path) — the primary-file presence + registry check is the integrity gate here. |
 | 6 | A downloaded model appears in the registry, metadata correct, path confined | **PASS** — mock: `a_completed_gguf_download_is_registered` (fixture GGUF → `Llm` entry, `context_tokens = 4096`, `quant = Q4_K_M`, path in the model dir). **Live** (gate 1): the real Qwen 0.5B registered with `ctx 32768`, `quant Q4_K_M`, path confined. |
 | 7 | Picker UI works read-only with the network disabled; local models stay usable | **PASS** — `Models.test.tsx`: renders the installed list from mocked IPC; a search that rejects with `BackendUnavailable` shows an "offline" state, no crash. `tauri dev`: `/models` loads, `schema_version: 3`, no errors. |
 | 8 | Download throughput recorded (MB/s) | **PASS** — **50.6 MB/s** for the 491 MB Qwen transfer (gate 1). Single-stream `reqwest`, no tuning; well above what a GGUF picker needs. |
@@ -85,10 +85,12 @@ ADR-0009, ADR-0016. Plan: `docs/plan/12_model-acquisition.md`.
    walking `dest_path` parents (one too many). Replaced with an explicit
    `DownloadSpec.models_dir`.
 
-## Open item (→ `ROADMAP.md` §6)
+## Gate 5 closed (2026-09-06)
 
-Gate 5 (fixed models) is **NOT EXECUTED** — deferred pending the owner's go-ahead
-for the ~5 GB download (faster-whisper + Chatterbox Turbo). `acquire_fixed` is
-wired with the exact repos/files; run it before Phase 18.
+Run on the owner's "Download fresh versions" go-ahead, ahead of Phase 18.
+`acquire_fixed` pulled both bundles live into `models\stt\` and `models\tts\`
+(short subdirs, in-project, gitignored). `acquire_fixed` updated: fixed bundles
+now land in a short `dir` (`stt` / `tts`) instead of the sanitized repo name.
+Evidence: gate row 5 above; `live_acquire_fixed_models`.
 
-**Phase 12 complete** (gates 1–4, 6–9 pass; gate 5 deferred). Pointer → Phase 13.
+**Phase 12 complete** — all 9 gates pass.

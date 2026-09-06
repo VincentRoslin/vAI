@@ -27,10 +27,10 @@
 | **Phase**        | 18 — Voice: capture · Silero VAD · faster-whisper STT   |
 | **Stage**        | 18.1 — (finalize at phase entry)                        |
 | **Status**       | `NOT STARTED`                                           |
-| **Blocked by**   | Phase 12 gate 5 (faster-whisper model) — see §6         |
+| **Blocked by**   | _nothing_ — Phase 12 gate 5 (STT/TTS models) done 2026-09-06 |
 | **Plan doc**     | `docs/plan/18_voice-in.md`                              |
 | **Last updated** | 2026-09-06                                              |
-| **Updated by**   | phase-17-engine                                         |
+| **Updated by**   | phase-12-gate5 (STT/TTS models acquired — Phase 18 unblocked) |
 
 **Architecture frozen (Phase 5).** Binding: `docs/spec/` (the 7 spec docs —
 `PROJECT`, `ARCHITECTURE`, `AI_PIPELINES`, `SECURITY`, `PERFORMANCE`,
@@ -48,8 +48,9 @@
 `docs/verification/10_phase11_registry.md`).
 **Phase 12 done** — model acquisition (`acquisition/` module, ADR-0008 amended →
 `reqwest`, `docs/verification/11_phase12_acquisition.md`). Live download verified
-(`Qwen 0.5B` GGUF, 50.6 MB/s, HF SHA-256 checked, registered). Gate 5 (fixed
-STT/TTS models, ~5 GB) deferred to before Phase 18 (§6).
+(`Qwen 0.5B` GGUF, 50.6 MB/s, HF SHA-256 checked, registered). **Gate 5 done
+2026-09-06** — `acquire_fixed` pulled faster-whisper large-v3 (→ `models\stt\`)
++ Chatterbox Turbo (→ `models\tts\`) live, both registered. All 9 gates pass.
 **Phase 13 done** — resource manager (`resources/` module, ADR-0007,
 `docs/verification/12_phase13_resources.md`). `HardwareProbe` (NVML whole-GPU +
 `sysinfo` RAM + mock), closed-form VRAM estimate + EMA calibration, in-memory
@@ -233,7 +234,7 @@ context, quant, estimated resource need, devices, model config). No loading.
 Gate: register a test model; find + read; missing file represented not crashed;
 capability query; invalid metadata rejected.
 
-### Phase 12 — Model Acquisition & Picker — `COMPLETE` (gate 5 — fixed models, ~5 GB — deferred) — `docs/verification/11_phase12_acquisition.md`
+### Phase 12 — Model Acquisition & Picker — `COMPLETE` (all 9 gates; gate 5 run 2026-09-06) — `docs/verification/11_phase12_acquisition.md`
 In-app HuggingFace picker + one-shot resumable download for **LLM GGUF**;
 checksum verify; disk-budget guard; register on completion. STT/TTS fixed models
 acquired once via the same path (no picker).
@@ -457,6 +458,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 12 gate 5 `NOT EXECUTED` (deferred) | Phase 12 gate 5 `DONE` — Phase 18 unblocked | phase-12-gate5 | Owner go-ahead "Download fresh versions" (keep in-project, short folders). `acquire_fixed` updated: fixed bundles land in a short `dir` (`stt` / `tts`) under the model dir instead of the sanitized repo name. New `#[ignore]`d live test `live_acquire_fixed_models`: pulled `Systran/faster-whisper-large-v3` (5 files, 2.9 GB, 28.1 s) → `models\stt\model.bin` and `ResembleAI/chatterbox-turbo` (11 files, 3.8 GB, 38.3 s) → `models\tts\t3_turbo_v1.safetensors`, both registered (`Stt` / `Tts`, `Ready`, path confined). In-project, gitignored. Same multi-file engine as gate 1. **Phase 12 now all 9 gates pass.** 233 rust tests, check suite green. Evidence `docs/verification/11_phase12_acquisition.md` gate row 5. |
 | 2026-09-06 | Phase 16 `NOT STARTED` | Phase 16 / 16.1 `IN PROGRESS` | phase-16 | Phase entry: `docs/plan/16_vertical-slice-text-chat.md` finalized (12 steps, 9 gate items). New `src-tauri/src/conversation/` — thin service (`repo` = all SQL, `prompt` = ChatML render, `mod` = `ConversationService` + in-flight registry). V0004 migration (`conversation` + `message`). Flow: `chat_send` persists the user msg, spawns a task (`begin_use` → render → `LlmInstance::stream` → forward `GenerationEvent`s over a Channel → persist assistant msg on terminal → `end_use`), returns a `TaskId`. **Concurrency = reject** (one model / one slot → 2nd `chat_send` = `Conflict`; queue is Phase 24; no ADR). Cancellation via a `CancellationToken` per in-flight gen. `AcquisitionService::register_local_gguf` + `model_register_local`/`model_load`/`model_unload` IPC. `ChatVoice.tsx` becomes the real chat page. Exit hook cancels the in-flight gen + unloads models. No new ADR; not a second engine (Phase 17 generalizes). |
 | 2026-09-06 | Phase 15 `COMPLETE` (split — 15.D deferred) | Phase 15 `COMPLETE` (all gates) | phase-15 | **Plan 15.D run.** Owner call: a **pinned official prebuilt** instead of the ADR-0004 source build — **ADR-0004 amended** (prebuilt = primary path for v1, source build stays documented). Pin: `ggml-org/llama.cpp` `b10819` (commit `6a1a922d2`), `llama-b10819-bin-win-cuda-13.3-x64.zip` (sha `c9069222…`) + `cudart-…-13.3-x64.zip` (sha `1462a050…`); CUDA 13.3 → Blackwell sm_120 OK. Config schema **v5**: `runtimes.dir` (`RuntimesConfig`, `ConfigKey::RuntimesDir`, session override, default `<app_data>/runtimes`). Owner wants no runtime blobs outside the repo → the machine's `config.json` points `runtimes.dir` + `models.dir` at `<repo>/runtime/llama-server` + `<repo>/models` (both `.gitignore`d, ~1 GB); DB + config.json stay in `%APPDATA%`. `--flash-attn` dropped from the argv (`b10819` made it take an arg; `auto` default is right). 4 `#[ignore]`d live tests (`llm::live_tests`, env-var-gated) on the RTX 5080: **gate 1** load+`/health` ≈ 775 ms · **gate 2** non-stream "red, blue, yellow" + 12-delta stream · **gate 3** cancel → `Cancelled`, slot frees (next gen works) · **gate 5** `taskkill` → `health()` Err · **gate 6** no orphan (`tasklist`) · **gate 8** TTFT ≈ 23 ms, ≈ 278 tok/s (Qwen 0.5B Q4_K_M). WDDM hang not observed over 4 cycles. 212 rust tests (+3; 5 ignored), check suite green, `tauri dev` registers the backend. Evidence `docs/verification/14_phase15_llama.md`. |
 | 2026-09-06 | Phase 17 / 17.1 `IN PROGRESS` | Phase 17 `COMPLETE` → Phase 18 / 18.1 `NOT STARTED` | phase-17 | Conversation engine formalized. `ConversationService` → **`ConversationEngine`** (rename; `git grep` clean — one path since Phase 16). `send` split into `add_user_turn(id, content: MessageContent)` (typed — voice/STT seam) + `generate(id, model, sink) -> TaskId`; `send` stays a text convenience. Explicit **`GenerationState`** (`Mutex<Option<Running>>` carrying `GenerationHandle { task_id, conversation_id }`; `generation_state()` → `Idle`/`Generating`; `chat_state` IPC + `chatState()` wrapper). `render_chatml` now renders `MessageContent::Audio { transcript: Some }` too (skips `Image` / untranscribed audio) — voice turns render with no engine change. Contracts (additive): `GenerationHandle`, `GenerationState`. **All 6 gate items PASS** — 19 unit/contract tests (scripted `LlmInstance`; state-machine, `add_user_turn`+`generate` split, typed-audio render) + the Phase 16 `#[ignore]`d live test re-run on the RTX 5080 with a `generation_state` assertion (register → real `llama-server` → "pong" → state `Generating`→`Idle` → restart recovery → cancel → reuse). **End-to-end TTFT ≈ 44 ms** (Phase 16 ≈ 33 ms; timer noise, no regression). 226 rust tests, 9 vitest, check suite green. **No new ADR** — content taxonomy resolved by the frozen Phase 7 contract (media = content-addressed blob via `AssetId`; blob store lands with the first blob feature, P18/P22). Evidence `docs/verification/16_phase17_engine.md`. |
@@ -505,13 +507,13 @@ Newest first. One line per state transition (§3 rule 6).
 
 _None blocking._
 
-- **Phase 12 gate 5 — fixed STT/TTS models — `NOT EXECUTED` (deferred).**
-  `acquire_fixed` is wired with the owner-confirmed repos:
-  `Systran/faster-whisper-large-v3` (~3.1 GB) and `ResembleAI/chatterbox-turbo`
-  (~2 GB), both MIT. The download engine itself is verified **live** (gate 1: the
-  real `Qwen/Qwen2.5-0.5B-Instruct-GGUF` — download + HF SHA-256 verify +
-  register, 50.6 MB/s). Run `acquire_fixed` (via the `/models` UI or a live test)
-  before **Phase 18**, when voice needs the models. Does not block Phase 13+.
+- **Phase 12 gate 5 — fixed STT/TTS models — `DONE` (2026-09-06).** Run on the
+  owner's "Download fresh versions" go-ahead ahead of Phase 18.
+  `live_acquire_fixed_models` pulled both bundles live:
+  `Systran/faster-whisper-large-v3` (5 files, 2.9 GB, 28 s) → `models\stt\`,
+  `ResembleAI/chatterbox-turbo` (11 files, 3.8 GB, 38 s) → `models\tts\` — each
+  registered (`Stt` / `Tts`, `Ready`, path confined), in-project + gitignored,
+  short subdirs per owner preference. Phase 12 now all 9 gates pass.
 
 - **Watch item — WDDM hang** on a *sustained* `llama-server` generation (Hyper-V
   on host). **Not observed** in 15.D or Phase 16 (short generations). Keep the
