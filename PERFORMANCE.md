@@ -17,8 +17,8 @@ targets, validated per hardware+model combination.
 | ------ | ------ | ----------- |
 | Cold app start → window interactive | < ~3 s | Phase 6 baseline, tracked every phase |
 | User message appears in UI | immediate (< ~50 ms) | Phase 16 |
-| LLM time-to-first-token (model loaded) | < ~1–2 s | Phase 15 (backend), Phase 16 (end-to-end) |
-| LLM tokens/sec | model-dependent; recorded per model | Phase 15 |
+| LLM time-to-first-token (model loaded) | < ~1–2 s | Phase 15 (backend), Phase 16 (end-to-end) — **not yet measured** (deferred to plan 15.D: needs the real CUDA `llama-server`) |
+| LLM tokens/sec | model-dependent; recorded per model | Phase 15 — **not yet measured** (15.D) |
 | UI during streaming | never frozen; no dropped frames | Phase 16, Phase 30 |
 | Voice: speech-end → first audio | ~1–3 s | Phase 18+19 |
 | Voice: barge-in trigger → silence | < ~200 ms | Phase 19 |

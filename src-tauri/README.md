@@ -5,11 +5,11 @@ application state, persistence, model lifecycle, resource management, scheduling
 process supervision, and IPC. Single crate, one module per subsystem
 (`docs/decisions/0001-single-rust-crate.md`).
 
-## Current modules (Phase 14)
+## Current modules (Phase 15)
 
 | Module | What | Doc |
 | ------ | ---- | --- |
-| `lib.rs` | The Tauri builder + `run()`; `setup()` loads config + opens/migrates the DB + builds the registry + acquisition service + resource manager + lifecycle manager into managed state (reconciles interrupted downloads; first hardware measurement + observe loop; liveness loop); exit hook checkpoints the WAL | — |
+| `lib.rs` | The Tauri builder + `run()`; `setup()` loads config + opens/migrates the DB + builds the registry + acquisition service + resource manager + lifecycle manager (+ registers the llama.cpp backend when the binary is present) into managed state (reconciles interrupted downloads; first hardware measurement + observe loop; liveness loop); exit hook checkpoints the WAL | — |
 | `main.rs` | Thin bin entry | — |
 | `logging/` | Observability — JSON stdout via a non-blocking lossy writer; boundary **secret redaction**; in-memory ring buffer (`recent_lines`); hot-reloadable filter (`set_level` from config / `LOCALAI_LOG`); `operation()` span helper. No network sink. | `docs/plan/10_observability.md` |
 | `ipc/` | Typed IPC boundary — `commands` (`app_*`, `frontend_log`, `config_*`), `error::{AppError, ErrorEnvelope}` | `docs/decisions/0002-ipc-design.md` |
@@ -19,11 +19,12 @@ process supervision, and IPC. Single crate, one module per subsystem
 | `models/` | Model registry — `model_entry` rows (`V0002`), `ModelRegistry` CRUD + capability `query`, `ModelDraft`/`ModelFilter`, path confinement (`validate_model_path`), availability computed from `path.exists()`, `Arc`-cached list cleared on write. IDs are UUIDv4 (ADR-0017). | `docs/plan/11_model-registry.md` |
 | `acquisition/` | Model acquisition — `gguf` (header parser), `hf` (HF API + range fetch), `budget` (pre-transfer guard), `download` (`reqwest` engine: `.part` + `Range` resume + SHA-256 verify + register), `AcquisitionService`, `acquire_fixed`. `model_downloads` (`V0003`). **The only runtime network egress.** | `docs/plan/12_model-acquisition.md`, ADR-0008 |
 | `resources/` | Resource manager — `probe` (`HardwareProbe`: `NvmlProbe` whole-GPU + `sysinfo` RAM, `MockProbe`), `estimate` (closed-form LLM VRAM + per-model EMA `Calibration`), `ResourceManager` (in-memory reservation ledger; `request`/`commit`/`release`/`observe`/`reconcile` behind one async `Mutex`; `request` works off a cached snapshot, never the probe). Accounts only — no loading. `resources.vram_safety_margin_mb` (config v4). | `docs/plan/13_resource-manager.md`, ADR-0007 |
-| `lifecycle/` | Model lifecycle manager — **the only loader/unloader of managed models**. `backend` (`ModelBackend` / `LoadedInstance` traits; llama.cpp is Phase 15), `LifecycleManager` state machine (`Unloaded → Loading → Loaded ⇄ Busy → Unloading`, `Failed` recovery) behind one async `Mutex`; concurrent same-model loads coalesce; a Phase 13 reservation is acquired before the load and released on every exit path; `RetryPolicy` (3 attempts, 500 ms base); ~2 s liveness monitor → `Failed` + release. `lifecycle_status` IPC. | `docs/plan/14_model-lifecycle.md`, ADR-0007/0010 |
+| `lifecycle/` | Model lifecycle manager — **the only loader/unloader of managed models**. `backend` (`ModelBackend` / `LoadedInstance` traits + `as_any` downcast hook; llama.cpp impl in `llm/`), `LifecycleManager` state machine (`Unloaded → Loading → Loaded ⇄ Busy → Unloading`, `Failed` recovery) behind one async `Mutex`; concurrent same-model loads coalesce; a Phase 13 reservation is acquired before the load and released on every exit path; `RetryPolicy` (3 attempts, 500 ms base); ~2 s liveness monitor → `Failed` + release. `lifecycle_status` IPC. | `docs/plan/14_model-lifecycle.md`, ADR-0007/0010 |
+| `llm/` | llama.cpp adapter (first LLM backend) — `LlamaBackend` (`ModelBackend`: spawns a supervised `llama-server` child), `server` (free loopback port + `--api-key` bearer + Windows Job Object kill-on-close), `client` (`/health` + `/completion` non-stream + SSE stream, per-call deadline, cancel-drops-response), `protocol` (llama.cpp JSON + SSE parser — nothing else references it), `LlamaServer` (`LoadedInstance` + `LlmInstance` generate/stream). **Split — the real CUDA binary + real-GGUF gate run is deferred (plan 15.D).** | `docs/plan/15_llama-cpp-adapter.md`, ADR-0003/0004/0013 |
 
 ## Modules added by later phases
 
-blob store (with the first blob feature) · `llm` adapter (P15) ·
+blob store (with the first blob feature) ·
 `conversation` engine (P17) · `voice` (P18–19) · `context` builder (P20) ·
 `memory` (P21) · `image` (P22) · `scheduler` (P23–24) · `characters` (P25–29).
 Each phase registers its module here and in `ARCHITECTURE.md` §3.

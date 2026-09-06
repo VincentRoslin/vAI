@@ -14,10 +14,12 @@ pub mod contracts;
 pub mod db;
 pub mod ipc;
 pub mod lifecycle;
+pub mod llm;
 pub mod logging;
 pub mod models;
 pub mod resources;
 
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -92,7 +94,11 @@ pub fn run() {
 
             let resources = start_resource_manager(effective.resources.vram_safety_margin_mb);
             app.manage(Arc::clone(&resources));
-            app.manage(start_lifecycle_manager(Arc::clone(&registry), resources));
+            app.manage(start_lifecycle_manager(
+                Arc::clone(&registry),
+                resources,
+                &data_root,
+            ));
 
             Ok(())
         })
@@ -166,18 +172,40 @@ async fn observe_loop(manager: Arc<resources::ResourceManager>) {
     }
 }
 
-/// Build the model lifecycle manager (Phase 14): the only loader/unloader of
-/// managed models. No backends are registered yet — Phase 15 (the llama.cpp
-/// adapter) registers the first. Spawns the liveness monitor.
+/// Build the model lifecycle manager (Phase 14) and register the backends it
+/// knows about. The llama.cpp adapter (Phase 15) is registered when a
+/// `llama-server` binary is present at `<app_data>/runtimes/llama-server(.exe)`;
+/// until then (deferred step 15.D) LLM loads are unavailable. Spawns the
+/// liveness monitor.
 fn start_lifecycle_manager(
     registry: Arc<models::ModelRegistry>,
     resources: Arc<resources::ResourceManager>,
+    data_root: &Path,
 ) -> Arc<lifecycle::LifecycleManager> {
     let manager = Arc::new(lifecycle::LifecycleManager::new(
         registry,
         resources,
         lifecycle::RetryPolicy::default(),
     ));
+
+    let binary = data_root.join("runtimes").join(if cfg!(windows) {
+        "llama-server.exe"
+    } else {
+        "llama-server"
+    });
+    if binary.is_file() {
+        manager.register_backend(
+            llm::BACKEND_KEY,
+            Arc::new(llm::LlamaBackend::new(binary.clone())),
+        );
+        tracing::info!(binary = %binary.display(), "llama.cpp backend registered");
+    } else {
+        tracing::info!(
+            expected = %binary.display(),
+            "no llama-server binary — LLM loads unavailable until it is installed (plan 15.D)"
+        );
+    }
+
     let handle = Arc::clone(&manager);
     tauri::async_runtime::spawn(async move { liveness_loop(handle).await });
     manager

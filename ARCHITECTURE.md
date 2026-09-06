@@ -50,8 +50,8 @@ blob store, model lifecycle, resource/VRAM/RAM management, scheduling, task
 management, process supervision, IPC, security-sensitive operations, business
 logic. Single crate (`src-tauri/`); modules interact through defined interfaces.
 
-Modules (see `src-tauri/README.md` for the live list): **as of Phase 14** —
-`lib.rs` (Tauri builder + config/DB/logging/registry/acquisition/resources/lifecycle
+Modules (see `src-tauri/README.md` for the live list): **as of Phase 15** —
+`lib.rs` (Tauri builder + config/DB/logging/registry/acquisition/resources/lifecycle/llm
 wiring in `setup()`, WAL checkpoint on exit), `logging` (JSON stdout, non-blocking lossy, boundary secret
 redaction, ring buffer, config-driven reloadable level — no network sink), `ipc`
 (`commands`, `error::{AppError, ErrorEnvelope}`), `contracts` (the serializable
@@ -71,8 +71,13 @@ one async `Mutex`; `request` never blocks on the driver; ADR-0007),
 models; `ModelBackend` trait, state machine `Unloaded → Loading → Loaded ⇄ Busy
 → Unloading` + `Failed` recovery behind one async `Mutex`; coalesced concurrent
 loads; a Phase 13 reservation held across the load and released on every exit
-path; bounded retry; a ~2 s liveness monitor). Each later phase adds its module
-and registers it in `src-tauri/README.md` and §3 here.
+path; bounded retry; a ~2 s liveness monitor), `llm` (the llama.cpp adapter —
+`LlamaBackend` spawns a supervised `llama-server` child on a free loopback port
+with a per-launch `--api-key` bearer (ADR-0013) under a Windows Job Object;
+`/health` + `/completion` non-stream + SSE stream client with a per-call
+deadline; **all llama.cpp JSON confined to `llm/protocol`**; `LlamaServer`
+implements `LoadedInstance` + an `LlmInstance` capability trait). Each later
+phase adds its module and registers it in `src-tauri/README.md` and §3 here.
 
 ### React / TypeScript — presentation only
 Owns: rendering, UI, interaction, transient view state. Never accesses SQLite, AI
@@ -191,8 +196,16 @@ A `send_image` typed action from the model → Rust validates (schema, allow-lis
   from the resource manager **before** the backend load and releases on every
   exit path; concurrent `load`s for one model coalesce; bounded retry with
   backoff; a ~2 s liveness monitor moves a dead backend to `Failed` and releases
-  its reservation. Backend detail (llama.cpp, Phase 15) is confined to a
-  `ModelBackend` impl.
+  its reservation.
+- **llama.cpp backend** (`llm` module, Phase 15): the `ModelBackend` /
+  `LlmInstance` impl. `load` spawns a supervised `llama-server` on
+  `127.0.0.1:<free port>` with a per-launch `--api-key` bearer token (ADR-0013 —
+  no named-pipe mode upstream) under a Windows Job Object (kill-on-close), then
+  polls `/health`. Generation is `/completion` (non-stream) or its SSE stream →
+  Phase 7 `GenerationEvent`s; cancel drops the response so the server frees the
+  slot. **Every llama.cpp-specific shape lives in `llm/protocol`.** *(The CUDA
+  build + the real-model gate run are deferred — plan 15.D — the machine has no
+  CUDA Toolkit.)*
 - **Scheduler orders:** priority queue — (1) interactive LLM gen (never
   preempted), (2) STT/TTS, (3) user image gen, (4) character/pool generation
   (idle-only). One GPU serialization mutex; **the mutex holder performs the entire

@@ -26,7 +26,7 @@ time = { version = "0.3", features = ["formatting"] }
 refinery = { version = "0.9", features = ["rusqlite"], default-features = false }
 deadpool-sqlite = "0.12"
 rusqlite = { version = "0.37", features = ["bundled"] }
-tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync", "fs", "io-util", "time"] }
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "sync", "fs", "io-util", "time", "process"] }
 tracing-appender = "0.2.5"
 regex = { version = "1.13.1", default-features = false, features = ["std", "perf"] }
 uuid = { version = "1.26.0", features = ["v4"] }
@@ -39,6 +39,7 @@ nvml-wrapper = "0.10"
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 async-trait = "0.1.92"
 tokio-util = { version = "0.7.19", default-features = false }
+windows = { version = "0.62", features = ["Win32_System_JobObjects", "Win32_System_Threading", "Win32_Foundation"] }
 
 [dev-dependencies]
 serde_json = "1"

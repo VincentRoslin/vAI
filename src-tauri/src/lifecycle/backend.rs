@@ -7,6 +7,8 @@
 //! Detail specific to a runtime lives behind this trait and nowhere else
 //! (`CLAUDE.md` Article I; `ARCHITECTURE.md` §2).
 
+use std::any::Any;
+
 use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
@@ -57,6 +59,10 @@ pub trait LoadedInstance: Send + Sync {
 
     /// Stop the instance and free its resources. Best-effort; must not panic.
     async fn shutdown(&self);
+
+    /// Downcast hook for a capability trait — e.g. the `llm` module's
+    /// `LlmInstance` (Phase 15). Every impl is `{ self }`.
+    fn as_any(&self) -> &(dyn Any + Send + Sync);
 }
 
 #[cfg(test)]
@@ -178,6 +184,10 @@ mod fake {
 
         async fn shutdown(&self) {
             self.shutdowns.fetch_add(1, Ordering::SeqCst);
+        }
+
+        fn as_any(&self) -> &(dyn std::any::Any + Send + Sync) {
+            self
         }
     }
 }

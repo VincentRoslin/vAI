@@ -1,6 +1,9 @@
 # Phase 15 — llama.cpp Adapter
 
-> **Status: IN PROGRESS** — step detail finalized at phase entry (2026-09-06).
+> **Status: COMPLETE for the split scope** (2026-09-06) — gate items 4, 7, 9 +
+> the stub sides of 2/3/6 pass; items 1, 5, 8 and the real sides of 2/3/6 are
+> **deferred to `15.D`** (ROADMAP §6). Evidence
+> `docs/verification/14_phase15_llama.md`. Step detail finalized at phase entry.
 > **Split, by owner decision:** the adapter, process supervision, transport, and
 > the full HTTP/SSE client are built now and tested against an **in-process stub
 > `llama-server`**. The gate items that need a real CUDA `llama-server` binary +

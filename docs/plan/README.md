@@ -37,7 +37,7 @@ granular, individually-verifiable steps.
 | 13 | `13_resource-manager.md` | full (finalized at phase entry) |
 | 14 | `14_model-lifecycle.md` | full (finalized at phase entry) |
 | 15 | `15_llama-cpp-adapter.md` | full (finalized at phase entry; split — real-binary gate deferred) |
-| 16 | `16_vertical-slice-text-chat.md` | outline |
+| 16 | `16_vertical-slice-text-chat.md` | outline (run plan 15.D first) |
 | 17 | `17_conversation-engine.md` | outline |
 | 18 | `18_voice-in.md` | outline |
 | 19 | `19_voice-out.md` | outline |

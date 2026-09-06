@@ -76,8 +76,26 @@ CI runs the suite on every push; `main` stays releasable.
 ## 5. Running subsystems locally
 
 - **Full app:** `npm run tauri dev` (or the project's task alias).
-- **`llama-server`:** built by the scripted build (`scripts/build-llama.ps1`,
-  Phase 15); the app spawns it — do not run it by hand.
+- **`llama-server`:** the app spawns it from
+  `%APPDATA%\com.localai.app\runtimes\llama-server.exe` (+ its CUDA DLLs) — do
+  not run it by hand. **Not built yet** (Phase 15 was split — the adapter is
+  done, the binary is deferred to plan step `15.D`). Build recipe (ADR-0004,
+  sm_120 / CUDA 13 — *documented, not yet executed*):
+
+  ```powershell
+  # prerequisite: CUDA Toolkit 13.x (~3 GB) — `nvcc --version` must work
+  git clone https://github.com/ggml-org/llama.cpp
+  cd llama.cpp; git checkout <pinned-commit>          # pin recorded at 15.D
+  cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=120 `
+        -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release
+  cmake --build build --config Release --target llama-server -j
+  # copy build\bin\llama-server.exe + the CUDA runtime DLLs it links
+  #   → %APPDATA%\com.localai.app\runtimes\
+  ```
+
+  Alternative (ADR-0004 fallback): a pinned official prebuilt from the
+  llama.cpp releases page. `scripts\build-llama.ps1` will wrap whichever path
+  is chosen.
 - **Python workers:** the app spawns them from the venv; for isolated testing,
   `uv run workers/<name>.py` with the offline env (ADR-0015) set.
 - **DB:** `%APPDATA%\com.localai.app\localai.db` (+ `-wal` / `-shm`), created and
