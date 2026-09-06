@@ -330,8 +330,10 @@ export const imageHistory = (limit = 24): Promise<GeneratedImageRow[]> =>
 /** The PNG bytes of one stored image, as an object URL for `<img src>`. Caller
  * revokes the URL when done. */
 export async function imageObjectUrl(asset: string): Promise<string> {
-  const bytes = await call<number[]>('image_bytes', { asset });
-  const blob = new Blob([new Uint8Array(bytes)], { type: 'image/png' });
+  // `image_bytes` returns a raw binary response → an ArrayBuffer here.
+  const buf = await call<ArrayBuffer | number[]>('image_bytes', { asset });
+  const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : new Uint8Array(buf);
+  const blob = new Blob([bytes], { type: 'image/png' });
   return URL.createObjectURL(blob);
 }
 

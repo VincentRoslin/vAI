@@ -751,12 +751,16 @@ pub async fn image_history(
     image.history(limit.clamp(1, 200)).await
 }
 
-/// The PNG bytes of one stored image (rendered via a blob URL by the frontend —
-/// a filesystem path never crosses the wire).
+/// The PNG bytes of one stored image, as a raw binary IPC response (an
+/// `ArrayBuffer` on the JS side — no giant JSON number array). A filesystem
+/// path never crosses the wire.
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
-pub async fn image_bytes(blob: State<'_, Arc<BlobStore>>, asset: AssetId) -> AppResult<Vec<u8>> {
-    blob.read(&asset)
+pub async fn image_bytes(
+    blob: State<'_, Arc<BlobStore>>,
+    asset: AssetId,
+) -> AppResult<tauri::ipc::Response> {
+    Ok(tauri::ipc::Response::new(blob.read(&asset)?))
 }
 
 /// The browsable folder every generated PNG is written to, as a display string.

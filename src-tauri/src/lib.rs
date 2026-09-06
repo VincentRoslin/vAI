@@ -326,7 +326,10 @@ fn start_image(
         Arc::clone(engine),
         Arc::clone(&blob),
         repo,
-        data_root.join("images"),
+        // Browsable generated PNGs live in the project's model tree
+        // (`<models.dir>/image/outputs/`), next to the LoRAs + quant cache —
+        // not the app-data folder. The blob store stays under `data_root`.
+        effective.models.dir.join("image").join("outputs"),
     ));
     (orchestrator, blob)
 }
