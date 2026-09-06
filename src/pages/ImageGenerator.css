@@ -1,0 +1,228 @@
+.imagegen {
+  padding: var(--space-6);
+  max-width: 860px;
+}
+
+.imagegen h1 {
+  margin: 0 0 var(--space-6);
+}
+
+.imagegen__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.imagegen__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.imagegen__field > span,
+.imagegen__inline > span {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.imagegen__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: flex-end;
+}
+
+.imagegen__inline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.imagegen__inline input[type='number'],
+.imagegen__inline input[type='text'] {
+  width: 8rem;
+}
+
+.imagegen__weight {
+  flex: 1;
+  min-width: 12rem;
+}
+
+.imagegen__weight input[type='range'] {
+  width: 100%;
+}
+
+.imagegen__seg {
+  display: inline-flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+}
+
+.imagegen__seg button {
+  border: none;
+  border-radius: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  padding: var(--space-2) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+}
+
+.imagegen__seg button:last-child {
+  border-right: none;
+}
+
+.imagegen__seg button.is-active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.imagegen__seg em {
+  font-style: normal;
+  font-size: 0.72rem;
+  opacity: 0.7;
+}
+
+.imagegen__actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.imagegen__go,
+.imagegen__cancel {
+  padding: var(--space-2) var(--space-6);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.imagegen__go {
+  background: var(--accent);
+  color: var(--accent-text);
+  border: 1px solid var(--accent);
+}
+
+.imagegen__go:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.imagegen__cancel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.imagegen__status {
+  margin-top: var(--space-6);
+}
+
+.imagegen__status p {
+  margin: 0 0 var(--space-2);
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.imagegen__bar {
+  height: 6px;
+  background: var(--surface-hover);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.imagegen__bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.imagegen__bar-fill[data-indeterminate='true'] {
+  animation: imagegen-indeterminate 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes imagegen-indeterminate {
+  from {
+    margin-left: 0;
+  }
+  to {
+    margin-left: 65%;
+  }
+}
+
+.imagegen__error {
+  margin-top: var(--space-4);
+  color: #d1443b;
+  font-size: 0.9rem;
+}
+
+.imagegen__grid {
+  margin-top: var(--space-6);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-4);
+}
+
+.imagegen__grid figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.imagegen__grid img,
+.imagegen__ph {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.imagegen__grid figcaption {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.imagegen__history {
+  margin-top: var(--space-8);
+}
+
+.imagegen__history h2 {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  margin: 0 0 var(--space-3);
+}
+
+.imagegen__history ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.imagegen__history li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+.imagegen__hist-prompt {
+  font-size: 0.88rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.imagegen__hist-meta {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}

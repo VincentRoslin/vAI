@@ -35,6 +35,11 @@ import type { InputDevice } from '../bindings/InputDevice';
 import type { OutputDevice } from '../bindings/OutputDevice';
 import type { VoiceState } from '../bindings/VoiceState';
 import type { DiagSnapshot } from '../bindings/DiagSnapshot';
+import type { ImageRequest } from '../bindings/ImageRequest';
+import type { ImageEvent } from '../bindings/ImageEvent';
+import type { ImageLora } from '../bindings/ImageLora';
+import type { ImagePreset } from '../bindings/ImagePreset';
+import type { GeneratedImageRow } from '../bindings/GeneratedImageRow';
 
 export type { AppConfig, AppError, AppReady, ConfigKeyInfo, ConfigSet, FrontendLog, Pong };
 
@@ -294,3 +299,38 @@ export const diagSnapshot = (): Promise<DiagSnapshot> => call('diag_snapshot');
 /** Write a diagnostics snapshot to `<app_data>/diagnostics/` and return its
  * path (for you to hand to Claude). */
 export const diagExport = (): Promise<string> => call('diag_export');
+
+// --- Image generation (Phase 22) ---
+
+/** Generate one or more images with Krea 2 Turbo. `onEvent` receives progress
+ * frames then one terminal ({@link ImageEvent} `Done` / `Error` / `Cancelled`).
+ * Returns the task id (for {@link imageCancel}). */
+export async function imageGenerate(
+  req: ImageRequest,
+  onEvent: (e: ImageEvent) => void,
+): Promise<string> {
+  const events = new Channel<ImageEvent>();
+  events.onmessage = onEvent;
+  return call('image_generate', { req, events });
+}
+
+/** Cancel the running image generation. */
+export const imageCancel = (taskId: string): Promise<void> => call('image_cancel', { taskId });
+
+/** The realism LoRAs available to Krea 2. */
+export const imageLoras = (): Promise<ImageLora[]> => call('image_loras');
+
+/** The saved image-generation presets. */
+export const imagePresets = (): Promise<ImagePreset[]> => call('image_presets');
+
+/** Recent generations, newest first. */
+export const imageHistory = (limit = 24): Promise<GeneratedImageRow[]> =>
+  call('image_history', { limit });
+
+/** The PNG bytes of one stored image, as an object URL for `<img src>`. Caller
+ * revokes the URL when done. */
+export async function imageObjectUrl(asset: string): Promise<string> {
+  const bytes = await call<number[]>('image_bytes', { asset });
+  const blob = new Blob([new Uint8Array(bytes)], { type: 'image/png' });
+  return URL.createObjectURL(blob);
+}
