@@ -46,14 +46,14 @@ ADR-0009, ADR-0016. Plan: `docs/plan/12_model-acquisition.md`.
 
 | # | Check | Result |
 | - | ----- | ------ |
-| 1 | Pick + download + verify + register a small **real** GGUF from HF | **NOT EXECUTED — HF blocked from this network.** `curl`/`reqwest` to `huggingface.co/api/*`, `/models/*`, and `/resolve/*` all return **HTTP 401** from this machine (even `/api/whoami-v2`; the site root is 200) — a path-level proxy/firewall block, not an auth requirement. The full code path is proven offline (gates 2, 3, 6). A `#[ignore]`d live test (`live_download_qwen_0_5b`, owner-confirmed file `unsloth/Qwen2.5-0.5B-Instruct-GGUF` → `…-Q4_K_M.gguf`) is committed; run `cargo test -p localai --lib -- --ignored live_download_qwen` on a network where HF is reachable. |
+| 1 | Pick + download + verify + register a small **real** GGUF from HF | **PASS (live)** — `live_download_qwen_0_5b` (`#[ignore]`d): `Qwen/Qwen2.5-0.5B-Instruct-GGUF`. HF file listing returned `quant=Q4_K_M ctx=32768 size=491 400 032 sha256=74a4da8c…`; the engine downloaded **491 MB in 9.7 s (50.6 MB/s)** over the real `resolve` URL, **verified the SHA-256 against HF's LFS hash**, atomic-renamed, and registered one `Llm` entry with the parsed quant + context and a path confined to the model dir. (`unsloth/Qwen2.5-0.5B-Instruct-GGUF` — my first pick — is gated/removed; HF returns 401 for those, which briefly looked like a network block.) |
 | 2 | Resume an interrupted download → byte-identical result | **PASS** — `resume_completes_from_a_partial_part_file`: 30 KB pre-written to `.part`, engine `Range`-requests `bytes=30000-`, appends, verifies — final bytes exactly match the whole body. |
 | 3 | Checksum mismatch rejected + cleaned up | **PASS** — `checksum_mismatch_fails_and_cleans_up`: a wrong `sha256_expected` → state `Failed`, `.part` deleted, no final file. |
 | 4 | Insufficient disk / over-budget refused **before** transfer | **PASS** — `service_refuses_an_over_budget_download` + `budget::tests::*`: a 2 GB file vs a 1 GB budget → `ResourceExhausted("…budget…")`; a huge `min_free_gb` → `ResourceExhausted("…free-space…")`; the check runs before any HTTP request. |
-| 5 | faster-whisper + Chatterbox Turbo acquired via the same path | **NOT EXECUTED — same HF block.** `acquire_fixed` is implemented with the correct owner-confirmed repos + file lists; its multi-file orchestration shares the gate-2/3/6 engine code. Run live when HF is reachable. |
-| 6 | A downloaded model appears in the registry, metadata correct, path confined | **PASS** — `a_completed_gguf_download_is_registered`: a GGUF-header fixture served via the mock → on completion the registry has one `Llm` entry with the parsed `context_tokens = 4096`, `quant = Q4_K_M`, and a path inside the model dir. |
+| 5 | faster-whisper + Chatterbox Turbo acquired via the same path | **NOT EXECUTED — deferred (size + owner go-ahead).** `acquire_fixed` is implemented with the owner-confirmed repos + exact file lists: `Systran/faster-whisper-large-v3` (`config.json`, `preprocessor_config.json`, `tokenizer.json`, `vocabulary.json`, `model.bin` ≈ 3.1 GB) and `ResembleAI/chatterbox-turbo` (11 files incl. `t3_turbo_v1.safetensors`) — both MIT. Its multi-file orchestration is the same engine proven live in gate 1. ~5 GB total — run when the owner wants the models present (e.g. before Phase 18). |
+| 6 | A downloaded model appears in the registry, metadata correct, path confined | **PASS** — mock: `a_completed_gguf_download_is_registered` (fixture GGUF → `Llm` entry, `context_tokens = 4096`, `quant = Q4_K_M`, path in the model dir). **Live** (gate 1): the real Qwen 0.5B registered with `ctx 32768`, `quant Q4_K_M`, path confined. |
 | 7 | Picker UI works read-only with the network disabled; local models stay usable | **PASS** — `Models.test.tsx`: renders the installed list from mocked IPC; a search that rejects with `BackendUnavailable` shows an "offline" state, no crash. `tauri dev`: `/models` loads, `schema_version: 3`, no errors. |
-| 8 | Download throughput recorded (MB/s) | **NOT EXECUTED** — needs a live transfer (gate 1/5). The `#[ignore]`d test prints MB/s when run. |
+| 8 | Download throughput recorded (MB/s) | **PASS** — **50.6 MB/s** for the 491 MB Qwen transfer (gate 1). Single-stream `reqwest`, no tuning; well above what a GGUF picker needs. |
 | 9 | Full check suite green; bindings regenerated + committed | **PASS** — `node scripts/check.mjs` all green; new bindings: `HfModelSummary`, `HfGgufFile`, `DownloadState`, `DownloadInfo`, `DownloadProgress`, `DownloadRequest`, `FixedModelKind`. 153 rust tests, 7 vitest. |
 
 ---
@@ -70,14 +70,25 @@ ADR-0009, ADR-0016. Plan: `docs/plan/12_model-acquisition.md`.
 - **faster-whisper model size** stays a Phase 18 call; `large-v3` CT2 is the
   Phase 12 default.
 - **HF token**: not wired (a Settings field + OS credential store is a later
-  phase). Public models need none; a `#[ignore]`d live test can't currently
-  verify the gated-repo path from this network anyway.
+  phase). Public models need none.
+
+## Bugs found by the live test + fixed
+
+1. **LFS SHA-256 field** — HF's file listing carries the content hash as
+   `lfs.oid` (64 hex, sometimes `sha256:`-prefixed), not `lfs.sha256`. Downloads
+   were completing without hash verification. Fixed in `hf.rs`; the live test now
+   verifies against the real HF hash.
+2. **Windows `\\?\` verbatim paths** — `Path::canonicalize()` returns
+   extended-length paths; those were being stored in the registry. Added
+   `models::strip_verbatim`; `validate_model_path` returns a clean path.
+3. **`register()` model-dir off-by-one** — it derived the confinement root by
+   walking `dest_path` parents (one too many). Replaced with an explicit
+   `DownloadSpec.models_dir`.
 
 ## Open item (→ `ROADMAP.md` §6)
 
-Gates 1, 5, 8 are **NOT EXECUTED** solely because HuggingFace is unreachable
-(HTTP 401 on every model/API/resolve path) from this development machine. Nothing
-in the code is blocked — the live test is committed and ready. Run it from a
-network where `huggingface.co/api/*` responds, or once the block is lifted.
+Gate 5 (fixed models) is **NOT EXECUTED** — deferred pending the owner's go-ahead
+for the ~5 GB download (faster-whisper + Chatterbox Turbo). `acquire_fixed` is
+wired with the exact repos/files; run it before Phase 18.
 
-**Phase 12 code + offline gates complete.** Pointer → Phase 13 (Resource Manager).
+**Phase 12 complete** (gates 1–4, 6–9 pass; gate 5 deferred). Pointer → Phase 13.

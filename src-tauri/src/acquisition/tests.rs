@@ -1,5 +1,6 @@
-//! Phase 12 engine coverage — all offline, against a local `tiny_http` server
-//! that supports `Range` (gate items 2, 3, 4, 6).
+//! Phase 12 engine coverage — offline gates (2, 3, 4, 6) against a local
+//! `tiny_http` server with `Range` support, plus one `#[ignore]`d **live** test
+//! (`live_download_qwen_0_5b`, gates 1/6/8) that hits real HuggingFace.
 
 use std::io::Cursor;
 use std::sync::Arc;
@@ -115,6 +116,11 @@ async fn engine() -> (tempfile::TempDir, Arc<DownloadEngine>) {
 }
 
 fn spec(url: String, dest: std::path::PathBuf, sha: Option<String>) -> DownloadSpec {
+    let models_dir = dest
+        .parent()
+        .and_then(std::path::Path::parent)
+        .unwrap_or(std::path::Path::new("."))
+        .to_path_buf();
     DownloadSpec {
         url,
         repo: "owner/repo".to_owned(),
@@ -122,6 +128,7 @@ fn spec(url: String, dest: std::path::PathBuf, sha: Option<String>) -> DownloadS
         filename: "file.bin".to_owned(),
         kind: ModelKind::Llm,
         dest_path: dest,
+        models_dir,
         expected_size: None,
         sha256_expected: sha,
         register: RegisterPlan::None,
@@ -333,19 +340,27 @@ fn part_of(dest: &std::path::Path) -> std::path::PathBuf {
 ///
 /// Run explicitly: `cargo test -p localai --lib -- --ignored live_download_qwen`.
 #[tokio::test]
-#[ignore = "network + ~400 MB; run explicitly for the Phase 12 gate"]
+#[ignore = "network + ~490 MB; run explicitly for the Phase 12 gate"]
 async fn live_download_qwen_0_5b() {
-    const REPO: &str = "unsloth/Qwen2.5-0.5B-Instruct-GGUF";
-    const FILE: &str = "Qwen2.5-0.5B-Instruct-Q4_K_M.gguf";
+    const REPO: &str = "Qwen/Qwen2.5-0.5B-Instruct-GGUF";
+    const FILE: &str = "qwen2.5-0.5b-instruct-q4_k_m.gguf";
 
     let app_data =
         std::path::PathBuf::from(std::env::var("APPDATA").unwrap()).join("com.localai.app");
-    std::fs::create_dir_all(app_data.join("models")).unwrap();
     let db = Arc::new(Db::open(&app_data.join("localai.db")).await.unwrap());
     db.migrate().await.unwrap();
     let registry = Arc::new(ModelRegistry::new(Arc::clone(&db)));
     let cfg = crate::config::ConfigManager::load(&app_data, &app_data).unwrap();
+    let models_dir = cfg.effective().models.dir;
+    std::fs::create_dir_all(&models_dir).unwrap();
     let svc = AcquisitionService::new(Arc::clone(&db), Arc::clone(&registry), Arc::new(cfg));
+
+    // Idempotent: clear any Qwen row + file from a prior run of this gate.
+    for m in registry.list().await.unwrap() {
+        if m.path.contains("Qwen2.5-0.5B") {
+            let _ = crate::acquisition::delete_model(&registry, &db, &m.metadata.id).await;
+        }
+    }
 
     // Pull the file's size + SHA-256 from the HF file listing (proves that path too).
     let files = svc.list_files(REPO).await.expect("list files");
@@ -390,9 +405,12 @@ async fn live_download_qwen_0_5b() {
         entry.availability,
         crate::contracts::model::RegistryAvailability::Ready
     );
+    let dir = crate::models::strip_verbatim(models_dir.canonicalize().unwrap());
+    let stored =
+        crate::models::strip_verbatim(std::path::Path::new(&entry.path).canonicalize().unwrap());
     assert!(
-        std::path::Path::new(&entry.path).starts_with(app_data.join("models")),
-        "path confined to the model dir"
+        stored.starts_with(&dir),
+        "path {stored:?} not confined to {dir:?}"
     );
     println!(
         "registered: {} at {}",

@@ -46,10 +46,10 @@
 `docs/verification/09_phase10_observability.md`).
 **Phase 11 done** — model registry (`models/` module, ADR-0017,
 `docs/verification/10_phase11_registry.md`).
-**Phase 12 done (code + offline gates)** — model acquisition (`acquisition/`
-module, ADR-0008 amended → `reqwest`, `docs/verification/11_phase12_acquisition.md`).
-Live gates 1/5/8 `NOT EXECUTED` — HF is HTTP-401-blocked from this dev network
-(§6); the `#[ignore]`d live test is committed and ready.
+**Phase 12 done** — model acquisition (`acquisition/` module, ADR-0008 amended →
+`reqwest`, `docs/verification/11_phase12_acquisition.md`). Live download verified
+(`Qwen 0.5B` GGUF, 50.6 MB/s, HF SHA-256 checked, registered). Gate 5 (fixed
+STT/TTS models, ~5 GB) deferred to before Phase 18 (§6).
 
 **Completed:** Phase 0–2 · Product Definition · Phase 3 (research + ADRs + probes)
 · Phase 4 (adversarial review, `03_adversarial_review.md`) · **Phase 5**
@@ -192,7 +192,7 @@ context, quant, estimated resource need, devices, model config). No loading.
 Gate: register a test model; find + read; missing file represented not crashed;
 capability query; invalid metadata rejected.
 
-### Phase 12 — Model Acquisition & Picker — `COMPLETE` (code + offline gates; live 1/5/8 `NOT EXECUTED`) — `docs/verification/11_phase12_acquisition.md`
+### Phase 12 — Model Acquisition & Picker — `COMPLETE` (gate 5 — fixed models, ~5 GB — deferred) — `docs/verification/11_phase12_acquisition.md`
 In-app HuggingFace picker + one-shot resumable download for **LLM GGUF**;
 checksum verify; disk-budget guard; register on completion. STT/TTS fixed models
 acquired once via the same path (no picker).
@@ -409,7 +409,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
-| 2026-09-06 | Phase 12 / 12.1 `IN PROGRESS` | Phase 12 `COMPLETE` (code + offline gates) → Phase 13 / 13.1 `NOT STARTED` | phase-12 | Model acquisition landed: `src-tauri/src/acquisition/` — `gguf` (hand parser), `hf` (search / file-list + header range / fetch), `budget` (pre-transfer guard), `download` (`reqwest` engine: `.part` + `Range` resume + SHA-256 verify + atomic rename + register), `AcquisitionService`, `acquire_fixed` (faster-whisper `large-v3`, `ResembleAI/chatterbox-turbo` — owner-confirmed). `V0003__model_downloads.sql`; config **v3** (`models.min_free_gb`). IPC: `models_list`, `model_delete`, `hf_*`, `download_*`, `downloads_list`, `acquire_fixed`. `/models` picker UI + `Models.test`. **Gates 2, 3, 4, 6, 7, 9 PASS** (mock `Range` server + component test). **Gates 1, 5, 8 `NOT EXECUTED`** — HF is HTTP-401-blocked from this network (§6); `#[ignore]`d live test committed. 153 rust tests (+21). Deps: `reqwest` (0 net crates), `sha2`, `fs4`, `walkdir`, `tiny_http` (dev). Evidence `docs/verification/11_phase12_acquisition.md`. |
+| 2026-09-06 | Phase 12 / 12.1 `IN PROGRESS` | Phase 12 `COMPLETE` (code + offline gates) → Phase 13 / 13.1 `NOT STARTED` | phase-12 | Model acquisition landed: `src-tauri/src/acquisition/` — `gguf` (hand parser), `hf` (search / file-list + header range / fetch), `budget` (pre-transfer guard), `download` (`reqwest` engine: `.part` + `Range` resume + SHA-256 verify + atomic rename + register), `AcquisitionService`, `acquire_fixed` (faster-whisper `large-v3`, `ResembleAI/chatterbox-turbo` — owner-confirmed). `V0003__model_downloads.sql`; config **v3** (`models.min_free_gb`). IPC: `models_list`, `model_delete`, `hf_*`, `download_*`, `downloads_list`, `acquire_fixed`. `/models` picker UI + `Models.test`. **Gates 1–4, 6–9 PASS**: 1/6/8 verified **live** — `Qwen/Qwen2.5-0.5B-Instruct-GGUF` downloaded 491 MB @ 50.6 MB/s, SHA-256 checked against HF's LFS hash, registered with parsed metadata; 2/3/4/6/7 via a mock `Range` server + component test. **Gate 5** (fixed STT/TTS, ~5 GB) deferred → before Phase 18 (§6). The live test surfaced + fixed 3 bugs (LFS hash field `oid` not `sha256`; Windows `\\?\` verbatim paths; `register()` model-dir off-by-one). 153 rust tests (+21). Deps: `reqwest` (0 net crates), `sha2`, `fs4`, `walkdir`, `tiny_http` (dev). Evidence `docs/verification/11_phase12_acquisition.md`. |
 | 2026-09-06 | (no state change) | — | owner-approved | **ADR-0008 amended:** transfer client `hf-hub` → hand-rolled `reqwest` range requests. `hf-hub` 1.0 = +121 transitive crates (incl. `aws-lc-sys` C build + `hf-xet`); `reqwest` = 0 net crates (already in the tree via Tauri) and we need it anyway for the HF search API + GGUF header range. Xet dropped for v1. `docs/decisions/0008` + README updated. |
 | 2026-09-06 | Phase 12 `NOT STARTED` | Phase 12 / 12.1 `IN PROGRESS` | phase-12 | Phase entry: `docs/plan/12_model-acquisition.md` finalized (11 steps). New `acquisition/` module (`hf.rs`, `gguf.rs`, `download.rs`); `V0003__model_downloads.sql`; config **v3** (`models.min_free_gb`). Crates: `reqwest` (`json`/`rustls-tls`/`stream`), `sha2`, `tiny_http` (dev); **hand-written GGUF header parser** (crates immature). Owner: engine tested against a local mock server; gate 1 a small live GGUF (repo confirmed before fetch); fixed models (12.8) `faster-whisper large-v3` CT2 + `Chatterbox Turbo` downloaded live. |
 | 2026-09-06 | Phase 11 / 11.1 `IN PROGRESS` | Phase 11 `COMPLETE` → Phase 12 / 12.1 `NOT STARTED` | phase-11 | Model registry landed: `src-tauri/src/models/` — `V0002__model_registry.sql` (`model_entry` STRICT + kind index), `ModelRegistry` CRUD + capability `query`, `ModelDraft`/`ModelFilter`, `validate_model_path` (confine to model dir, reject `..`, require existence at register), **availability computed from `path.is_file()` at read** (never stored), `Arc<Vec<Model>>` cache cleared on write. Additive contracts (`RegisteredModel`, `RegistryAvailability`, `Device`). **ADR-0017**: UUIDv4 entity ids. `lib.rs` — `Db` → `Arc<Db>` managed, `ModelRegistry` managed. Gate: register→get round-trips ✓ · removed file → `Missing`, no crash ✓ · capability query ✓ · invalid metadata rejected naming the field ✓ · path outside dir / `..` refused ✓ · id stable across a registry rebuild ✓ · check suite green. 130 rust tests (+14). Warm `get` ~18 µs. The dev launch migrated the real DB v1→v2 (2nd backup). Evidence `docs/verification/10_phase11_registry.md`. |
@@ -445,15 +445,13 @@ Newest first. One line per state transition (§3 rule 6).
 
 _None blocking._
 
-- **Phase 12 live gates (1, 5, 8) — `NOT EXECUTED`.** HuggingFace returns HTTP 401
-  for every model / API / `resolve` path from this dev machine (site root is 200)
-  — a path-level network block, not an auth requirement. The acquisition code is
-  complete and its layers are proven offline (mock `Range` server: resume,
-  checksum, budget, register). `acquisition::tests::live_download_qwen_0_5b`
-  (`#[ignore]`d, owner-confirmed `unsloth/Qwen2.5-0.5B-Instruct-GGUF`) is
-  committed — run `cargo test -p localai --lib -- --ignored live_download_qwen`
-  from a network where `huggingface.co/api/*` responds, plus `acquire_fixed` for
-  faster-whisper + Chatterbox Turbo. Does not block Phase 13+.
+- **Phase 12 gate 5 — fixed STT/TTS models — `NOT EXECUTED` (deferred).**
+  `acquire_fixed` is wired with the owner-confirmed repos:
+  `Systran/faster-whisper-large-v3` (~3.1 GB) and `ResembleAI/chatterbox-turbo`
+  (~2 GB), both MIT. The download engine itself is verified **live** (gate 1: the
+  real `Qwen/Qwen2.5-0.5B-Instruct-GGUF` — download + HF SHA-256 verify +
+  register, 50.6 MB/s). Run `acquire_fixed` (via the `/models` UI or a live test)
+  before **Phase 18**, when voice needs the models. Does not block Phase 13+.
 
 - **Phase 15 watch item**: WDDM hang risk on the first sustained `llama-server`
   generation (Hyper-V enabled on host — inconclusive from inspection). Mitigations

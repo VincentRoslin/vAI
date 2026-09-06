@@ -112,7 +112,13 @@ impl HfClient {
             if entry.r#type != "file" || !is_gguf {
                 continue;
             }
-            let sha256 = entry.lfs.as_ref().and_then(|l| l.sha256.clone());
+            // HF's LFS SHA-256 is the `lfs.oid` field (64 hex chars, sometimes
+            // `sha256:`-prefixed), not `lfs.sha256`.
+            let sha256 = entry
+                .lfs
+                .as_ref()
+                .and_then(|l| l.oid.clone())
+                .map(|s| s.trim_start_matches("sha256:").to_owned());
             let (quant, context_length) = match self.header_meta(repo, &entry.path).await {
                 Ok((q, c)) => (q, c),
                 Err(err) => {
@@ -199,6 +205,7 @@ struct RawTreeEntry {
 
 #[derive(Deserialize)]
 struct RawLfs {
+    /// The content SHA-256, as 64 hex chars (HF sometimes prefixes `sha256:`).
     #[serde(default)]
-    sha256: Option<String>,
+    oid: Option<String>,
 }

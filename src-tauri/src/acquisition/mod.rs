@@ -116,6 +116,7 @@ impl AcquisitionService {
             filename: filename.to_owned(),
             kind: ModelKind::Llm,
             dest_path: dest,
+            models_dir: models.dir.clone(),
             expected_size,
             sha256_expected: sha256,
             register: RegisterPlan::GgufLlm {
@@ -150,6 +151,7 @@ impl AcquisitionService {
                 filename: (*file).to_owned(),
                 kind: spec.kind,
                 dest_path: dest,
+                models_dir: models.dir.clone(),
                 expected_size: None,
                 sha256_expected: None,
                 register,

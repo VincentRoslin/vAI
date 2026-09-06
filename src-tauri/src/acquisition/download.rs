@@ -51,6 +51,9 @@ pub struct DownloadSpec {
     pub kind: ModelKind,
     /// Absolute destination (already confined to the model dir by the caller).
     pub dest_path: PathBuf,
+    /// The configured model dir `dest_path` sits under (for re-confinement on
+    /// registration).
+    pub models_dir: PathBuf,
     /// Expected size in bytes, for the pre-transfer budget check.
     pub expected_size: Option<u64>,
     /// Expected SHA-256 (HF LFS hash).
@@ -386,13 +389,7 @@ impl DownloadEngine {
     }
 
     async fn register(&self, spec: &DownloadSpec) -> AppResult<()> {
-        let models_dir = spec
-            .dest_path
-            .parent()
-            .and_then(std::path::Path::parent)
-            .and_then(std::path::Path::parent)
-            .unwrap_or(std::path::Path::new("."))
-            .to_path_buf();
+        let models_dir = spec.models_dir.clone();
 
         let draft = match &spec.register {
             RegisterPlan::None => return Ok(()),
@@ -647,6 +644,11 @@ impl DownloadRow {
             filename: self.filename.clone(),
             kind: kind_from_str(&self.kind),
             dest_path: PathBuf::from(&self.dest_path),
+            models_dir: PathBuf::from(&self.dest_path)
+                .parent()
+                .and_then(std::path::Path::parent)
+                .unwrap_or(std::path::Path::new("."))
+                .to_path_buf(),
             expected_size: self.total_bytes.and_then(|v| u64::try_from(v).ok()),
             sha256_expected: self.sha256_expected.clone(),
             // Resume of a plain file; the GGUF re-registration on completion is

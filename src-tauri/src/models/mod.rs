@@ -183,7 +183,8 @@ impl ModelDraft {
 // ---------------------------------------------------------------- path confinement
 
 /// Resolve `candidate` and require it to be an existing file inside `models_dir`
-/// with no `..` traversal. Returns the canonical path.
+/// with no `..` traversal. Returns the canonical path, with the Windows `\\?\`
+/// verbatim prefix stripped (some downstream tools mishandle it).
 ///
 /// # Errors
 /// [`AppError::Validation`] for a `..` component or a path outside the dir;
@@ -212,7 +213,25 @@ pub fn validate_model_path(candidate: &Path, models_dir: &Path) -> AppResult<Pat
             candidate.display()
         )));
     }
-    Ok(file)
+    Ok(strip_verbatim(file))
+}
+
+/// Strip a Windows `\\?\` (or `\\?\UNC\`) extended-length prefix, if present.
+/// No-op on other platforms.
+#[must_use]
+pub fn strip_verbatim(path: PathBuf) -> PathBuf {
+    match path.to_str() {
+        Some(s) => {
+            if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+                PathBuf::from(format!(r"\\{rest}"))
+            } else if let Some(rest) = s.strip_prefix(r"\\?\") {
+                PathBuf::from(rest)
+            } else {
+                path
+            }
+        }
+        None => path,
+    }
 }
 
 // ---------------------------------------------------------------- filter
