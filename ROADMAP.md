@@ -24,13 +24,17 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 19 — Voice: Chatterbox TTS · playback · barge-in       |
-| **Stage**        | 19.A.1 — clause chunker (`IN PROGRESS`)                 |
-| **Status**       | `IN PROGRESS`                                           |
-| **Blocked by**   | 19.B only — PyTorch + Chatterbox stack in the venv (~3–4 GB, owner go-ahead). 19.A proceeds against a fake TTS worker. |
-| **Plan doc**     | `docs/plan/19_voice-out.md`                             |
+| **Phase**        | 20 — Personas & Context Builder                         |
+| **Stage**        | 20.1 — (finalize at phase entry)                        |
+| **Status**       | `NOT STARTED`                                           |
+| **Blocked by**   | _nothing_.                                              |
+| **Plan doc**     | `docs/plan/20_personas.md`                              |
 | **Last updated** | 2026-09-06                                              |
 | **Updated by**   | phase-19-voice-out                                      |
+
+**Just done:** Phase 19 (voice-out) — Chatterbox Turbo TTS, `cpal` playback,
+clause chunker, the listen→think→speak loop, **barge-in ≈ 4 ms**. Voice is now
+end to end (Phase 18 in + 19 out).
 
 **Architecture frozen (Phase 5).** Binding: `docs/spec/` (the 7 spec docs —
 `PROJECT`, `ARCHITECTURE`, `AI_PIPELINES`, `SECURITY`, `PERFORMANCE`,
@@ -65,6 +69,24 @@ traits + `FakeBackend`; state machine `Unloaded→Loading→Loaded⇄Busy→Unlo
 reservation held across the load, released on every exit; bounded retry; ~2 s
 liveness monitor. `ModelState::Busy` added additively. No real backend yet —
 Phase 15.
+**Phase 19 done** — voice-out (`voice/` grows `chunker` / `playback` / `tts`,
+ADR-0005/0013/0018, `docs/verification/19_phase19_voice-out.md`). `ClauseChunker`
+(streamed LLM deltas → clauses), `Playback` (`cpal` output on a parked thread +
+PCM queue + `stop()` → silent in one buffer), `TtsOutput` (the Chatterbox worker
++ playback, ~1 clause lookahead). `VoiceState::{Thinking,Speaking,Interrupting}`;
+`start_listening(id, model_id: Option)` runs the listen→transcribe→think→speak
+→listen loop with the capture stream live for **barge-in** (VAD onset after a
+500 ms grace, or an explicit stop → `engine.cancel` [persists partial with
+`stop_reason=Cancelled`] → `tts.cancel` → `playback.stop` → `Listening`, timed).
+Config **v7** (`voice.output_device`). `workers/tts.py` (Chatterbox Turbo,
+`ChatterboxTurboTTS.from_local`, 24 kHz; stdout→stderr guard so lib status prints
+don't corrupt the protocol — same for `stt.py`). venv gains `torch 2.11.0+cu128`
+(overrides the `chatterbox-tts` pin of `torch==2.6.0`, pre-Blackwell).
+**All 7 gate items pass** — 30 voice unit tests (real Silero VAD + stdlib fakes
++ a scripted `LlmInstance`) + a **live** gate on the RTX 5080: 3 clauses spoken,
+Chatterbox warm RTF ≈ 0.45, **barge-in trigger→silence ≈ 4 ms**. Truncation =
+`stop_reason=Cancelled` (frozen Phase 17): persisted = generated-so-far, spoken
+= a clause prefix of it. No new ADR.
 **Phase 18 done** — voice-in (`worker/` + `voice/` modules, ADR-0005/0013/0015/
 **0018**, `docs/verification/17_phase18_voice-in.md`). `worker::WorkerSupervisor`
 = the shared stdio JSON-lines actor (Job Object, `WorkerHello` version check,
@@ -321,13 +343,16 @@ owns the MSI + clean-machine layout + a portable archive. **All 7 gate items
 pass** — release build (2m31s) + file sink verified against the real binary
 (redacted, no secrets); diag/Settings unit + component tested.
 
-### Phase 19 — Voice: Chatterbox TTS · playback · barge-in *(current pointer)* — `IN PROGRESS` (19.A Rust half; 19.B blocked on the torch venv) — `docs/plan/19_voice-out.md`
+### Phase 19 — Voice: Chatterbox TTS · playback · barge-in — `COMPLETE` — `docs/verification/19_phase19_voice-out.md`
 Assistant text → chunked TTS → playback; user speech or cancel stops LLM + TTS +
 playback fast; interrupted turn persisted as truncated.
 Gate: text → TTS → playback end to end; barge-in stops everything < ~200 ms and
 returns to listening; TTS failure / worker crash handled; truncated turn persisted.
+**All 7 pass** — `voice/{chunker,playback,tts}` + the listen→think→speak loop +
+barge-in; live on the RTX 5080: 3 clauses spoken, warm RTF ≈ 0.45,
+**barge-in trigger→silence ≈ 4 ms**. Config v7; `torch 2.11.0+cu128`.
 
-### Phase 20 — Personas & Context Builder — `NOT STARTED` — `docs/plan/20_personas.md`
+### Phase 20 — Personas & Context Builder *(current pointer)* — `NOT STARTED` — `docs/plan/20_personas.md`
 Structured persona data + a predictable context builder (system + persona +
 character + conversation + memory + runtime). Verifiable that persona reaches the
 model.
@@ -486,6 +511,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 19 / 19.A.1 `IN PROGRESS` | Phase 19 `COMPLETE` → Phase 20 / 20.1 `NOT STARTED` | phase-19 | **Voice-out landed — voice is end to end.** `voice/` grows `chunker` (streamed LLM `TokenDelta`s → complete clauses; end-of-buffer boundary waits for the next push/flush; numbers not split), `playback` (`cpal` **output** stream on a parked thread + a PCM queue; `enqueue` resamples 24 kHz → device rate; `stop()` clears the queue → silent within one output buffer ≈ 10–20 ms; `OutputDevice` + `list_output_devices`), `resample::Resampler16` (generic mono in→out), `tts::TtsOutput` (the `WorkerKind::Tts` supervisor + `Playback`; `speak_stream(clause_rx, cancel)` → worker → temp WAV → enqueue, ~1 clause lookahead; `TtsResult`). `VoiceState::{Thinking,Speaking,Interrupting}`. `VoiceInput::start_listening(id, model_id: Option<ModelId>)` — `Some` runs the **loop** (`Listening → Transcribing → add_user_turn → Thinking → generate [token stream feeds the chunker→TTS] → Speaking → drain → Listening`, until `stop_listening`); the capture stream stays live through `Speaking` for full-duplex. **Barge-in** (VAD `SpeechStart` while answering, after a 500 ms grace so the tail of the user's own utterance doesn't self-interrupt — or an explicit stop): `engine.cancel(task_id)` (engine persists the accumulated text with `stop_reason=Cancelled`) → `tts.cancel()` → `playback.stop()` → await → `Listening`, `trigger_to_silence_ms` logged. VAD onset threshold raised by `voice.vad.playback_duck` (0.2) while speaking (echo duck). Config schema **v7** (`voice.output_device` + `ConfigKey::VoiceOutputDevice`; forward step `6→7`). `voice_output_devices` IPC; `voice_start` gains `model_id`; `lib.rs` wires the TTS `WorkerSupervisor` (`LOCALAI_TTS_MODEL_DIR`). `workers/tts.py` — `ChatterboxTurboTTS.from_local(models/tts, device="cuda")`, 24 kHz, default voice from `conds.pt`; one clause → a `PCM_16` WAV via `soundfile`; **`sys.stdout` → `stderr`** (the protocol writes to a saved handle) so perth / s3tokenizer status prints don't corrupt the JSON-lines stream — same guard added to `stt.py`. `workers/tts_fake.py` (stdlib sine) for CI. venv: **`torch 2.11.0+cu128`** (`chatterbox-tts` hard-pins `torch==2.6.0` whose CUDA wheels predate Blackwell sm_120; `workers/overrides.txt` + `uv … --override`) + `chatterbox-tts 0.1.7` + `soundfile`; faster-whisper (CTranslate2, own CUDA-12 libs) unaffected — verified. `ChatVoice.tsx` — the mic is a **click-toggle** (start/stop a session); with a model loaded it's a hands-free conversation, reply generated + spoken server-side. `eslint.config.js` ignores `.venv/` (chatterbox pulls gradio → JS). **All 7 gate items PASS** — 30 voice unit tests (real Silero VAD + stdlib fakes + a scripted `LlmInstance`: the conversation loop, barge-in truncation, the chunker, playback) + `voice::live_tests` (`#[ignore]`, `LOCALAI_RUN_VOICE_LIVE`) on the RTX 5080: `voice_live_tts_speaks` — real Chatterbox, **3 clauses spoken**, first request 12 s (model-load-dominated), Chatterbox **warm RTF ≈ 0.45**, **barge-in trigger→silence ≈ 4 ms**; 18.B re-run still green. Truncation decision (recorded): persisted = generated-so-far, spoken = a clause prefix of it. **No new ADR** (`stop_reason=Cancelled` is the frozen Phase 17 signal). 277 rust tests (11 ignored live), 10 vitest, check suite green. Evidence `docs/verification/19_phase19_voice-out.md`. |
 | 2026-09-06 | Phase 19 / 19.1 `NOT STARTED` | Phase 19 / 19.A.1 `IN PROGRESS` (split 19.A / 19.B) | phase-19 | Phase entry: `docs/plan/19_voice-out.md` finalized. **Split** (precedent: 15 / 18). **19.A** — the Rust half, verifiable against a stdlib fake TTS worker: `voice/chunker` (clause splitter driven by LLM token arrival), `voice/playback` (`cpal` **output** stream on a parked thread + PCM queue + `stop()` → silence + 24 kHz→device resample), `voice/tts` (`TtsOutput` — the TTS `WorkerSupervisor` + playback; `speak_stream` pulls clauses → worker → temp WAV → enqueue, ~1 clause lookahead), `VoiceState::{Thinking,Speaking,Interrupting}`, `start_listening(id, model_id: Option)` → the listen→think→speak→listen loop, and the **barge-in 5-step sequence** (`engine.cancel` → `tts.cancel` → `playback.stop` → await → `Listening`, timed) triggered by VAD onset while `Speaking` or an explicit stop. Config **v7** (`voice.output_device`, `voice.vad.playback_duck`). **19.B** — the real `workers/tts.py` (Chatterbox Turbo, `models/tts/`) + the live speak / barge-in gate on the RTX 5080 — **blocked** on adding PyTorch + the Chatterbox stack (~3–4 GB) to the `.venv` (owner go-ahead; the venv today has CTranslate2 for STT, not torch). **No new ADR** — `stop_reason = Cancelled` (frozen Phase 17) is the truncation signal: persisted = generated-so-far, spoken = a clause prefix of it. Echo: headphones / PTT for v1, VAD onset ducked while `Speaking`; AEC deferred. |
 | 2026-09-06 | Phase 18.5 / 18.5.1 `IN PROGRESS` | Phase 18.5 `COMPLETE` → Phase 19 / 19.1 `NOT STARTED` | phase-18.5 | **Deploy & diagnostics landed.** `logging::enable_file_sink` — rotating daily JSON-lines under `<app_data>/logs/localai.jsonl.<date>`, fed the same already-redacted line as stdout via `RedactWriter`; startup `sweep_logs` (keep 7 / ~50 MB, never the last). `build.rs` → `LOCALAI_GIT_SHA`. New `src/diag.rs` — `DiagSnapshot` (build / effective config redacted / registry / resource snapshot / lifecycle / conversation **metadata only** / recent redacted log lines / `nvidia-smi` + OS); `collect()` + `export()` → `<app_data>/diagnostics/diag-<ts>.json`; `diag_snapshot` / `diag_export` IPC. `Settings.tsx` — real page now (read-only effective config + Export-diagnostics button). `ChatVoice.tsx` — `log.info('ui', …)` breadcrumbs (model load/unload, send, voice start/release). `scripts/deploy-local.mjs` — `npm run build` + `cargo build --release` + launch in place; prints git SHA + config/logs/diagnostics paths (`--no-launch` builds only). **All 7 gate items PASS** — `deploy-local.mjs --no-launch` built the release binary in **2m31s** (git_sha `26e2607`); the real release binary boots and writes `%APPDATA%\com.localai.app\logs\localai.jsonl.2026-09-06` (JSON, "log file sink enabled" first line, **no secrets**); `sweep_logs` + `redact_value` + `diag` types unit-tested; `Settings.test.tsx` covers the button. 265 rust tests (8 ignored live), 11 vitest, check suite green. All local (ADR-0015) — no new ADR. Phase 37 still owns the MSI + embedded CPython + sibling layout + first-run acquisition + code signing + a portable archive. Evidence `docs/verification/18_phase18.5_deploy-diagnostics.md`. |
 | 2026-09-06 | Phase 19 / 19.1 `NOT STARTED` | Phase 18.5 / 18.5.1 `IN PROGRESS` (insert before 19) | phase-18.5 | **Owner-requested insert.** After live-testing chat + voice by hand, the owner asked for a repeatable way to run the *real* (release) build with the real settings, plus **local** probes the agent can read after a session it did not watch. New `docs/plan/18.5_deploy-diagnostics.md`. Pulls forward the "log file / rotation / diagnostics bundle" work that `docs/decisions/README.md` had earmarked for **Phase 37** — Phase 37 still owns the MSI, embedded CPython, sibling layout, first-run acquisition, code signing, and a *portable* archive. Scope: (1) `scripts/deploy-local.mjs` — `npm run build` + `cargo build --release` + launch in place, prints build SHA + log/diag paths; (2) `logging::enable_file_sink` — rotating daily JSON-lines under `<app_data>/logs/`, reuses `RedactWriter`, startup sweep (keep 7 / ~50 MB); (3) `diag_export` — one JSON file (`<app_data>/diagnostics/diag-<ts>.json`) with build / effective config (redacted) / registry / resource snapshot / lifecycle / recent log lines / host facts (`nvidia-smi`, OS) — **no conversation content**; a Settings button triggers it; (4) `build.rs` git-SHA env; (5) debug-level UI breadcrumbs via the existing `frontend_log` bridge. **No new ADR** — implements the frozen logging + Phase-37-bundle policy; ADR-0015 already forbids any network path (the probe is a file the owner chooses to share). |
@@ -573,6 +599,8 @@ _None blocking._
 - **Phase 15.D** — 15 split; a pinned prebuilt `llama-server` for v1 (ADR-0004
   amended). Done.
 - **Phase 18** split into **18.A / 18.B**. Done.
+- **Phase 19** split into **19.A / 19.B**. Done. venv gained PyTorch
+  (`torch 2.11.0+cu128`, overriding the `chatterbox-tts` pin) — ADR-0018 amended.
 - **Phase 18.5 — Deploy & Diagnostics** (2026-09-06, owner-requested). A
   repeatable real-build launch + **local** probes (rotating file log, a
   `diag_export` JSON snapshot, UI breadcrumbs) so the owner can live-test on their
@@ -602,6 +630,11 @@ _None blocking._
 
 ### Watch items
 
+- **TTS first-audio is model-load-dominated (Phase 19).** Chatterbox
+  `from_local` ≈ 5–6 s on the first request; warm synth RTF ≈ 0.45. Preloading
+  the TTS worker when a voice session starts (overlapping the ~6 s load with the
+  user's first utterance) would cut perceived first-audio to the warm figure.
+  Small optimisation — do it in Phase 31 (perf audit) or opportunistically.
 - **WDDM hang** on the first sustained `llama-server` generation (Hyper-V enabled
   on host) → Phase 15, 3-step mitigation ladder in
   `docs/verification/02_phase3_probes.md`.

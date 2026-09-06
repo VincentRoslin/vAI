@@ -39,7 +39,16 @@ ADR-0014's shared frozen venv.
 - **Pins are exact** in `workers/requirements.txt` (resolved 2026-09-06,
   Python 3.11, `win_amd64`): `faster-whisper 1.2.1`, `ctranslate2 4.8.2`,
   `nvidia-cublas-cu12 12.9.2.10`, `nvidia-cudnn-cu12 9.25.1.1`, `onnxruntime
-  1.29.0`, + transitive.
+  1.29.0` (STT); `chatterbox-tts 0.1.7`, `soundfile`, and **`torch 2.11.0+cu128`
+  / `torchaudio 2.11.0`** (TTS — Phase 19), + transitive.
+- **PyTorch override (Phase 19).** `chatterbox-tts` hard-pins `torch==2.6.0`,
+  whose CUDA wheels predate Blackwell (sm_120). `workers/overrides.txt` forces
+  `torch 2.11.0+cu128` (from the `download.pytorch.org/whl/cu128` index);
+  `scripts/setup-venv.mjs` passes `uv pip install … --override
+  workers/overrides.txt`. Verified: Chatterbox Turbo loads + synthesises on the
+  RTX 5080 (warm RTF ≈ 0.45); faster-whisper (CTranslate2, its own CUDA-12
+  libs) is unaffected. The PyPI default `torch` wheel is CPU-only, so the cu128
+  index is required.
 - **CUDA library loading:** the box carries a CUDA **13** driver; CTranslate2
   needs the CUDA **12** + cuDNN **9** user-space libraries. Those ship as the
   `nvidia-*-cu12` wheels; `workers/stt.py` prepends each `.venv/Lib/site-packages/

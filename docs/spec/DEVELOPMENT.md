@@ -31,10 +31,13 @@ python -m pip install --user uv      # once
 node scripts/setup-venv.mjs           # creates .venv, installs, checks CUDA
 ```
 
-`.venv/` is gitignored (~2.2 GB). CI running the `worker::` / `voice::` unit
-tests needs no venv — those use `workers/stt_fake.py` (stdlib); only the
-`#[ignore]`d live gates need the real venv + GPU. The shipped app does not use
-`.venv` — it bundles an embedded CPython + the same frozen set (ADR-0014).
+`.venv/` is gitignored (~6 GB — faster-whisper + CUDA-12 libs, plus PyTorch
+2.11.0+cu128 + Chatterbox from Phase 19; `workers/overrides.txt` forces the
+Blackwell-capable torch over the `chatterbox-tts` pin). CI running the
+`worker::` / `voice::` unit tests needs **no** venv — those use the stdlib fakes
+(`stt_fake.py` / `tts_fake.py`); only the `#[ignore]`d live gates need the real
+venv + GPU. The shipped app does not use `.venv` — it bundles an embedded
+CPython + the same frozen set (ADR-0014).
 
 ## 2. Repository layout (target, post-bootstrap)
 

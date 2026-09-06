@@ -151,7 +151,7 @@ export function ChatVoice(): React.JSX.Element {
     setTimeout(() => void reloadMessages(), 150);
   }
 
-  async function reloadMessages(): Promise<void> {
+  const reloadMessages = useCallback(async (): Promise<void> => {
     if (!convo) return;
     try {
       setMessages(await conversationMessages(convo.id));
@@ -159,7 +159,7 @@ export function ChatVoice(): React.JSX.Element {
     } catch (e) {
       log.warn('chat', `reload: ${toAppError(e).kind}`);
     }
-  }
+  }, [convo]);
 
   async function stop(): Promise<void> {
     if (taskId) await chatCancel(taskId).catch(() => undefined);

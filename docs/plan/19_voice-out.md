@@ -1,13 +1,12 @@
 # Phase 19 — Voice: Chatterbox TTS · playback · barge-in
 
-> **Status: FINALIZED AT PHASE ENTRY** (2026-09-06). Step detail derived against
-> the frozen architecture. **Split** (precedent: Phase 15 / 18): **19.A** — the
-> Rust half (playback · clause chunker · TTS worker wiring · the barge-in state
-> machine · full-duplex), verifiable now against a **stdlib fake TTS worker**;
-> **19.B** — the real `workers/tts.py` (Chatterbox Turbo) + the live speak /
-> barge-in gate on the RTX 5080, which needs **PyTorch + the Chatterbox stack**
-> added to the venv (**owner go-ahead — ~3–4 GB**; the venv today has
-> CTranslate2 for STT, *not* torch).
+> **Status: COMPLETE** (2026-09-06) — all 7 gate items pass. Evidence
+> `docs/verification/19_phase19_voice-out.md`. Both halves done: **19.A** (the
+> Rust half — `chunker` / `playback` / `resample` / `tts` / the barge-in state
+> machine) and **19.B** (real `workers/tts.py` Chatterbox Turbo + a live gate on
+> the RTX 5080 — **barge-in trigger → silence ≈ 4 ms**, warm RTF ≈ 0.45). Owner
+> cleared the torch/Chatterbox download; `torch 2.11.0+cu128` overrides the
+> `chatterbox-tts` pin of `torch==2.6.0` (pre-Blackwell).
 
 > **Architecture frozen at Phase 5.** Governing: **ADR-0005** (Chatterbox Turbo,
 > clause-chunked synthesis driven by LLM token arrival, `cpal` playback with a

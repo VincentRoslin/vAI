@@ -5,7 +5,7 @@ application state, persistence, model lifecycle, resource management, scheduling
 process supervision, and IPC. Single crate, one module per subsystem
 (`docs/decisions/0001-single-rust-crate.md`).
 
-## Current modules (Phase 18.5)
+## Current modules (Phase 19)
 
 | Module | What | Doc |
 | ------ | ---- | --- |
@@ -15,7 +15,7 @@ process supervision, and IPC. Single crate, one module per subsystem
 | `ipc/` | Typed IPC boundary — `commands` (`app_*`, `frontend_log`, `config_*`), `error::{AppError, ErrorEnvelope}` | `docs/decisions/0002-ipc-design.md` |
 | `contracts/` | The serializable vocabulary for **both** the IPC and worker boundaries — `ids`, `task`, `model`, `generation`, `conversation`, `resource`, `worker`. No behaviour. | `docs/contracts.md` |
 | `diag.rs` | Local diagnostics snapshot (Phase 18.5) — `DiagSnapshot` (build + effective config + registry + resources + lifecycle + conversation **metadata** + recent redacted log lines + `nvidia-smi`/OS). `collect()` / `export()` (→ `<app_data>/diagnostics/diag-<ts>.json`). `diag_snapshot` / `diag_export` IPC. All local (ADR-0015). | `docs/plan/18.5_deploy-diagnostics.md` |
-| `config/` | The settings authority — one JSON file (`<app_config_dir>/config.json`), layered defaults ← file ← session, schema **v6** (`models` · `logging` · `resources.vram_safety_margin_mb` · `runtimes.dir` · `workers.{dir,python}` · `voice.input_device`) + forward migrations, atomic write | `docs/decisions/0016-configuration.md` |
+| `config/` | The settings authority — one JSON file (`<app_config_dir>/config.json`), layered defaults ← file ← session, schema **v7** (`models` · `logging` · `resources.vram_safety_margin_mb` · `runtimes.dir` · `workers.{dir,python}` · `voice.{input_device,output_device}`) + forward migrations, atomic write | `docs/decisions/0016-configuration.md` |
 | `db/` | SQLite persistence — writer pool (1) + reader pool (4), pragma hook, `refinery` forward-only migrations (`migrations/`) with verified `VACUUM INTO` backup, `write`/`read` helpers, `error::DbError`, `AppMetaRepo` | `docs/decisions/0009-persistence.md` |
 | `models/` | Model registry — `model_entry` rows (`V0002`), `ModelRegistry` CRUD + capability `query`, `ModelDraft`/`ModelFilter`, path confinement (`validate_model_path`), availability computed from `path.exists()`, `Arc`-cached list cleared on write. IDs are UUIDv4 (ADR-0017). | `docs/plan/11_model-registry.md` |
 | `acquisition/` | Model acquisition — `gguf` (header parser), `hf` (HF API + range fetch), `budget` (pre-transfer guard), `download` (`reqwest` engine: `.part` + `Range` resume + SHA-256 verify + register), `AcquisitionService`, `acquire_fixed` (pinned STT/TTS bundles → short `stt` / `tts` subdirs). `model_downloads` (`V0003`). **The only runtime network egress.** | `docs/plan/12_model-acquisition.md`, ADR-0008 |
@@ -25,11 +25,11 @@ process supervision, and IPC. Single crate, one module per subsystem
 | `llm/` | llama.cpp adapter (first LLM backend) — `LlamaBackend` (`ModelBackend`: spawns a supervised `llama-server` child from `runtimes.dir`), `server` (free loopback port + `--api-key` bearer + Windows Job Object kill-on-close), `client` (`/health` + `/completion` non-stream + SSE stream, per-call deadline, cancel-drops-response), `protocol` (llama.cpp JSON + SSE parser — nothing else references it), `LlamaServer` (`LoadedInstance` + `LlmInstance` generate/stream). Verified live: pinned prebuilt `b10819` + Qwen 0.5B, TTFT ≈ 23 ms. | `docs/plan/15_llama-cpp-adapter.md`, ADR-0003/0004/0013 |
 | `job.rs` | Windows `JobObject` (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) — every spawned child (`llama-server`, a stdio worker) dies with the app even on a hard crash. No-op on non-Windows. | ADR-0013 |
 | `worker/` | The **shared stateless-worker supervisor** (ADR-0013) — `WorkerSupervisor` spawns `python <script>` under a Job Object with the ADR-0015 lockdown env (`env`, one place, tested against the list), `WorkerHello` handshake (protocol + kind), request/response mux by `WorkerJobId`, `Progress` sink, cancel-abandons-wait, bounded-backoff restart → `Failed`. `layout` resolves interpreter + script (dev from `workers.*` config, ship from `current_exe()` siblings). Reused by TTS (19) + the embedder (27). | `docs/plan/18_voice-in.md`, ADR-0013/0015/0018 |
-| `voice/` | Voice input (Phase 18) — `capture` (`cpal`/WASAPI, `!Send` stream on a parked thread), `resample` (`rubato` → 16 kHz mono + downmix), `vad` (Silero v5 ONNX via `ort` `load-dynamic`; window+state machine → `SpeechStart`/`SpeechEnd`/`MaxDurationCut`; `force_endpoint` for push-to-talk), `segment` (endpointed WAV under the cache dir), `mod` (`VoiceInput` — one push-to-talk session at a time; capture→VAD→STT worker→`ConversationEngine::add_user_turn(Text)`; low-confidence drop policy; `watch<VoiceState>`). `voice_*` IPC. Live: faster-whisper `large-v3` fp16 on the RTX 5080. | `docs/plan/18_voice-in.md`, ADR-0005/0013/0018 |
+| `voice/` | Voice (Phase 18 in + Phase 19 out) — `capture` (`cpal` input, `!Send` stream on a parked thread), `playback` (`cpal` output + PCM queue + instant `stop`), `resample` (`rubato`: `ToMono16k`, generic `Resampler16`), `vad` (Silero v5 ONNX via `ort`; `SpeechStart`/`SpeechEnd`/`MaxDurationCut`; runtime onset duck), `segment` (endpointed WAV), `chunker` (streamed deltas → clauses), `tts` (`TtsOutput` = the Tts worker + playback, ~1 clause lookahead), `mod` (`VoiceInput` — one session; `start_listening(id, model_id: Option)` runs listen→transcribe→think→speak→listen; **barge-in** = `engine.cancel` → `tts.cancel` → `playback.stop`, timed; low-confidence drop; `watch<VoiceState>`). `voice_*` IPC. Live on the RTX 5080: faster-whisper `large-v3` fp16 (STT), Chatterbox Turbo (TTS, warm RTF ≈ 0.45, barge-in ≈ 4 ms). | `docs/plan/18_voice-in.md`, `docs/plan/19_voice-out.md`, ADR-0005/0013/0018 |
 
 ## Modules added by later phases
 
-blob store (with the first blob feature) · TTS in `voice/` (P19) ·
+blob store (with the first blob feature) ·
 `context` builder (P20) · `memory` (P21) · `image` (P22) · `scheduler` (P23–24) ·
 `characters` (P25–29). Each phase registers its module here and in
 `docs/spec/ARCHITECTURE.md` §3.

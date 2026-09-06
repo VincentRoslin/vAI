@@ -50,7 +50,7 @@ blob store, model lifecycle, resource/VRAM/RAM management, scheduling, task
 management, process supervision, IPC, security-sensitive operations, business
 logic. Single crate (`src-tauri/`); modules interact through defined interfaces.
 
-Modules (see `src-tauri/README.md` for the live list): **as of Phase 18** —
+Modules (see `src-tauri/README.md` for the live list): **as of Phase 19** —
 `lib.rs` (Tauri builder + a `setup()` fn wiring config/DB/logging/registry/acquisition/
 resources/lifecycle/llm/conversation into managed state; exit hook cancels the in-flight
 generation + unloads models + checkpoints the WAL), `logging` (JSON stdout, non-blocking lossy, boundary secret
@@ -93,7 +93,12 @@ layout resolution; reused by STT/TTS/embedder),
 **Silero v5 VAD in-core** via `ort` with a `SpeechStart/SpeechEnd/MaxDurationCut`
 state machine, endpointed-segment WAV, `VoiceInput` → `ConversationEngine::
 add_user_turn(Text)` — the same path typed input takes; push-to-talk for v1;
-low-confidence transcripts dropped, never a blank turn; ADR-0005). Each later
+low-confidence transcripts dropped, never a blank turn; **Phase 19**: the token
+stream also feeds a clause chunker → the Chatterbox TTS worker → `cpal` playback;
+**barge-in** (VAD onset while speaking, or an explicit stop) trips the LLM
+cancel + the TTS cancel + `playback.stop()` and returns to listening ≈ 4 ms;
+`start_listening(id, model_id)` runs the full listen→think→speak loop; ADR-0005).
+Each later
 phase adds its module and registers it in `src-tauri/README.md` and §3 here.
 
 ### React / TypeScript — presentation only
@@ -129,8 +134,9 @@ loopback only, launched with the offline/no-telemetry env (ADR-0015).
 | GPU/VRAM + system-RAM accounting | `resources` module (`resource manager`) |
 | GPU job ordering + eviction | `scheduler` |
 | Process spawn / health / restart | `job` (`JobObject`) + `worker` (`WorkerSupervisor`) for workers; `llm`/image server for model servers — all Rust-supervised |
-| Audio capture + device selection | `voice::capture` (Rust core, `cpal`) |
-| Voice-activity detection / endpointing | `voice::vad` (Silero, in-core — ADR-0005) |
+| Audio capture + playback + device selection | `voice::capture` / `voice::playback` (Rust core, `cpal`) |
+| Voice-activity detection / endpointing / barge-in trigger | `voice::vad` (Silero, in-core — ADR-0005) |
+| TTS clause chunking + synthesis + playback + the barge-in state machine | `voice` module (Rust core; the Chatterbox worker does synthesis only) |
 | Conversations (all modalities) | `conversation` module — the one engine (`ConversationEngine`) |
 | Prompt assembly | `context builder` (one) |
 | Memory | `memory` module (FTS5, per-scope) |
