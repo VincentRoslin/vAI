@@ -40,6 +40,7 @@ const KREA2_ESTIMATED_VRAM_MB: u32 = 11_750;
 pub(super) async fn acquire_image(
     config: &ConfigManager,
     registry: &ModelRegistry,
+    allow_quantize: bool,
 ) -> AppResult<ModelId> {
     let eff = config.effective();
     let models_dir = eff.models.dir.clone();
@@ -65,6 +66,14 @@ pub(super) async fn acquire_image(
     match quant_cache_state(&quant_cache) {
         QuantCacheState::Ok => {
             tracing::info!(target: "acquisition", dir = %quant_cache.display(), "NF4 quant cache present");
+        }
+        state if !allow_quantize => {
+            // Startup path: never quantize silently (needs .venv-image + ~26 GB
+            // RAM). The explicit `acquire_image_model` IPC passes allow_quantize.
+            return Err(AppError::NotFound(format!(
+                "the Krea 2 NF4 quant cache is {state:?} at {} — run image-model setup",
+                quant_cache.display()
+            )));
         }
         state => {
             tracing::info!(target: "acquisition", ?state, dir = %quant_cache.display(), "building NF4 quant cache (one-time)");
@@ -299,7 +308,7 @@ mod tests {
         let db = std::sync::Arc::new(crate::db::Db::open(&tmp.path().join("d.db")).await.unwrap());
         let registry = ModelRegistry::new(db);
         let cfg = ConfigManager::load(tmp.path(), tmp.path()).unwrap();
-        let err = acquire_image(&cfg, &registry).await.unwrap_err();
+        let err = acquire_image(&cfg, &registry, true).await.unwrap_err();
         assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
         std::env::remove_var("HF_HUB_CACHE");
     }

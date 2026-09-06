@@ -171,7 +171,17 @@ impl AcquisitionService {
     /// [`AppError::BackendUnavailable`] if a needed one-time quantize cannot run;
     /// a persistence error from the registry.
     pub async fn acquire_image(&self) -> AppResult<ModelId> {
-        krea2::acquire_image(&self.config, self.engine.registry()).await
+        krea2::acquire_image(&self.config, self.engine.registry(), true).await
+    }
+
+    /// Register Krea 2 **only if** the NF4 quant cache is already built — never
+    /// quantizes. Called on startup so a staged model just works; a machine
+    /// without the cache stays unregistered until `acquire_image` is called.
+    ///
+    /// # Errors
+    /// [`AppError::NotFound`] when the weights or the quant cache are absent.
+    pub async fn register_image_if_ready(&self) -> AppResult<ModelId> {
+        krea2::acquire_image(&self.config, self.engine.registry(), false).await
     }
 
     /// Every download row.

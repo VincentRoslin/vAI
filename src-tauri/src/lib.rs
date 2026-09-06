@@ -189,6 +189,12 @@ fn setup(app: &mut tauri::App) -> Result<(), String> {
     if scanned > 0 {
         tracing::info!(scanned, "registered new GGUF models from models/llm");
     }
+    // Register the Krea 2 image model if its assets are already staged (never
+    // quantizes here — that is the explicit `acquire_image_model` IPC).
+    match tauri::async_runtime::block_on(acquisition.register_image_if_ready()) {
+        Ok(id) => tracing::info!(%id, "Krea 2 image model registered"),
+        Err(err) => tracing::info!(%err, "no image model registered yet"),
+    }
     app.manage(acquisition);
     app.manage(Arc::clone(&registry));
     app.manage(Arc::clone(&database));

@@ -634,9 +634,14 @@ Newest first. One line per state transition (§3 rule 6).
   the RTX 5080; `image/live_tests.rs` all 6 items pass (base + Realism-LoRA
   batch=2 generate, VRAM 2.1 GB → peak 11.45 GB → restored, cancel writes
   nothing, sidecar crash → typed error + LLM restored, `acquire_image` 9 ms no
-  download). Evidence `docs/verification/22_phase22_image-generation.md`. Follow-up
-  carried forward: **no UI for `acquire_image_model`** — add a Models-page button
-  in a later UI pass (the IPC command exists).
+  download). Evidence `docs/verification/22_phase22_image-generation.md`.
+  **Post-22 UI pass (2026-09-06):** `/images` rebuilt as a 3-pane generator
+  (prompt + style chips + presets · large viewer · library strip); every PNG
+  also written to `<app_data>/images/` (`image_output_dir` / `image_open_output_dir`
+  IPC); startup auto-registers Krea 2 when the quant cache is staged
+  (`register_image_if_ready`, never quantizes). No standalone "set up image
+  model" button yet — the `acquire_image_model` IPC (which *can* quantize) is
+  still unsurfaced; add it to Models later.
 
 - **Phase 12 gate 5 — fixed STT/TTS models — `DONE` (2026-09-06).** Run on the
   owner's "Download fresh versions" go-ahead ahead of Phase 18.
