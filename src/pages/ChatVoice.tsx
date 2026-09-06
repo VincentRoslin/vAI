@@ -9,7 +9,6 @@ import type {
 } from '../lib/contracts';
 import {
   chatCancel,
-  chatGenerate,
   chatSend,
   conversationCreate,
   conversationList,
@@ -166,48 +165,32 @@ export function ChatVoice(): React.JSX.Element {
     if (taskId) await chatCancel(taskId).catch(() => undefined);
   }
 
-  async function talkStart(): Promise<void> {
-    if (!convo || streaming || voice !== 'Idle') return;
+  // While a voice session runs, poll the canonical transcript so the user sees
+  // turns + replies land (the Rust loop drives generation + TTS server-side).
+  useEffect(() => {
+    if (voice === 'Idle') return undefined;
+    const t = setInterval(() => void reloadMessages(), 800);
+    return () => clearInterval(t);
+  }, [voice, reloadMessages]);
+
+  async function toggleVoice(): Promise<void> {
+    if (!convo) return;
+    if (voice !== 'Idle') {
+      log.info('ui', 'voice: stop');
+      await voiceStop().catch(() => undefined);
+      setVoice('Idle');
+      void reloadMessages();
+      return;
+    }
     setNotice(null);
-    log.info('ui', 'voice: push-to-talk start');
+    log.info('ui', `voice: start (model ${loaded ? 'loaded' : 'none'})`);
     try {
-      await voiceStart(convo.id, (s) => setVoice(s.kind));
+      await voiceStart(convo.id, loaded?.id ?? null, (s) => setVoice(s.kind));
     } catch (e) {
       setVoice('Idle');
       log.warn('ui', `voice start failed: ${toAppError(e).kind}`);
       setNotice(`Voice unavailable: ${toAppError(e).kind}`);
     }
-  }
-
-  async function talkStop(): Promise<void> {
-    log.info('ui', 'voice: push-to-talk release');
-    try {
-      await voiceStop();
-    } catch {
-      /* already stopped */
-    }
-    setVoice('Idle');
-    // The transcript is now a user turn; show it, then reply if a model is loaded.
-    setTimeout(() => {
-      void (async () => {
-        await reloadMessages();
-        if (!convo || !loaded || streaming) return;
-        const msgs = await conversationMessages(convo.id).catch(() => []);
-        const last = msgs.at(-1);
-        if (last?.role === 'User') {
-          setStreaming({ text: '', error: null });
-          try {
-            const id = await chatGenerate({ conversationId: convo.id, modelId: loaded.id }, (ev) =>
-              onEvent(ev),
-            );
-            setTaskId(id);
-          } catch (e) {
-            setStreaming(null);
-            setNotice(`Reply failed: ${toAppError(e).kind}`);
-          }
-        }
-      })();
-    }, 250);
   }
 
   return (
@@ -278,12 +261,16 @@ export function ChatVoice(): React.JSX.Element {
         <button
           type="button"
           className={`chat__mic ${voice !== 'Idle' ? 'chat__mic--live' : ''}`}
-          disabled={!convo || !!streaming}
-          onPointerDown={() => void talkStart()}
-          onPointerUp={() => void talkStop()}
-          onPointerLeave={() => voice !== 'Idle' && void talkStop()}
-          aria-label="Hold to talk"
-          title="Hold to talk"
+          disabled={!convo || (!!streaming && voice === 'Idle')}
+          onClick={() => void toggleVoice()}
+          aria-label={voice === 'Idle' ? 'Start voice' : 'Stop voice'}
+          title={
+            voice === 'Idle'
+              ? loaded
+                ? 'Voice chat — speak, get a spoken reply, talk over it to interrupt'
+                : 'Voice input — speak one message'
+              : `Voice: ${voice} — click to stop`
+          }
         >
           {voice === 'Idle' ? '🎤' : voiceLabel(voice)}
         </button>
@@ -331,6 +318,12 @@ function voiceLabel(v: VoiceState['kind']): string {
       return '🗣';
     case 'Transcribing':
       return '✍️';
+    case 'Thinking':
+      return '💭';
+    case 'Speaking':
+      return '🔊';
+    case 'Interrupting':
+      return '✋';
     case 'Error':
       return '⚠️';
     default:

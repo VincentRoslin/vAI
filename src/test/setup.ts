@@ -18,6 +18,7 @@ const arrayCommands = new Set([
   'conversation_list',
   'conversation_messages',
   'voice_input_devices',
+  'voice_output_devices',
 ]);
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -27,13 +28,13 @@ vi.mock('@tauri-apps/api/core', () => ({
     if (cmd === 'app_ping') return { nonce: 'test', version: '0.1.0' };
     if (cmd === 'config_get') {
       return {
-        version: 6,
+        version: 7,
         models: { dir: '/tmp/models', budget_gb: 100, min_free_gb: 20 },
         logging: { level: 'info' },
         resources: { vram_safety_margin_mb: 1500 },
         runtimes: { dir: '/tmp/runtimes' },
         workers: { dir: '/tmp/workers', python: '/tmp/py/python' },
-        voice: { input_device: null },
+        voice: { input_device: null, output_device: null },
       };
     }
     if (cmd === 'conversation_create') {

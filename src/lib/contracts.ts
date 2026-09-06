@@ -77,9 +77,10 @@ export type { ChatSendRequest } from '../bindings/ChatSendRequest';
 export type { GenerationHandle } from '../bindings/GenerationHandle';
 export type { GenerationState } from '../bindings/GenerationState';
 
-// --- Voice (Phase 18) ---
+// --- Voice (Phase 18 in, Phase 19 out) ---
 export type { VoiceState } from '../bindings/VoiceState';
 export type { InputDevice } from '../bindings/InputDevice';
+export type { OutputDevice } from '../bindings/OutputDevice';
 
 // --- Diagnostics (Phase 18.5) ---
 export type { DiagSnapshot } from '../bindings/DiagSnapshot';

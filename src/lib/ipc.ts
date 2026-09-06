@@ -28,6 +28,7 @@ import type { Message } from '../bindings/Message';
 import type { RegisteredModel } from '../bindings/RegisteredModel';
 import type { ResourceSnapshot } from '../bindings/ResourceSnapshot';
 import type { InputDevice } from '../bindings/InputDevice';
+import type { OutputDevice } from '../bindings/OutputDevice';
 import type { VoiceState } from '../bindings/VoiceState';
 import type { DiagSnapshot } from '../bindings/DiagSnapshot';
 
@@ -206,23 +207,29 @@ export const chatState = (): Promise<GenerationState> => call('chat_state');
 /** Cancel an in-flight generation. */
 export const chatCancel = (taskId: string): Promise<void> => call('chat_cancel', { taskId });
 
-// --- Voice input (Phase 18) ---
+// --- Voice (Phase 18 in, Phase 19 out) ---
 
 /** The machine's audio input devices. */
 export const voiceInputDevices = (): Promise<InputDevice[]> => call('voice_input_devices');
 
-/** Start push-to-talk listening on `conversationId`; `onState` receives every
- * {@link VoiceState} change until the session ends. */
+/** The machine's audio output devices (Phase 19). */
+export const voiceOutputDevices = (): Promise<OutputDevice[]> => call('voice_output_devices');
+
+/** Start a voice session on `conversationId`. Pass `modelId` to run the full
+ * listen → think → speak loop with barge-in (Phase 19); omit it to transcribe
+ * one utterance (Phase 18). `onState` receives every {@link VoiceState} change. */
 export async function voiceStart(
   conversationId: string,
+  modelId: string | null,
   onState: (s: VoiceState) => void,
 ): Promise<void> {
   const events = new Channel<VoiceState>();
   events.onmessage = onState;
-  return call('voice_start', { conversationId, events });
+  return call('voice_start', { conversationId, modelId, events });
 }
 
-/** Release push-to-talk — transcribe an utterance in progress, then stop. */
+/** Release push-to-talk / stop the session — transcribe an utterance in
+ * progress, or barge-in on the assistant, then stop. */
 export const voiceStop = (): Promise<void> => call('voice_stop');
 
 /** Current voice state (poll fallback). */
