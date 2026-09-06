@@ -63,6 +63,14 @@ export function ChatVoice(): React.JSX.Element {
     }
   }, []);
 
+  const loadPersonas = useCallback(async () => {
+    try {
+      setPersonas(await personaList());
+    } catch (e) {
+      log.warn('chat', `persona list: ${toAppError(e).kind}`);
+    }
+  }, []);
+
   // Bootstrap: restore the latest conversation (or create one), load models.
   useEffect(() => {
     void (async () => {
@@ -75,13 +83,9 @@ export function ChatVoice(): React.JSX.Element {
         setNotice(`Could not open a conversation: ${toAppError(e).kind}`);
       }
       await refreshModels();
-      try {
-        setPersonas(await personaList());
-      } catch (e) {
-        log.warn('chat', `persona list: ${toAppError(e).kind}`);
-      }
+      await loadPersonas();
     })();
-  }, [refreshModels]);
+  }, [refreshModels, loadPersonas]);
 
   useEffect(() => {
     const t = setInterval(() => void refreshModels(), 2000);
@@ -207,6 +211,22 @@ export function ChatVoice(): React.JSX.Element {
     }
   }
 
+  async function newChat(): Promise<void> {
+    if (voice !== 'Idle') return;
+    setNotice(null);
+    setPreview(null);
+    try {
+      const c = await conversationCreate();
+      setConvo(c);
+      setMessages([]);
+      setDraft('');
+      await loadPersonas();
+      log.info('ui', 'new conversation');
+    } catch (e) {
+      setNotice(`Could not start a chat: ${toAppError(e).kind}`);
+    }
+  }
+
   async function changePersona(personaId: string | null): Promise<void> {
     if (!convo || personaLocked) return;
     try {
@@ -243,15 +263,25 @@ export function ChatVoice(): React.JSX.Element {
             </>
           )}
         </span>
-        {loaded ? (
-          <button type="button" onClick={() => void unload()}>
-            Unload
+        <span className="chat__bar-actions">
+          <button
+            type="button"
+            onClick={() => void newChat()}
+            disabled={voice !== 'Idle' || messages.length === 0}
+            title="Start a fresh conversation (needed to pick a different persona)"
+          >
+            New chat
           </button>
-        ) : (
-          <button type="button" onClick={() => void ensureModel()}>
-            Load model
-          </button>
-        )}
+          {loaded ? (
+            <button type="button" onClick={() => void unload()}>
+              Unload
+            </button>
+          ) : (
+            <button type="button" onClick={() => void ensureModel()}>
+              Load model
+            </button>
+          )}
+        </span>
       </header>
 
       {notice && <div className="chat__notice">{notice}</div>}
@@ -262,8 +292,13 @@ export function ChatVoice(): React.JSX.Element {
           <select
             value={convo?.persona_id ?? ''}
             disabled={!convo || personaLocked}
+            onFocus={() => void loadPersonas()}
             onChange={(e) => void changePersona(e.target.value || null)}
-            title={personaLocked ? 'Fixed once the conversation has a message' : undefined}
+            title={
+              personaLocked
+                ? 'Fixed once the conversation has a message — start a new chat to change it'
+                : undefined
+            }
           >
             <option value="">Default assistant</option>
             {personas.map((p) => (

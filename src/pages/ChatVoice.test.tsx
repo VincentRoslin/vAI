@@ -123,6 +123,29 @@ describe('ChatVoice', () => {
     await waitFor(() => expect(locked.disabled).toBe(true));
   });
 
+  it('"New chat" starts a fresh conversation and unlocks the persona picker', async () => {
+    vi.mocked(ipc.conversationMessages)
+      .mockResolvedValueOnce([
+        {
+          id: 'm1',
+          conversation_id: 'c1',
+          role: 'User',
+          content: { type: 'Text', data: { text: 'hi' } },
+          created_at: 't',
+          generation: null,
+        },
+      ] as never)
+      .mockResolvedValue([] as never);
+
+    render(<ChatVoice />);
+    const picker = (await screen.findByLabelText(/persona/i)) as HTMLSelectElement;
+    await waitFor(() => expect(picker.disabled).toBe(true));
+
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    await waitFor(() => expect(ipc.conversationCreate).toHaveBeenCalled());
+    await waitFor(() => expect(picker.disabled).toBe(false));
+  });
+
   it('"Show prompt" fetches the assembled prompt', async () => {
     vi.mocked(ipc.lifecycleStatus).mockResolvedValue(loadedModel);
     vi.mocked(ipc.modelsList).mockResolvedValue([

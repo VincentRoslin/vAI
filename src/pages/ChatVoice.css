@@ -20,6 +20,16 @@
   gap: var(--space-2);
   font-size: 0.9rem;
   color: var(--text-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat__bar-actions {
+  display: inline-flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
 }
 
 .chat__dot {
