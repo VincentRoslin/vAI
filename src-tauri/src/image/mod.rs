@@ -13,6 +13,7 @@
 
 pub mod client;
 pub mod protocol;
+pub mod repo;
 pub mod server;
 
 #[cfg(test)]

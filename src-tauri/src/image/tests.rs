@@ -2,17 +2,20 @@
 //! (`image_gen/server_fake.py`) — no venv, no GPU, no real model.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use super::repo::{ImageRepo, NewGeneratedImage};
 use super::server::SidecarArgs;
 use super::Krea2Backend;
-use crate::contracts::ids::ModelId;
+use crate::contracts::ids::{AssetId, ModelId};
 use crate::contracts::model::{
     Device, ModelBackend as ModelBackendName, ModelCapabilities, ModelKind, ModelMetadata, Quant,
     RegisteredModel, RegistryAvailability,
 };
+use crate::db::Db;
 use crate::ipc::AppError;
 use crate::lifecycle::backend::{ImageGenerateArgs, LoadRequest, ModelBackend};
 
@@ -200,6 +203,122 @@ async fn backend_refuses_a_protocol_mismatch() {
         matches!(&err, AppError::BackendUnavailable(m) if m.contains("protocol")),
         "unexpected: {err:?}"
     );
+}
+
+// ---------------------------------------------------------------- ImageRepo
+
+async fn repo() -> (ImageRepo, tempfile::TempDir) {
+    let tmp = tempfile::tempdir().unwrap();
+    let db = Db::open(&tmp.path().join("img.db")).await.unwrap();
+    db.migrate().await.unwrap();
+    (ImageRepo::new(Arc::new(db)), tmp)
+}
+
+/// Write a fake safetensors file with a header containing `keys`.
+fn write_lora(dir: &std::path::Path, name: &str, keys: &str) {
+    let header = format!("{{{keys}}}");
+    let mut bytes = (header.len() as u64).to_le_bytes().to_vec();
+    bytes.extend(header.as_bytes());
+    std::fs::write(dir.join(name), bytes).unwrap();
+}
+
+#[tokio::test]
+async fn seed_registers_present_loras_and_presets_idempotently() {
+    let (repo, tmp) = repo().await;
+    let loras = tmp.path().join("loras");
+    std::fs::create_dir_all(&loras).unwrap();
+    write_lora(
+        &loras,
+        "krea2-realism.safetensors",
+        "\"transformer.x.lora_A.weight\":[]",
+    );
+    write_lora(
+        &loras,
+        "krea2-lustify-nsfw.safetensors",
+        "\"x.lora_down.weight\":[]",
+    );
+    write_lora(&loras, "some-community.safetensors", "\"junk\":[]");
+
+    repo.seed(&loras).await.unwrap();
+    repo.seed(&loras).await.unwrap(); // idempotent
+
+    let mut got = repo.list_loras().await.unwrap();
+    got.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+    let names: Vec<_> = got.iter().map(|l| l.display_name.as_str()).collect();
+    assert_eq!(names, ["Lustify (NSFW)", "Realism", "Some Community"]);
+    assert!(got.iter().all(|l| l.base_compat == "krea2"));
+    assert_eq!(
+        got.iter()
+            .find(|l| l.display_name == "Realism")
+            .unwrap()
+            .tags,
+        vec!["realism".to_owned()]
+    );
+
+    let presets = repo.list_presets().await.unwrap();
+    assert_eq!(presets.len(), 3);
+    assert!(presets
+        .iter()
+        .any(|p| p.name == "Square 1024" && p.params.width == 1024));
+}
+
+#[tokio::test]
+async fn seed_skips_absent_files_and_resolve_reports_unknown() {
+    let (repo, tmp) = repo().await;
+    repo.seed(&tmp.path().join("does-not-exist")).await.unwrap();
+    assert!(repo.list_loras().await.unwrap().is_empty());
+    let err = repo
+        .resolve_lora(&crate::contracts::ids::ImageLoraId::from_trusted("nope"))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, AppError::NotFound(_)));
+}
+
+#[tokio::test]
+async fn record_and_list_generations_round_trip() {
+    let (repo, tmp) = repo().await;
+    let loras = tmp.path().join("loras");
+    std::fs::create_dir_all(&loras).unwrap();
+    write_lora(
+        &loras,
+        "krea2-realism.safetensors",
+        "\"x.lora_A.weight\":[]",
+    );
+    repo.seed(&loras).await.unwrap();
+    let lora_id = repo.list_loras().await.unwrap()[0].id.clone();
+
+    let asset = AssetId::from_trusted("d".repeat(64));
+    repo.record_generation(NewGeneratedImage {
+        asset: asset.clone(),
+        byte_len: 2048,
+        prompt: "a castle".to_owned(),
+        negative: None,
+        width: 1024,
+        height: 1024,
+        steps: 8,
+        guidance: 0.0,
+        seed: 7,
+        lora: Some((lora_id.clone(), 0.9)),
+        model_id: ModelId::from_trusted("krea2"),
+    })
+    .await
+    .unwrap();
+
+    let rows = repo.list_generated(10).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].asset, asset);
+    assert_eq!(rows[0].seed, 7);
+    assert_eq!(rows[0].lora.as_deref(), Some("Realism"));
+    assert!(repo
+        .known_asset_ids()
+        .await
+        .unwrap()
+        .contains(asset.as_str()));
+
+    // resolve_lora feeds the orchestrator the basename + weight.
+    let (file, weight) = repo.resolve_lora(&lora_id).await.unwrap();
+    assert_eq!(file, "krea2-realism.safetensors");
+    assert!((weight - 0.9).abs() < 1e-6);
 }
 
 #[tokio::test]
