@@ -10,6 +10,7 @@ import {
   hfListFiles,
   hfSearch,
   modelDelete,
+  modelRegisterLocal,
   modelsList,
   toAppError,
 } from '../lib/ipc';
@@ -31,6 +32,9 @@ export function Models(): React.JSX.Element {
   const [files, setFiles] = useState<HfGgufFile[]>([]);
   const [status, setStatus] = useState<string>('');
   const [searching, setSearching] = useState(false);
+  const [localName, setLocalName] = useState('');
+  const [localStatus, setLocalStatus] = useState('');
+  const [registering, setRegistering] = useState(false);
 
   const refresh = useCallback(() => {
     modelsList()
@@ -74,6 +78,32 @@ export function Models(): React.JSX.Element {
       setFiles(await hfListFiles(repo));
     } catch (err) {
       setStatus(`Could not list files: ${toAppError(err).kind}`);
+    }
+  }
+
+  async function registerLocal(e: React.FormEvent): Promise<void> {
+    e.preventDefault();
+    const name = localName.trim();
+    if (!name) return;
+    setRegistering(true);
+    setLocalStatus('');
+    try {
+      await modelRegisterLocal(name);
+      setLocalName('');
+      setLocalStatus(`Registered ${name}.`);
+      log.info('models', `registered local gguf: ${name}`);
+      refresh();
+    } catch (err) {
+      const k = toAppError(err).kind;
+      setLocalStatus(
+        k === 'NotFound'
+          ? 'Not found — put the file directly in the models folder first.'
+          : k === 'Validation'
+            ? 'Rejected — needs a bare filename of a valid .gguf in the models folder.'
+            : `Register failed: ${k}`,
+      );
+    } finally {
+      setRegistering(false);
     }
   }
 
@@ -127,6 +157,19 @@ export function Models(): React.JSX.Element {
             Get text-to-speech model
           </button>
         </div>
+
+        <form onSubmit={registerLocal} className="models__search">
+          <input
+            value={localName}
+            onChange={(e) => setLocalName(e.target.value)}
+            placeholder="my-model.Q6_K.gguf — a file already in the models folder"
+            aria-label="Local GGUF filename"
+          />
+          <button className="models__btn" type="submit" disabled={registering || !localName.trim()}>
+            {registering ? 'Registering…' : 'Register local GGUF'}
+          </button>
+        </form>
+        {localStatus && <p className="models__status">{localStatus}</p>}
       </section>
 
       {downloads.length > 0 && (
