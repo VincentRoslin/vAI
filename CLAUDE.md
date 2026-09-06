@@ -19,14 +19,18 @@ This file is loaded into every Claude Code session. It has two parts:
 **Never scan a directory to find something — every subdirectory has a `README.md`
 index. Read the index, then the one file you need.**
 
+**The seven frozen spec docs live in `docs/spec/`** (`PROJECT`, `ARCHITECTURE`,
+`AI_PIPELINES`, `SECURITY`, `PERFORMANCE`, `UI_GUIDELINES`, `DEVELOPMENT`).
+Only `README.md`, `CLAUDE.md`, and `ROADMAP.md` sit at the repo root.
+
 | Looking for… | Go to |
 | ------------ | ----- |
 | Current phase + what to do next | `ROADMAP.md` §1 → the linked `docs/plan/NN` |
-| How a subsystem works / a decision's rationale | `ARCHITECTURE.md` / `AI_PIPELINES.md` → `docs/decisions/README.md` → the ADR |
-| A product requirement | `PROJECT.md` (summary) or `docs/product/requirements.md` (`FR-*`/`NFR-*` by number) |
+| How a subsystem works / a decision's rationale | `docs/spec/ARCHITECTURE.md` / `docs/spec/AI_PIPELINES.md` → `docs/decisions/README.md` → the ADR |
+| A product requirement | `docs/spec/PROJECT.md` (summary) or `docs/product/requirements.md` (`FR-*`/`NFR-*` by number) |
 | A wire/IPC/worker contract type | `docs/contracts.md` → `src-tauri/src/contracts/` → `src/lib/contracts.ts` |
 | A per-phase step plan | `docs/plan/README.md` → `docs/plan/NN_*.md` |
-| UI rules / visual baseline | `UI_GUIDELINES.md` → `docs/design/visual-language.md` |
+| UI rules / visual baseline | `docs/spec/UI_GUIDELINES.md` → `docs/design/visual-language.md` |
 | What was tested / verified | `docs/verification/README.md` |
 | Pre-architecture research (historical) | `docs/research/phase3/README.md` |
 | Cross-session context / owner preferences | `memory/MEMORY.md` |
@@ -36,13 +40,14 @@ index. Read the index, then the one file you need.**
 | `CLAUDE.md` (this file) | Constitution + agent operating manual | Rules, ownership boundaries, how to work | Live |
 | `ROADMAP.md` | **State machine + phase index** — LocalAI course (Phase 0–40) | Current phase/stage, progress, gate summaries, open questions (§7) | Live. Mechanics fixed; per-phase detail lives in `docs/plan/` |
 | `docs/plan/NN_*.md` | Detailed, individually-verifiable steps for one phase (index: `docs/plan/README.md`) | *How* to execute the current phase | Live. Read the current phase's file first; it names its governing ADRs |
-| `PROJECT.md` | **The officialized product definition** | What LocalAI is / does / is not; the binding FR/NFR summary | **Live — frozen at Phase 5.** Changes need STOP→propose→approve. Constitution stays here in `CLAUDE.md`. |
-| `ARCHITECTURE.md` | **The frozen system design** | Runtimes, boundaries, single-authority map, the VRAM constraint, cross-cutting flows | **Live — frozen at Phase 5.** |
-| `AI_PIPELINES.md` | Each AI pipeline end to end | LLM / STT / VAD / TTS / image / identity / memory / relationship | **Live — frozen at Phase 5.** |
-| `SECURITY.md` · `PERFORMANCE.md` · `UI_GUIDELINES.md` | Threat model + controls · perf budgets + method · UI bar | Their named topic | **Live — frozen at Phase 5.** |
+| `docs/spec/` | The seven frozen spec docs (index: `docs/spec/README.md`) | — | **Live — frozen at Phase 5.** Changes need STOP→propose→approve. |
+| `docs/spec/PROJECT.md` | **The officialized product definition** | What LocalAI is / does / is not; the binding FR/NFR summary | Frozen at Phase 5. Constitution stays here in `CLAUDE.md`. |
+| `docs/spec/ARCHITECTURE.md` | **The frozen system design** | Runtimes, boundaries, single-authority map, the VRAM constraint, cross-cutting flows | Frozen at Phase 5. |
+| `docs/spec/AI_PIPELINES.md` | Each AI pipeline end to end | LLM / STT / VAD / TTS / image / identity / memory / relationship | Frozen at Phase 5. |
+| `docs/spec/SECURITY.md` · `docs/spec/PERFORMANCE.md` · `docs/spec/UI_GUIDELINES.md` | Threat model + controls · perf budgets + method · UI bar | Their named topic | Frozen at Phase 5. |
 | `docs/design/` | Visual design (`README.md` + `visual-language.md`) | Shell layout, chat geometry, the radius/spacing scale (soft lock) | Live |
-| `DEVELOPMENT.md` | Dev prerequisites, loop, check suite, git | Working in the repo | Live — updated as tooling is wired (Phase 6) |
-| `README.md` | Quickstart | clone → install → run | Empty until Phase 6.11 |
+| `docs/spec/DEVELOPMENT.md` | Dev prerequisites, loop, check suite, git | Working in the repo | Live — updated as tooling is wired |
+| `README.md` | Quickstart | clone → install → run | Live |
 | `docs/OVERVIEW.md` | Early product/architecture overview | historical context | Superseded by `PROJECT.md` + `ARCHITECTURE.md`; kept for history |
 | `docs/product/requirements.md` | Numbered product requirements (`FR-*`, `NFR-*`, `ARQ-*`) | The requirement IDs `PROJECT.md` summarizes | Live |
 | `docs/contracts.md` | The typed contract vocabulary + evolution rules | `src-tauri/src/contracts/` (IPC **and** worker boundary types) | Live — from Phase 7 |
@@ -51,8 +56,8 @@ index. Read the index, then the one file you need.**
 | `docs/decisions/` | ADRs (`README.md` + `NNNN-*.md`) — one decision each | The frozen architecture decisions | Live — ADR-0001…0015 all `ACCEPTED` |
 | `memory/` (outside the repo, in `~/.claude/...`) | Claude's cross-session notes | Context, user preferences, open tensions | Live |
 
-If a prompt says "read `PROJECT.md`" and it is empty, that is expected — the rules
-are here in `CLAUDE.md`.
+If a prompt says "read `PROJECT.md`", it now lives at `docs/spec/PROJECT.md`
+(likewise the other six spec docs) — the rules themselves stay here in `CLAUDE.md`.
 
 ---
 
@@ -282,6 +287,6 @@ volunteers in chat.
    `docs/plan/` file — as part of the same change when work advances or the plan
    changes.
 8. **Keep it traceable.** Adding a module, directory, ADR, or evidence file? Add
-   its index entry in the same change (`ARCHITECTURE.md` map / a local `README.md`
-   / the relevant `docs/*/README.md`). See `DEVELOPMENT.md` §9. The repo must stay
-   navigable index → file, never by scanning.
+   its index entry in the same change (`docs/spec/ARCHITECTURE.md` map / a local
+   `README.md` / the relevant `docs/*/README.md`). See `docs/spec/DEVELOPMENT.md`
+   §9. The repo must stay navigable index → file, never by scanning.

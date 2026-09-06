@@ -29,17 +29,19 @@ an embedded CPython + one shared frozen venv (ADR-0014).
 ## 2. Repository layout (target, post-bootstrap)
 
 ```
-/                     CLAUDE.md, PROJECT.md, ARCHITECTURE.md, AI_PIPELINES.md,
-                      SECURITY.md, PERFORMANCE.md, UI_GUIDELINES.md, ROADMAP.md,
-                      README.md, .gitattributes
+/                     README.md, CLAUDE.md, ROADMAP.md, .gitattributes
 src-tauri/            Rust core (single crate, module per subsystem)
 src/                  React/TS frontend
 workers/              stt.py, tts.py, image_server.py, embedder.py
+docs/spec/            the 7 frozen spec docs (PROJECT, ARCHITECTURE,
+                      AI_PIPELINES, SECURITY, PERFORMANCE, UI_GUIDELINES, this file)
 docs/plan/            per-phase implementation plans
 docs/decisions/       ADRs
+docs/design/          visual language (soft lock)
 docs/research/        pre-architecture research (historical)
 docs/verification/    gate evidence
 docs/product/         requirements
+docs/contracts.md     the typed contract vocabulary
 ```
 
 ## 3. The dev loop (per `docs/plan/NN`)

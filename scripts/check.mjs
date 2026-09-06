@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The full check suite (`DEVELOPMENT.md` §4). Runs every gate in order and stops
+ * The full check suite (`docs/spec/DEVELOPMENT.md` §4). Runs every gate in order and stops
  * on the first failure. CI and the pre-commit hook call this.
  */
 import { execSync } from 'node:child_process';

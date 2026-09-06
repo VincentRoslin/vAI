@@ -4,12 +4,13 @@ A Windows-first, local-first AI desktop application — local LLM chat & voice,
 image generation, and persistent AI characters. Runs fully offline after models
 are acquired.
 
-**Status:** bootstrap (Phase 6 of the 40-step course). No AI functionality yet.
+**Status:** core platform (Phase 15 of the 41-step course). LLM adapter in place;
+first end-to-end chat is Phase 16.
 
 ## Quickstart
 
-Prerequisites (see `DEVELOPMENT.md` §1): Rust ≥ 1.98 + MSVC build tools, Node ≥ 22,
-WebView2 runtime.
+Prerequisites (see `docs/spec/DEVELOPMENT.md` §1): Rust ≥ 1.98 + MSVC build tools,
+Node ≥ 22, WebView2 runtime.
 
 ```bash
 git clone <this repo>
@@ -41,10 +42,11 @@ npm run tauri dev                      # launch the app
 | `scripts/` | `check.mjs` — the check suite |
 | `.githooks/` | pre-commit (fmt/lint) + commit-msg convention |
 | `docs/` | Project docs — start at `CLAUDE.md` and `ROADMAP.md` |
+| `docs/spec/` | The 7 frozen spec docs (`docs/spec/README.md`) |
 
 ## Documentation
 
-`CLAUDE.md` (rules + a "looking for X → go to Y" map) · `PROJECT.md` (what it is) ·
-`ARCHITECTURE.md` (how it's built) · `AI_PIPELINES.md` · `ROADMAP.md` (state +
-plan) · `docs/decisions/` (ADRs). Every `docs/` subdirectory has a `README.md`
-index.
+`CLAUDE.md` (rules + a "looking for X → go to Y" map) · `ROADMAP.md` (state +
+plan) · `docs/spec/PROJECT.md` (what it is) · `docs/spec/ARCHITECTURE.md` (how
+it's built) · `docs/spec/AI_PIPELINES.md` · `docs/decisions/` (ADRs). Every
+`docs/` subdirectory has a `README.md` index.
