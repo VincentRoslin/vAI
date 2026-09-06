@@ -25,12 +25,12 @@
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
 | **Phase**        | 15 — llama.cpp Adapter                                  |
-| **Stage**        | 15.1 — (finalize at phase entry)                        |
-| **Status**       | `NOT STARTED`                                           |
+| **Stage**        | 15.1 — Deps + module skeleton                           |
+| **Status**       | `IN PROGRESS` (split — real-binary gate items deferred) |
 | **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/15_llama-cpp-adapter.md`                     |
+| **Plan doc**     | `docs/plan/15_llama-cpp-adapter.md` (finalized)         |
 | **Last updated** | 2026-09-06                                              |
-| **Updated by**   | phase-14-lifecycle                                      |
+| **Updated by**   | phase-15-llama                                          |
 
 **Architecture frozen (Phase 5).** Binding: `PROJECT.md`, `ARCHITECTURE.md`,
 `AI_PIPELINES.md`, `SECURITY.md`, `PERFORMANCE.md`, `UI_GUIDELINES.md`,
@@ -229,12 +229,15 @@ insufficient resources rejected pre-spawn; cancel mid-load releases; forced
 failure → recovery; unexpected exit detected + reconciled; state-machine tests.
 **All 9 gate items pass** (`FakeBackend`; real backend is Phase 15).
 
-### Phase 15 — llama.cpp Adapter *(current pointer)* — `NOT STARTED` — `docs/plan/15_llama-cpp-adapter.md`
+### Phase 15 — llama.cpp Adapter *(current pointer)* — `IN PROGRESS` (15.1, split) — `docs/plan/15_llama-cpp-adapter.md`
 First LLM backend behind a clean `LlmBackend` interface; llama.cpp detail confined
 to the adapter; transport per the Phase 3 ADR.
 Gate: startup + readiness; non-streaming + streaming generation; cancellation
 reaches the job; timeout handled; crash detected + recovered; clean shutdown no
 orphan; no raw config leaks past the adapter.
+**Split (owner-approved):** adapter + supervision + HTTP/SSE client built and
+tested against an in-process stub now; the real-CUDA-`llama-server` + real-GGUF
+gate items (1, real-2/3, 5, 6, 8) deferred → §6 (no CUDA Toolkit on the machine).
 
 ---
 
@@ -424,6 +427,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 15 `NOT STARTED` | Phase 15 / 15.1 `IN PROGRESS` (split) | phase-15 | Phase entry: `docs/plan/15_llama-cpp-adapter.md` finalized (10 steps + a deferred `15.D`). **Owner decision: split the phase** — the machine has no CUDA Toolkit / `nvcc` (ADR-0004 build needs a ~3 GB install), and the owner wants a *fresh* llama.cpp, not one reused from another project. New `src-tauri/src/llm/` module built + tested against an **in-process `tiny_http` stub `llama-server`** now: `ModelBackend` impl, process supervision (free port + `--api-key` bearer per ADR-0013 — `llama-server` is upstream HTTP, no named pipe — + Windows Job Object kill-on-close), `/health` poll, `/completion` non-stream + SSE stream client, cancellation + timeout, `LlmInstance` capability trait + `as_any` downcast hook on `LoadedInstance` (additive). Gate items **4, 7, 9 + the stub sides of 2/3/6** PASS now; **1, real-2, real-3, 5, 6-real, 8** (real CUDA `llama-server` + real Qwen 0.5B GGUF) **deferred → §6**. Owner cleared downloading project assets for `15.D`. Deps to add: `windows` (JobObjects), `getrandom`. No new ADR (confirms ADR-0013). |
 | 2026-09-06 | Phase 14 / 14.1 `IN PROGRESS` | Phase 14 `COMPLETE` → Phase 15 / 15.1 `NOT STARTED` | phase-14 | Model lifecycle manager landed: `src-tauri/src/lifecycle/` — `backend` (`ModelBackend`/`LoadedInstance` traits via `async-trait`; `FakeBackend` test-only), `mod` (`LifecycleManager`: `HashMap<ModelId, Entry>` behind one `tokio::sync::Mutex`; `load`/`unload`/`cancel_load`/`begin_use`→`BusyGuard`/`end_use`/`check_liveness`/`state`/`statuses`/`register_backend`). State machine `Unloaded→Loading→Loaded⇄Busy→Unloading`, `Failed` with an explicit recovery transition. Concurrent same-model `load`s coalesce on a `Notify` (`enable()`d under the lock). Phase 13 reservation acquired inside `run_load` **before** the backend load, `commit`ed with the instance's measured VRAM, `release`d on every failure / cancel / unload / liveness kill. `RetryPolicy { max_attempts: 3, backoff_base: 500 ms }` exponential; `Cancelled` is not a failure. `~2 s` liveness loop → `Failed` + release + reconcile. Backend `load`/`shutdown`/`health` never called under the transition lock. **Collision resolved:** `ModelState::Busy` added additively to the frozen contract (`docs/contracts.md` §3 precedent). New DTO `LifecycleStatus`; `lifecycle_status` IPC. `lib.rs` builds + manages `Arc<LifecycleManager>`, spawns the liveness loop. Deps: `async-trait` + `tokio-util` promoted to direct deps (already transitive — 0 net crates). **All 9 gate items PASS** (15 async tests, `FakeBackend` + `MockProbe`). 196 rust tests (+16), 7 vitest, check suite green. `tauri dev` clean. No real backend (Phase 15), no eviction/hot-swap (Phase 23/24), no generation. No new ADR. Evidence `docs/verification/13_phase14_lifecycle.md`. |
 | 2026-09-06 | Phase 14 `NOT STARTED` | Phase 14 / 14.1 `IN PROGRESS` | phase-14 | Phase entry: `docs/plan/14_model-lifecycle.md` finalized (13 steps, 9 gate items) against ADR-0007 + ADR-0010. New `src-tauri/src/lifecycle/` — `ModelBackend` / `LoadedInstance` traits (`async-trait`; `FakeBackend` test-only), `LifecycleManager` state machine (`Unloaded → Loading → Loaded ⇄ Busy → Unloading`, `Failed` recovery) behind one `tokio::sync::Mutex`; concurrent same-model loads coalesce on a `Notify`; reservation from Phase 13 acquired **before** the backend load, released on every exit path; `RetryPolicy { max_attempts: 3, backoff_base: 500 ms }`; a ~2 s liveness monitor → `Failed` + release + reconcile. **Collision flagged + resolved:** the state machine needs a `Busy` state the frozen `contracts::model::ModelState` lacks → **added additively** (`docs/contracts.md` additive-only; nothing matches it exhaustively). Deps: `async-trait`, `tokio-util` as direct deps (both already in the tree — 0 net crates). No real backend (Phase 15), no eviction/hot-swap (Phase 23/24), no generation. No new ADR. |
 | 2026-09-06 | Phase 13 / 13.1 `IN PROGRESS` | Phase 13 `COMPLETE` → Phase 14 / 14.1 `NOT STARTED` | phase-13 | Resource manager landed: `src-tauri/src/resources/` — `probe` (`HardwareProbe` trait; `NvmlProbe` = `nvml-wrapper` GPU 0 `memory_info` + `sysinfo` RAM, NVML init failure non-fatal; `MockProbe`), `estimate` (`estimate_llm_vram` closed form + `Calibration` per-model EMA factor, clamped), `mod` (`ResourceManager`: in-memory `LedgerEntry` vec; `request`/`commit`/`release`/`observe`/`snapshot`/`reconcile` behind one `tokio::sync::Mutex<Inner>`; `request` reads the cached measurement, never the probe; stale-TTL 120 s, drift-slack 512 MB). Config schema **v4**: `resources.vram_safety_margin_mb` (default 1500, `ConfigKey::VramSafetyMarginMb`, session override, `<= 65536`). Contracts (additive): `GpuMemory`, `RamInfo`, `ResourceSnapshot`. IPC `resources_snapshot`. `lib.rs` builds it over `NvmlProbe`, takes the first measurement, spawns the observe loop (1.5 s busy / 10 s idle). Deps: `nvml-wrapper 0.10`, `sysinfo 0.39` (`system` only). **All 9 gate items PASS** (mock hardware) + real probe confirmed on the reference machine (16 303 MB VRAM / 31 938 MB RAM) and in a `tauri dev` launch. 180 rust tests (+27), 7 vitest. Baselines: `request` ~µs, first NVML+`sysinfo` probe ~13 ms (off the request path). No new ADR (implements ADR-0007); ledger persistence + full TDR flow deferred to Phase 33. Evidence `docs/verification/12_phase13_resources.md`. |
@@ -471,6 +475,17 @@ _None blocking._
   real `Qwen/Qwen2.5-0.5B-Instruct-GGUF` — download + HF SHA-256 verify +
   register, 50.6 MB/s). Run `acquire_fixed` (via the `/models` UI or a live test)
   before **Phase 18**, when voice needs the models. Does not block Phase 13+.
+
+- **Phase 15 gate items 1 / real-2 / real-3 / 5 / 6-real / 8 — `NOT EXECUTED`
+  (deferred, `15.D`).** The `llm/` adapter, process supervision (free port +
+  `--api-key` bearer + Windows Job Object), and the full `/health` + `/completion`
+  SSE client are built and pass against an in-process stub. The real run needs a
+  **fresh** CUDA `llama-server` binary — the machine has no CUDA Toolkit / `nvcc`
+  (ADR-0004: ~3 GB install to build from source; or a pinned prebuilt) — plus the
+  real `Qwen/Qwen2.5-0.5B-Instruct-GGUF` (~400 MB, owner-cleared to download when
+  doing `15.D`). Run `15.D` before or with **Phase 16** (the first vertical
+  slice needs real tokens). Owner wants the binary fresh, not reused from another
+  project.
 
 - **Phase 15 watch item**: WDDM hang risk on the first sustained `llama-server`
   generation (Hyper-V enabled on host — inconclusive from inspection). Mitigations
