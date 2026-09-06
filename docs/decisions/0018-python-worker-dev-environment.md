@@ -2,6 +2,8 @@
 
 - **Status:** ACCEPTED (Phase 18, 2026-09-06) — closes the env-audit O-item
   ("Python worker environment strategy → ADR", `docs/verification/01_env_audit.md`).
+  **Amended Phase 22.B (2026-09-06): two venvs** (`.venv` workers + `.venv-image`
+  image sidecar) — see the Amendment section.
 - **Governing / related:** ADR-0013 (worker transport), ADR-0014 (packaging —
   the *ship* story), ADR-0015 (worker network lockdown).
 
@@ -65,6 +67,38 @@ ADR-0014's shared frozen venv.
 - **Config** (`workers.dir`, `workers.python`, schema v6) lets the dev build point
   at `<repo>/workers` + `<repo>/.venv/Scripts/python.exe`; the packaged build
   ignores them and uses the sibling layout.
+
+## Amendment — two venvs (Phase 22.B, 2026-09-06)
+
+The single shared venv held until Phase 22. Image generation (Krea 2 Turbo,
+`diffusers`) broke it: `chatterbox-tts 0.1.7` (Phase 19, workers venv) hard-pins
+`torch==2.6.0` / `transformers==5.2.0` / `diffusers==0.29.0` / `safetensors==0.5.3`,
+while Krea 2 needs `transformers 5.16.1` + `diffusers` at an untagged commit
+(`Krea2Pipeline` is `0.41.0.dev0`). No single resolve satisfies both.
+
+Options weighed: (A) one venv, force-override the chatterbox pins and hope the
+Turbo model still loads — the `torch` override already worked in Phase 19, but
+overriding `transformers` by ~10 minor versions under a live model is a
+different risk; (B) a second venv for the image sidecar only. **Owner chose B**
+(2026-09-06).
+
+- `<repo>/.venv` — unchanged: workers (STT/TTS), `workers/requirements.txt` +
+  `workers/overrides.txt`.
+- `<repo>/.venv-image` — image sidecar only, `image_gen/requirements.txt` +
+  `workers/overrides.txt` (reused for its `--extra-index-url` + `torch 2.11.0`
+  cu128 line; `diffusers` pulls `torch`, the override forces the Blackwell
+  build). Gitignored (~6–8 GB — its own torch + CUDA libs).
+- `scripts/setup-venv.mjs` builds both (`workers` / `image` args build one).
+- The image backend's interpreter is `.venv/…/python.exe` with the `.venv`
+  component swapped to `.venv-image` (`src-tauri/src/lib.rs::image_venv_python`);
+  `SidecarArgs.python` is already per-process, so nothing else changes.
+- The shipped app still bundles **one** embedded CPython (ADR-0014); the two
+  frozen sets are installed side by side into it at build time. The two-venv
+  split is a **dev-only** consequence of the pin conflict — Phase 37 reconciles
+  the frozen sets, and may keep them as two environments if the conflict stands.
+
+The `nvidia-cu12` (STT) / `nvidia-cu13` (llama.cpp) / image-venv torch overlap on
+disk grows to ~2–3 GB — still the cost ADR-0014 accepted.
 
 ## Consequences
 

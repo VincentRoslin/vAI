@@ -23,21 +23,29 @@ machine:
 
 **Package manager:** npm (default; `corepack` available for pnpm if a concrete
 reason appears — Phase 6 decision, ADR if changed).
-**Python env:** one `uv`-managed venv at `<repo>/.venv` from the pinned
-`workers/requirements.txt` (**ADR-0018**), shared by every worker. Create/refresh:
+**Python env:** two `uv`-managed venvs (**ADR-0018** + its Phase 22.B two-venv
+amendment). Create/refresh:
 
 ```
 python -m pip install --user uv      # once
-node scripts/setup-venv.mjs           # creates .venv, installs, checks CUDA
+node scripts/setup-venv.mjs           # builds .venv AND .venv-image
+node scripts/setup-venv.mjs image     # just one, if only that changed
 ```
 
-`.venv/` is gitignored (~6 GB — faster-whisper + CUDA-12 libs, plus PyTorch
-2.11.0+cu128 + Chatterbox from Phase 19; `workers/overrides.txt` forces the
-Blackwell-capable torch over the `chatterbox-tts` pin). CI running the
-`worker::` / `voice::` unit tests needs **no** venv — those use the stdlib fakes
-(`stt_fake.py` / `tts_fake.py`); only the `#[ignore]`d live gates need the real
-venv + GPU. The shipped app does not use `.venv` — it bundles an embedded
-CPython + the same frozen set (ADR-0014).
+- `<repo>/.venv` — workers (STT/TTS), from `workers/requirements.txt` +
+  `workers/overrides.txt` (~6 GB — faster-whisper + CUDA-12 libs + torch
+  2.11.0+cu128 + Chatterbox; the override forces the Blackwell torch over the
+  `chatterbox-tts` pin).
+- `<repo>/.venv-image` — the image sidecar only, from `image_gen/requirements.txt`
+  + `workers/overrides.txt` (diffusers + Krea 2 deps + its own torch; ~6–8 GB).
+  Separate because `chatterbox-tts` hard-pins `torch`/`transformers`/`diffusers`
+  against Krea 2's needs.
+
+Both are gitignored. CI running the `worker::` / `voice::` / `image::` unit tests
+needs **no** venv — those use stdlib fakes (`stt_fake.py` / `tts_fake.py` /
+`image_gen/server_fake.py`); only the `#[ignore]`d live gates need the real
+venvs + GPU. The shipped app uses neither — it bundles an embedded CPython + the
+same frozen sets (ADR-0014).
 
 ## 2. Repository layout (target, post-bootstrap)
 

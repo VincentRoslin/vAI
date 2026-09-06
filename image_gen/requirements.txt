@@ -1,19 +1,24 @@
 # LocalAI image-generation sidecar (image_gen/server.py) — Python deps.
-# Installed into the SAME dev venv as workers/requirements.txt (<repo>/.venv,
-# ADR-0018); the shipped app bundles the embedded CPython + this frozen set too
-# (ADR-0014). Everything here runs under the ADR-0015 hostile-network env and
-# must not reach the network at runtime — model weights are acquired ahead of
-# time into <models.dir>/image/ (see docs/plan/22).
+# Installed into its OWN dev venv at <repo>/.venv-image (ADR-0018 two-venv
+# amendment, 2026-09-06): chatterbox-tts 0.1.7 in workers/requirements.txt
+# hard-pins torch==2.6.0 / transformers==5.2.0 / diffusers==0.29.0, which cannot
+# co-resolve with Krea 2's transformers 5.16.1 + diffusers @ commit. The shipped
+# app bundles an embedded CPython + this frozen set (ADR-0014). Everything here
+# runs under the ADR-0015 hostile-network env and must not reach the network at
+# runtime — model weights are acquired ahead of time into <models.dir>/image/
+# (see docs/plan/22).
 #
-#   node scripts/setup-venv.mjs        (installs workers/ + image_gen/ together)
+#   node scripts/setup-venv.mjs         (builds .venv AND .venv-image)
+#   node scripts/setup-venv.mjs image   (just .venv-image)
 #
-# Exact pins — resolved 2026-09-06, Python 3.11, win_amd64, against the same
-# torch==2.11.0+cu128 already pinned in workers/requirements.txt (Blackwell /
-# RTX 5080). torch itself is NOT repeated here — workers/requirements.txt owns it.
+# Exact pins — resolved 2026-09-06, Python 3.11, win_amd64. torch is NOT pinned
+# here: diffusers pulls it, and scripts/setup-venv.mjs passes
+# `--override workers/overrides.txt` which forces torch==2.11.0+cu128 (the
+# Blackwell / RTX 5080 build) from the pytorch cu128 index.
 
 # torchvision: pulled in by diffusers' image transforms; the cu128 build must
-# match torch 2.11.0. The pytorch cu128 index is already added by
-# workers/requirements.txt's --extra-index-url.
+# match torch 2.11.0. The pytorch cu128 index comes from the
+# --extra-index-url line in workers/overrides.txt (passed as --override).
 torchvision==0.26.0
 
 # diffusers from a pinned commit: Krea2Pipeline is not in a tagged release yet
@@ -33,9 +38,7 @@ uvicorn==0.52.4
 pydantic==2.13.5
 pillow==12.3.0
 
-# NOT pinned here on purpose:
-#   safetensors — chatterbox-tts (workers/) hard-pins ==0.5.3; diffusers/peft
-#                 work fine with it, so the shared resolve wins. Not part of the
+# NOT pinned here on purpose — uv resolves them transitively for this venv:
+#   safetensors — diffusers/peft/transformers agree a version; not part of the
 #                 quant-cache fingerprint.
-#   numpy       — workers/requirements.txt pins 1.26.4 (chatterbox); diffusers
-#                 is compatible.
+#   numpy       — diffusers/torch pull a compatible 1.x/2.x.

@@ -20,9 +20,13 @@ npm-debug.log*
 /runtime/
 /models/
 
-# Python worker venv (~2.2 GB: faster-whisper + CUDA 12 libs). Recreate from
-# workers/requirements.txt — see scripts/setup-venv.mjs (ADR-0018).
+# Python venvs. Recreate both from scripts/setup-venv.mjs (ADR-0018):
+#   /.venv/       — workers (STT/TTS): faster-whisper + CUDA 12 libs + torch 2.11
+#   /.venv-image/ — image sidecar only: diffusers + Krea 2 deps (two-venv split,
+#                   ADR-0018 amendment 2026-09-06 — chatterbox-tts hard-pins
+#                   torch/transformers/diffusers against Krea 2's needs).
 /.venv/
+/.venv-image/
 
 # Editor
 .idea/
