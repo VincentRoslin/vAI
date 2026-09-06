@@ -12,6 +12,7 @@
 //! Phase 23 automated) orchestrator's job.
 
 pub mod client;
+pub mod orchestrator;
 pub mod protocol;
 pub mod repo;
 pub mod server;

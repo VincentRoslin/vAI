@@ -342,3 +342,297 @@ async fn load_is_cancellable() {
     };
     assert!(matches!(err, AppError::Cancelled));
 }
+
+// ---------------------------------------------------------------- orchestrator
+
+use std::sync::Mutex as StdMutex;
+use std::time::Duration;
+
+use super::orchestrator::ImageOrchestrator;
+use crate::contracts::ids::ImageLoraId;
+use crate::contracts::image::{ImageEvent, ImagePhase, ImageRequest, LoraSelection};
+use crate::contracts::model::ModelState;
+use crate::conversation::ConversationEngine;
+use crate::lifecycle::backend::FakeBackend;
+use crate::lifecycle::{LifecycleManager, RetryPolicy};
+use crate::models::{ModelDraft, ModelRegistry};
+use crate::resources::probe::MockProbe;
+use crate::resources::ResourceManager;
+
+const FAKE_LLM_BACKEND: &str = "fake-llm";
+
+struct Harness {
+    _tmp: tempfile::TempDir,
+    orch: Arc<ImageOrchestrator>,
+    lifecycle: Arc<LifecycleManager>,
+    llm_id: ModelId,
+    blob: Arc<crate::blob::BlobStore>,
+    repo: ImageRepo,
+}
+
+async fn harness() -> Option<Harness> {
+    let python = which_python()?;
+    let tmp = tempfile::tempdir().unwrap();
+    let models_dir = tmp.path().join("models");
+    let loras_dir = tmp.path().join("loras");
+    let exchange = tmp.path().join("exchange");
+    std::fs::create_dir_all(models_dir.join("image").join("krea2")).unwrap();
+    std::fs::create_dir_all(&loras_dir).unwrap();
+    write_lora(
+        &loras_dir,
+        "krea2-realism.safetensors",
+        "\"x.lora_A.weight\":[]",
+    );
+    std::fs::write(models_dir.join("llm.gguf"), b"GGUF").unwrap();
+
+    let db = Arc::new(Db::open(&tmp.path().join("o.db")).await.unwrap());
+    db.migrate().await.unwrap();
+
+    let registry = Arc::new(ModelRegistry::new(Arc::clone(&db)));
+    let llm_id = registry
+        .register(
+            ModelDraft {
+                display_name: "Fake LLM".to_owned(),
+                kind: ModelKind::Llm,
+                backend: ModelBackendName(FAKE_LLM_BACKEND.to_owned()),
+                quant: None,
+                path: models_dir.join("llm.gguf"),
+                streaming: true,
+                context_tokens: Some(4096),
+                estimated_vram_mb: Some(4096),
+                devices: vec![Device::Cuda],
+                config: serde_json::json!({}),
+            },
+            &models_dir,
+        )
+        .await
+        .unwrap();
+    let krea2_id = registry
+        .register(
+            ModelDraft {
+                display_name: "Krea 2 Turbo".to_owned(),
+                kind: ModelKind::Image,
+                backend: ModelBackendName(super::BACKEND_KEY.to_owned()),
+                quant: Some(Quant("nf4".to_owned())),
+                path: models_dir.join("image").join("krea2"),
+                streaming: false,
+                context_tokens: None,
+                estimated_vram_mb: Some(11_750),
+                devices: vec![Device::Cuda],
+                config: serde_json::json!({}),
+            },
+            &models_dir,
+        )
+        .await
+        .unwrap();
+
+    let resources = Arc::new(ResourceManager::new(Arc::new(MockProbe::new()), 1_500));
+    resources.observe().await;
+    let lifecycle = Arc::new(LifecycleManager::new(
+        Arc::clone(&registry),
+        Arc::clone(&resources),
+        RetryPolicy::default(),
+    ));
+    lifecycle.register_backend(
+        FAKE_LLM_BACKEND,
+        Arc::new(FakeBackend::new(Duration::from_millis(5))) as Arc<dyn ModelBackend>,
+    );
+    lifecycle.register_backend(
+        super::BACKEND_KEY,
+        Arc::new(Krea2Backend::new(
+            python,
+            fake_script(),
+            None,
+            Some(loras_dir.clone()),
+            exchange,
+        )) as Arc<dyn ModelBackend>,
+    );
+
+    let engine = Arc::new(ConversationEngine::new(
+        Arc::clone(&db),
+        Arc::clone(&registry),
+        Arc::clone(&lifecycle),
+    ));
+    let blob = Arc::new(crate::blob::BlobStore::new(tmp.path().join("blobs")));
+    let repo = ImageRepo::new(Arc::clone(&db));
+    repo.seed(&loras_dir).await.unwrap();
+
+    let orch = Arc::new(ImageOrchestrator::new(
+        Arc::clone(&lifecycle),
+        resources,
+        registry,
+        engine,
+        Arc::clone(&blob),
+        repo.clone(),
+    ));
+    let _ = krea2_id;
+    Some(Harness {
+        _tmp: tmp,
+        orch,
+        lifecycle,
+        llm_id,
+        blob,
+        repo,
+    })
+}
+
+fn collect_sink() -> (
+    impl Fn(ImageEvent) + Send + Sync + 'static,
+    Arc<StdMutex<Vec<ImageEvent>>>,
+) {
+    let log = Arc::new(StdMutex::new(Vec::new()));
+    let l2 = Arc::clone(&log);
+    (move |ev| l2.lock().unwrap().push(ev), log)
+}
+
+async fn wait_for_terminal(log: &Arc<StdMutex<Vec<ImageEvent>>>) -> ImageEvent {
+    for _ in 0..300 {
+        if let Some(t) = log.lock().unwrap().iter().rev().find(|e| {
+            matches!(
+                e,
+                ImageEvent::Done { .. } | ImageEvent::Error { .. } | ImageEvent::Cancelled
+            )
+        }) {
+            return t.clone();
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("no terminal event");
+}
+
+#[tokio::test]
+async fn generate_evicts_the_llm_generates_and_restores() {
+    let Some(h) = harness().await else {
+        eprintln!("no python — skipping");
+        return;
+    };
+    h.lifecycle.load(&h.llm_id).await.expect("llm loads");
+    assert_eq!(h.lifecycle.state(&h.llm_id).await, ModelState::Loaded);
+
+    let (sink, log) = collect_sink();
+    let req = ImageRequest {
+        prompt: "a red door".to_owned(),
+        negative: None,
+        width: 1024,
+        height: 1024,
+        steps: Some(40),
+        guidance: None,
+        seed: Some(3),
+        batch_count: 2,
+        loras: vec![LoraSelection {
+            id: h.repo.list_loras().await.unwrap()[0].id.clone(),
+            weight: 0.8,
+        }],
+    };
+    h.orch.generate(req, sink).await.expect("started");
+
+    let terminal = wait_for_terminal(&log).await;
+    let ImageEvent::Done { images } = terminal else {
+        panic!("expected Done, got {terminal:?}");
+    };
+    assert_eq!(images.len(), 2);
+    for row in &images {
+        assert!(h.blob.contains(&row.asset), "image blob missing");
+    }
+    assert_eq!(images[0].lora.as_deref(), Some("Realism"));
+
+    // Phases seen, in order.
+    let phases: Vec<ImagePhase> = log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|e| match e {
+            ImageEvent::Progress(p) => Some(p.phase),
+            _ => None,
+        })
+        .collect();
+    assert!(phases.contains(&ImagePhase::Evicting));
+    assert!(phases.contains(&ImagePhase::Loading));
+    assert!(phases.contains(&ImagePhase::Generating));
+    assert!(phases.contains(&ImagePhase::Restoring));
+
+    // LLM restored; image model unloaded.
+    assert_eq!(h.lifecycle.state(&h.llm_id).await, ModelState::Loaded);
+    assert_eq!(h.repo.list_generated(10).await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn cancel_mid_generation_restores_the_llm_and_writes_nothing() {
+    let Some(h) = harness().await else {
+        return;
+    };
+    h.lifecycle.load(&h.llm_id).await.unwrap();
+
+    let (sink, log) = collect_sink();
+    let req = ImageRequest {
+        prompt: "a slow castle".to_owned(),
+        negative: None,
+        width: 1024,
+        height: 1024,
+        steps: Some(50),
+        guidance: None,
+        seed: Some(1),
+        batch_count: 8, // ~4s of fake work — long enough to cancel
+        loras: vec![],
+    };
+    let task_id = h.orch.generate(req, sink).await.expect("started");
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    h.orch.cancel(&task_id).await.expect("cancel accepted");
+
+    let terminal = wait_for_terminal(&log).await;
+    assert!(
+        matches!(terminal, ImageEvent::Cancelled),
+        "got {terminal:?}"
+    );
+    assert_eq!(h.lifecycle.state(&h.llm_id).await, ModelState::Loaded);
+    assert!(h.repo.list_generated(10).await.unwrap().is_empty());
+    assert!(
+        h.blob.list_ids().unwrap().is_empty(),
+        "a partial blob was written"
+    );
+}
+
+#[tokio::test]
+async fn a_second_generate_is_rejected_while_one_runs() {
+    let Some(h) = harness().await else {
+        return;
+    };
+    let req = || ImageRequest {
+        prompt: "x".to_owned(),
+        negative: None,
+        width: 512,
+        height: 512,
+        steps: Some(50),
+        guidance: None,
+        seed: Some(1),
+        batch_count: 8,
+        loras: vec![],
+    };
+    let (s1, _l1) = collect_sink();
+    h.orch.generate(req(), s1).await.expect("first starts");
+    let (s2, _l2) = collect_sink();
+    let err = h.orch.generate(req(), s2).await.unwrap_err();
+    assert!(matches!(err, AppError::Conflict(_)), "got {err:?}");
+}
+
+#[tokio::test]
+async fn generate_rejects_an_invalid_request() {
+    let Some(h) = harness().await else {
+        return;
+    };
+    let (sink, _log) = collect_sink();
+    let bad = ImageRequest {
+        prompt: String::new(),
+        negative: None,
+        width: 1024,
+        height: 1024,
+        steps: None,
+        guidance: None,
+        seed: None,
+        batch_count: 1,
+        loras: vec![],
+    };
+    let err = h.orch.generate(bad, sink).await.unwrap_err();
+    assert!(matches!(err, AppError::Validation(_)));
+    let _ = ImageLoraId::from_trusted("x"); // keep the import used across cfgs
+}

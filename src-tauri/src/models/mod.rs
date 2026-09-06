@@ -88,10 +88,12 @@ pub struct Model {
 }
 
 impl Model {
-    /// Whether the file is present on disk *right now*.
+    /// Whether the model's payload is present on disk *right now*. A single-file
+    /// backend (a GGUF) is a file; a diffusers-layout image model (Phase 22) is
+    /// a directory — either counts as present.
     #[must_use]
     pub fn availability(&self) -> RegistryAvailability {
-        if self.path.is_file() {
+        if self.path.exists() {
             RegistryAvailability::Ready
         } else {
             RegistryAvailability::Missing
