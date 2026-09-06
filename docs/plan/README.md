@@ -44,7 +44,7 @@ granular, individually-verifiable steps.
 | 19 | `19_voice-out.md` | full (finalized at phase entry; split 19.A / 19.B) |
 | 20 | `20_personas.md` | full (finalized at phase entry) |
 | 21 | `21_memory.md` | full (finalized at phase entry) |
-| 22 | `22_image-generation.md` | outline |
+| 22 | `22_image-generation.md` | full (finalized at phase entry) |
 | 23 | `23_model-hot-swapping.md` | outline |
 | 24 | `24_scheduler.md` | outline |
 | 25 | `25_character-data-model.md` | outline |
