@@ -17,10 +17,12 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::json;
+use tokio_util::sync::CancellationToken;
 
 use super::{image_venv_python, Krea2Backend, BACKEND_KEY, KREA2_MODEL_ID};
 use crate::acquisition::AcquisitionService;
@@ -219,7 +221,7 @@ async fn wait_terminal(log: &Arc<std::sync::Mutex<Vec<ImageEvent>>>, secs: u64) 
 }
 
 async fn print_vram(r: &ResourceManager, tag: &str) {
-    let s = r.snapshot().await;
+    let s = r.observe().await; // re-probe NVML; snapshot() returns the last observation
     let gpu = s.gpu.map_or_else(
         || "n/a".to_owned(),
         |g| format!("{}/{} MB used", g.used_mb, g.total_mb),
@@ -228,6 +230,25 @@ async fn print_vram(r: &ResourceManager, tag: &str) {
         "[22.C] VRAM {tag}: {gpu}, reserved {} MB",
         s.reserved_gpu_mb
     );
+}
+
+/// Poll whole-GPU VRAM (NVML) every 250 ms until stopped, tracking the peak.
+fn spawn_vram_peak(r: Arc<ResourceManager>) -> (CancellationToken, Arc<AtomicU64>) {
+    let stop = CancellationToken::new();
+    let peak = Arc::new(AtomicU64::new(0));
+    let (s2, p2) = (stop.clone(), Arc::clone(&peak));
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                () = s2.cancelled() => break,
+                () = tokio::time::sleep(Duration::from_millis(250)) => {}
+            }
+            if let Some(g) = r.observe().await.gpu {
+                p2.fetch_max(g.used_mb, Ordering::Relaxed);
+            }
+        }
+    });
+    (stop, peak)
 }
 
 fn req(prompt: &str, batch: u32, loras: Vec<LoraSelection>) -> ImageRequest {
@@ -290,12 +311,18 @@ async fn live_generate_evicts_the_llm_and_restores_it() {
     // Base model.
     let (s, log) = sink();
     let load_started = Instant::now();
+    let (stop, peak) = spawn_vram_peak(Arc::clone(&h.resources));
     h.orch
         .generate(req("a lighthouse at dawn, photorealistic", 1, vec![]), s)
         .await
         .expect("started");
     let terminal = wait_terminal(&log, 240).await;
-    println!("[22.C] base generate done in {:?}", load_started.elapsed());
+    stop.cancel();
+    println!(
+        "[22.C] base 1024^2/8-step: {:?} total; peak whole-GPU VRAM {} MB (of 16303)",
+        load_started.elapsed(),
+        peak.load(Ordering::Relaxed)
+    );
     let ImageEvent::Done { images } = terminal else {
         panic!("expected Done, got {terminal:?}");
     };
@@ -338,6 +365,7 @@ async fn live_generate_evicts_the_llm_and_restores_it() {
         .expect("Realism LoRA");
     let (s2, log2) = sink();
     let started = Instant::now();
+    let (stop2, peak2) = spawn_vram_peak(Arc::clone(&h.resources));
     h.orch
         .generate(
             req(
@@ -355,9 +383,11 @@ async fn live_generate_evicts_the_llm_and_restores_it() {
     let ImageEvent::Done { images } = wait_terminal(&log2, 240).await else {
         panic!("lora generate did not finish Done");
     };
+    stop2.cancel();
     println!(
-        "[22.C] realism-LoRA batch=2 done in {:?}",
-        started.elapsed()
+        "[22.C] realism-LoRA batch=2: {:?} total; peak whole-GPU VRAM {} MB",
+        started.elapsed(),
+        peak2.load(Ordering::Relaxed)
     );
     assert_eq!(images.len(), 2);
     assert_eq!(images[0].lora.as_deref(), Some("Realism"));
