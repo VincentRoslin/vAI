@@ -52,6 +52,8 @@ vi.mock('@tauri-apps/api/core', () => ({
     }
     if (cmd === 'chat_send' || cmd === 'chat_generate') return 'task-test';
     if (cmd === 'persona_create') return 'persona-test';
+    if (cmd === 'models_rescan') return 0;
+    if (cmd === 'model_register_local') return 'model-test';
     if (cmd === 'chat_prompt_preview') {
       return {
         prompt:

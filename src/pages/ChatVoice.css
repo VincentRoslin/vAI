@@ -32,6 +32,12 @@
   flex-shrink: 0;
 }
 
+.chat__modelselect {
+  max-width: 22rem;
+  font-size: 0.85rem;
+  padding: var(--space-1) calc(var(--space-3) + 14px) var(--space-1) var(--space-2);
+}
+
 .chat__dot {
   width: 8px;
   height: 8px;

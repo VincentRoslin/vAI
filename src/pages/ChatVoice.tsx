@@ -7,6 +7,7 @@ import type {
   Message,
   Persona,
   PromptPreview,
+  RegisteredModel,
   VoiceState,
 } from '../lib/contracts';
 import {
@@ -19,7 +20,6 @@ import {
   conversationSetPersona,
   lifecycleStatus,
   modelLoad,
-  modelRegisterLocal,
   modelsList,
   modelUnload,
   personaList,
@@ -35,7 +35,8 @@ type Streaming = { text: string; error: string | null };
 /** Tab 1 — text chat (Phase 16 vertical slice). Voice is Phases 18–19. */
 export function ChatVoice(): React.JSX.Element {
   const [models, setModels] = useState<LifecycleStatus[]>([]);
-  const [modelName, setModelName] = useState<Record<string, string>>({});
+  const [registered, setRegistered] = useState<RegisteredModel[]>([]);
+  const [modelBusy, setModelBusy] = useState(false);
   const [convo, setConvo] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
@@ -50,14 +51,15 @@ export function ChatVoice(): React.JSX.Element {
   const personaLocked = messages.length > 0 || !!streaming;
 
   const loaded = models.find((m) => m.state === 'Loaded' || m.state === 'Busy');
+  const llms = registered.filter((r) => r.metadata.kind === 'Llm' && r.availability === 'Ready');
+  const nameOf = (id: string): string =>
+    registered.find((r) => r.metadata.id === id)?.metadata.display_name ?? id;
 
   const refreshModels = useCallback(async () => {
     try {
-      const [status, registered] = await Promise.all([lifecycleStatus(), modelsList()]);
+      const [status, list] = await Promise.all([lifecycleStatus(), modelsList()]);
       setModels(status);
-      setModelName(
-        Object.fromEntries(registered.map((r) => [r.metadata.id, r.metadata.display_name])),
-      );
+      setRegistered(list);
     } catch (e) {
       log.warn('chat', `model refresh: ${toAppError(e).kind}`);
     }
@@ -97,34 +99,31 @@ export function ChatVoice(): React.JSX.Element {
     el?.scrollTo?.({ top: el.scrollHeight });
   }, [messages, streaming]);
 
-  async function ensureModel(): Promise<void> {
-    setNotice(null);
+  /** Load `id` (unloading whatever is currently loaded first). `''` = unload. */
+  async function switchModel(id: string): Promise<void> {
+    const current = loaded?.id ?? '';
+    if (id === current || modelBusy || streaming) return;
+    setModelBusy(true);
+    setNotice(id ? `Loading ${nameOf(id)}…` : 'Unloading…');
     try {
-      const registered = await modelsList();
-      let gguf = registered.find((r) => r.metadata.kind === 'Llm');
-      if (!gguf) {
-        const id = await modelRegisterLocal('qwen2.5-0.5b-instruct-q4_k_m.gguf');
-        await refreshModels();
-        gguf = (await modelsList()).find((r) => r.metadata.id === id);
+      if (loaded) {
+        log.info('ui', `model unload: ${loaded.id}`);
+        await modelUnload(loaded.id);
       }
-      if (gguf) {
-        setNotice('Loading model…');
-        log.info('ui', `model load requested: ${gguf.metadata.id}`);
-        await modelLoad(gguf.metadata.id);
-        setNotice(null);
+      if (id) {
+        log.info('ui', `model load: ${id}`);
+        await modelLoad(id);
       }
+      setNotice(null);
     } catch (e) {
-      log.warn('ui', `model load failed: ${toAppError(e).kind}`);
-      setNotice(`Model load failed: ${toAppError(e).kind}`);
-    }
-    await refreshModels();
-  }
-
-  async function unload(): Promise<void> {
-    if (loaded) {
-      log.info('ui', `model unload requested: ${loaded.id}`);
-      await modelUnload(loaded.id).catch((e) => setNotice(`Unload failed: ${toAppError(e).kind}`));
+      const k = toAppError(e).kind;
+      log.warn('ui', `model switch failed: ${k}`);
+      setNotice(
+        k === 'ResourceExhausted' ? 'Not enough VRAM for that model.' : `Model load failed: ${k}`,
+      );
+    } finally {
       await refreshModels();
+      setModelBusy(false);
     }
   }
 
@@ -252,16 +251,31 @@ export function ChatVoice(): React.JSX.Element {
     <section className="chat">
       <header className="chat__bar">
         <span className="chat__model">
-          {loaded ? (
-            <>
-              <span className="chat__dot chat__dot--on" /> {modelName[loaded.id] ?? loaded.id}
-              {loaded.vram_mb ? ` · ${loaded.vram_mb} MB` : ''}
-            </>
-          ) : (
-            <>
-              <span className="chat__dot" /> No model loaded
-            </>
-          )}
+          <span className={`chat__dot ${loaded ? 'chat__dot--on' : ''}`} />
+          <select
+            className="chat__modelselect"
+            value={loaded?.id ?? ''}
+            disabled={modelBusy || !!streaming}
+            onChange={(e) => void switchModel(e.target.value)}
+            title={modelBusy || streaming ? 'Busy' : 'Load / switch the language model'}
+          >
+            <option value="">
+              {llms.length === 0 ? 'No models — add a GGUF (Models tab)' : 'No model loaded'}
+            </option>
+            {loaded && !llms.some((m) => m.metadata.id === loaded.id) && (
+              <option value={loaded.id}>{nameOf(loaded.id)} (unavailable)</option>
+            )}
+            {llms.map((m) => (
+              <option key={m.metadata.id} value={m.metadata.id}>
+                {m.metadata.display_name}
+              </option>
+            ))}
+          </select>
+          {modelBusy ? (
+            <span className="chat__meta">working…</span>
+          ) : loaded?.vram_mb ? (
+            <span className="chat__meta">{loaded.vram_mb} MB</span>
+          ) : null}
         </span>
         <span className="chat__bar-actions">
           <button
@@ -272,15 +286,6 @@ export function ChatVoice(): React.JSX.Element {
           >
             New chat
           </button>
-          {loaded ? (
-            <button type="button" onClick={() => void unload()}>
-              Unload
-            </button>
-          ) : (
-            <button type="button" onClick={() => void ensureModel()}>
-              Load model
-            </button>
-          )}
         </span>
       </header>
 

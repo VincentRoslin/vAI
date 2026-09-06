@@ -150,9 +150,12 @@ export const resourcesSnapshot = (): Promise<ResourceSnapshot> => call('resource
 /** Every model the lifecycle manager is tracking, with its runtime state. */
 export const lifecycleStatus = (): Promise<LifecycleStatus[]> => call('lifecycle_status');
 
-/** Register a GGUF that already sits in the model directory (no download). */
+/** Register a GGUF that already sits in `<models>/llm/` (no download). */
 export const modelRegisterLocal = (filename: string): Promise<string> =>
   call('model_register_local', { filename });
+
+/** Scan `<models>/llm/` for GGUFs not yet registered. Returns how many were added. */
+export const modelsRescan = (): Promise<number> => call('models_rescan');
 
 /** Load a registered model into memory. */
 export const modelLoad = (id: string): Promise<void> => call('model_load', { id });

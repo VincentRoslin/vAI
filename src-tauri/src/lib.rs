@@ -60,6 +60,7 @@ pub fn run() {
             ipc::commands::resources_snapshot,
             ipc::commands::lifecycle_status,
             ipc::commands::model_register_local,
+            ipc::commands::models_rescan,
             ipc::commands::model_load,
             ipc::commands::model_unload,
             ipc::commands::conversation_create,
@@ -171,6 +172,11 @@ fn setup(app: &mut tauri::App) -> Result<(), String> {
     let reconciled = tauri::async_runtime::block_on(acquisition.reconcile_on_start()).unwrap_or(0);
     if reconciled > 0 {
         tracing::info!(reconciled, "paused interrupted downloads from a prior run");
+    }
+    // Auto-register any GGUFs the user dropped into `<models_dir>/llm/`.
+    let scanned = tauri::async_runtime::block_on(acquisition.scan_llm_models()).unwrap_or(0);
+    if scanned > 0 {
+        tracing::info!(scanned, "registered new GGUF models from models/llm");
     }
     app.manage(acquisition);
     app.manage(Arc::clone(&registry));

@@ -30,6 +30,7 @@ beforeEach(() => {
     if (cmd === 'downloads_list') return [];
     if (cmd === 'hf_search') throw { kind: 'BackendUnavailable', message: 'offline' };
     if (cmd === 'model_register_local') return 'new-model-id';
+    if (cmd === 'models_rescan') return 2;
     return undefined;
   });
 });
@@ -53,12 +54,19 @@ describe('Models page', () => {
     fireEvent.change(screen.getByLabelText('Local GGUF filename'), {
       target: { value: 'mythomax-l2-13b.Q6_K.gguf' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Register local GGUF' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Register' }));
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('model_register_local', {
         filename: 'mythomax-l2-13b.Q6_K.gguf',
       }),
     );
     expect(await screen.findByText(/Registered mythomax/i)).not.toBeNull();
+  });
+
+  it('rescans the llm folder', async () => {
+    render(<Models />);
+    fireEvent.click(await screen.findByRole('button', { name: /rescan/i }));
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('models_rescan', undefined));
+    expect(await screen.findByText(/Found 2 new models/i)).not.toBeNull();
   });
 });

@@ -12,6 +12,7 @@ import {
   modelDelete,
   modelRegisterLocal,
   modelsList,
+  modelsRescan,
   toAppError,
 } from '../lib/ipc';
 import type { DownloadInfo, HfGgufFile, HfModelSummary, RegisteredModel } from '../lib/contracts';
@@ -97,13 +98,24 @@ export function Models(): React.JSX.Element {
       const k = toAppError(err).kind;
       setLocalStatus(
         k === 'NotFound'
-          ? 'Not found — put the file directly in the models folder first.'
+          ? 'Not found — put the file in the models/llm folder first.'
           : k === 'Validation'
-            ? 'Rejected — needs a bare filename of a valid .gguf in the models folder.'
+            ? 'Rejected — needs a bare filename of a valid .gguf in models/llm.'
             : `Register failed: ${k}`,
       );
     } finally {
       setRegistering(false);
+    }
+  }
+
+  async function rescan(): Promise<void> {
+    setLocalStatus('');
+    try {
+      const n = await modelsRescan();
+      setLocalStatus(n > 0 ? `Found ${n} new model${n === 1 ? '' : 's'}.` : 'No new models.');
+      refresh();
+    } catch (err) {
+      setLocalStatus(`Rescan failed: ${toAppError(err).kind}`);
     }
   }
 
@@ -156,17 +168,24 @@ export function Models(): React.JSX.Element {
           <button className="models__btn" onClick={() => void acquireFixed('Tts').then(refresh)}>
             Get text-to-speech model
           </button>
+          <button className="models__btn" onClick={() => void rescan()}>
+            Rescan models/llm
+          </button>
         </div>
 
+        <p className="models__empty">
+          Drop <code>.gguf</code> files into the <code>models/llm</code> folder — they&apos;re
+          picked up on launch, or hit Rescan. Or register one by name:
+        </p>
         <form onSubmit={registerLocal} className="models__search">
           <input
             value={localName}
             onChange={(e) => setLocalName(e.target.value)}
-            placeholder="my-model.Q6_K.gguf — a file already in the models folder"
+            placeholder="my-model.Q6_K.gguf"
             aria-label="Local GGUF filename"
           />
           <button className="models__btn" type="submit" disabled={registering || !localName.trim()}>
-            {registering ? 'Registering…' : 'Register local GGUF'}
+            {registering ? 'Registering…' : 'Register'}
           </button>
         </form>
         {localStatus && <p className="models__status">{localStatus}</p>}

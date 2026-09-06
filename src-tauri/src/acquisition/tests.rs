@@ -269,6 +269,56 @@ async fn a_completed_gguf_download_is_registered() {
     assert!(models[0].path.contains("owner__repo"));
 }
 
+#[tokio::test]
+async fn scan_llm_models_registers_new_gguf_and_is_idempotent() {
+    let tmp = tempfile::tempdir().unwrap();
+    let db = Arc::new(Db::open(&tmp.path().join("d.db")).await.unwrap());
+    db.migrate().await.unwrap();
+    let registry = Arc::new(ModelRegistry::new(Arc::clone(&db)));
+    let cfg = crate::config::ConfigManager::load(tmp.path(), tmp.path()).unwrap();
+    let models_dir = cfg.effective().models.dir;
+    let llm_dir = models_dir.join("llm");
+    std::fs::create_dir_all(&llm_dir).unwrap();
+    let svc = AcquisitionService::new(Arc::clone(&db), Arc::clone(&registry), Arc::new(cfg));
+
+    // No files yet.
+    assert_eq!(svc.scan_llm_models().await.unwrap(), 0);
+
+    // Two valid GGUFs dropped in.
+    let mut a = gguf_fixture("llama", 15, 8192, 32);
+    a.resize(2 * 1024 * 1024, 0);
+    std::fs::write(llm_dir.join("mistral-7b.Q4_K_M.gguf"), &a).unwrap();
+    let mut b = gguf_fixture("qwen2", 7, 4096, 24);
+    b.resize(1024 * 1024, 0);
+    std::fs::write(llm_dir.join("qwen.Q6_K.gguf"), &b).unwrap();
+    // A non-GGUF is ignored.
+    std::fs::write(llm_dir.join("notes.txt"), b"ignore me").unwrap();
+
+    assert_eq!(svc.scan_llm_models().await.unwrap(), 2);
+    let models = registry.list().await.unwrap();
+    assert_eq!(models.len(), 2);
+    assert!(models.iter().all(|m| m.metadata.kind == ModelKind::Llm));
+    let names: Vec<_> = models
+        .iter()
+        .map(|m| m.metadata.display_name.clone())
+        .collect();
+    assert!(names.contains(&"mistral-7b.Q4_K_M".to_owned()));
+    assert_eq!(
+        models
+            .iter()
+            .find(|m| m.metadata.display_name == "mistral-7b.Q4_K_M")
+            .unwrap()
+            .metadata
+            .capabilities
+            .context_tokens,
+        Some(8192)
+    );
+
+    // Re-scan: nothing new.
+    assert_eq!(svc.scan_llm_models().await.unwrap(), 0);
+    assert_eq!(registry.list().await.unwrap().len(), 2);
+}
+
 /// A minimal valid GGUF header (magic + version + 4 KV entries).
 fn gguf_fixture(arch: &str, file_type: u32, ctx: u64, blocks: u64) -> Vec<u8> {
     let mut b = Vec::new();

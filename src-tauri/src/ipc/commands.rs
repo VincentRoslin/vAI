@@ -324,7 +324,7 @@ pub async fn lifecycle_status(
     Ok(lifecycle.statuses().await)
 }
 
-/// Register a GGUF already present in the model directory (no download).
+/// Register a GGUF already present in `<models_dir>/llm/` (no download).
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
 pub async fn model_register_local(
@@ -332,6 +332,15 @@ pub async fn model_register_local(
     filename: String,
 ) -> AppResult<ModelId> {
     acquisition.register_local_gguf(&filename).await
+}
+
+/// Scan `<models_dir>/llm/` for GGUFs not yet in the registry and register
+/// them. Returns how many were newly added.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn models_rescan(acquisition: State<'_, AcquisitionService>) -> AppResult<u32> {
+    let added = acquisition.scan_llm_models().await?;
+    Ok(u32::try_from(added).unwrap_or(u32::MAX))
 }
 
 /// Load a registered model into memory (Phase 14).

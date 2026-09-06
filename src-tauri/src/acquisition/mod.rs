@@ -201,8 +201,8 @@ impl AcquisitionService {
         self.engine.reconcile_on_start().await
     }
 
-    /// Register a GGUF that already sits directly in the model directory (no
-    /// download). `filename` is a bare file name — no path separators.
+    /// Register a GGUF the user dropped into `<models_dir>/llm/` (no download).
+    /// `filename` is a bare file name — no path separators.
     ///
     /// # Errors
     /// [`AppError::Validation`] for a bad name / non-file / truncated GGUF;
@@ -217,7 +217,85 @@ impl AcquisitionService {
             )));
         }
         let models_dir = self.config.effective().models.dir;
-        let path = validate_model_path(&models_dir.join(filename), &models_dir)?;
+        // Canonical location is `<models_dir>/llm/`; fall back to the models dir
+        // root so files placed there before the `llm/` convention still work.
+        let candidate = {
+            let in_llm = models_dir.join("llm").join(filename);
+            if in_llm.is_file() {
+                in_llm
+            } else {
+                models_dir.join(filename)
+            }
+        };
+        self.register_gguf_path(&candidate, &models_dir).await
+    }
+
+    /// Scan `<models_dir>/llm/` for `*.gguf` files that aren't in the registry
+    /// yet and register each as an LLM. Returns how many were added. Called on
+    /// startup and by `models_rescan`.
+    ///
+    /// # Errors
+    /// A persistence error reading the registry.
+    pub async fn scan_llm_models(&self) -> AppResult<usize> {
+        let models_dir = self.config.effective().models.dir;
+        let llm_dir = models_dir.join("llm");
+        if !llm_dir.is_dir() {
+            return Ok(0);
+        }
+
+        let known: std::collections::HashSet<PathBuf> = self
+            .engine
+            .registry()
+            .list()
+            .await?
+            .into_iter()
+            .filter_map(|m| std::path::Path::new(&m.path).canonicalize().ok())
+            .collect();
+
+        let mut added = 0usize;
+        let mut entries = match tokio::fs::read_dir(&llm_dir).await {
+            Ok(e) => e,
+            Err(err) => {
+                tracing::warn!(target: "acquisition", %err, dir = %llm_dir.display(), "cannot read llm dir");
+                return Ok(0);
+            }
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            if !path
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("gguf"))
+            {
+                continue;
+            }
+            if path.canonicalize().is_ok_and(|c| known.contains(&c)) {
+                continue;
+            }
+            match self.register_gguf_path(&path, &models_dir).await {
+                Ok(id) => {
+                    added += 1;
+                    tracing::info!(target: "acquisition", %id, file = %path.display(), "registered a local GGUF");
+                }
+                Err(err) => {
+                    tracing::warn!(target: "acquisition", %err, file = %path.display(), "skipped a GGUF during scan");
+                }
+            }
+        }
+        Ok(added)
+    }
+
+    /// Parse a GGUF at `path` and register it as an LLM on the llama.cpp backend.
+    async fn register_gguf_path(
+        &self,
+        path: &std::path::Path,
+        models_dir: &std::path::Path,
+    ) -> AppResult<ModelId> {
+        let path = validate_model_path(path, models_dir)?;
+        let name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("model")
+            .to_owned();
 
         let bytes = tokio::fs::read(&path)
             .await
@@ -225,14 +303,12 @@ impl AcquisitionService {
         let header = match gguf::parse_header(&bytes)? {
             gguf::GgufParse::Header(h) => h,
             gguf::GgufParse::Incomplete => {
-                return Err(AppError::Validation(format!(
-                    "{filename} is a truncated GGUF"
-                )))
+                return Err(AppError::Validation(format!("{name} is a truncated GGUF")))
             }
         };
         let size_mb = u32::try_from(bytes.len() / (1024 * 1024)).unwrap_or(u32::MAX);
         let draft = ModelDraft {
-            display_name: filename.to_owned(),
+            display_name: name,
             kind: ModelKind::Llm,
             backend: ModelBackend(LLAMA_BACKEND.to_owned()),
             quant: header.quant.map(crate::contracts::model::Quant),
@@ -243,7 +319,7 @@ impl AcquisitionService {
             devices: vec![Device::Cuda, Device::Cpu],
             config: serde_json::json!({}),
         };
-        self.engine.registry().register(draft, &models_dir).await
+        self.engine.registry().register(draft, models_dir).await
     }
 
     #[allow(clippy::unused_self)]

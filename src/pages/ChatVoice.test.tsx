@@ -51,10 +51,14 @@ vi.mock('../lib/ipc', async (importOriginal) => {
     chatCancel: vi.fn(async () => undefined),
     modelLoad: vi.fn(async () => undefined),
     modelUnload: vi.fn(async () => undefined),
-    modelRegisterLocal: vi.fn(async () => 'm1'),
     voiceStart: vi.fn(async () => undefined),
     voiceStop: vi.fn(async () => undefined),
   };
+});
+
+const llm = (id: string, name: string) => ({
+  metadata: { id, display_name: name, kind: 'Llm' },
+  availability: 'Ready',
 });
 
 const loadedModel = [{ id: 'm1', state: 'Loaded' as const, vram_mb: 1024, error: null }];
@@ -65,17 +69,31 @@ describe('ChatVoice', () => {
     vi.mocked(ipc.lifecycleStatus).mockResolvedValue([]);
   });
 
-  it('shows the no-model state and a Load button', async () => {
+  it('shows the no-model state', async () => {
     render(<ChatVoice />);
-    expect(await screen.findByText(/no model loaded/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /load model/i })).toBeTruthy();
+    expect(await screen.findByText(/no models — add a gguf/i)).toBeTruthy();
+    expect(
+      (await screen.findByPlaceholderText(/load a model to chat/i)).hasAttribute('disabled'),
+    ).toBe(true);
+  });
+
+  it('lists registered LLMs and switches between them', async () => {
+    vi.mocked(ipc.modelsList).mockResolvedValue([
+      llm('m1', 'Qwen 0.5B'),
+      llm('m2', 'MythoMax 13B'),
+    ] as never);
+    render(<ChatVoice />);
+
+    const picker = (await screen.findByTitle(/load \/ switch/i)) as HTMLSelectElement;
+    await waitFor(() => expect(screen.getByRole('option', { name: 'MythoMax 13B' })).toBeTruthy());
+
+    fireEvent.change(picker, { target: { value: 'm2' } });
+    await waitFor(() => expect(ipc.modelLoad).toHaveBeenCalledWith('m2'));
   });
 
   it('streams deltas into the transcript and Stop cancels', async () => {
     vi.mocked(ipc.lifecycleStatus).mockResolvedValue(loadedModel);
-    vi.mocked(ipc.modelsList).mockResolvedValue([
-      { metadata: { id: 'm1', display_name: 'Qwen', kind: 'Llm' } },
-    ] as never);
+    vi.mocked(ipc.modelsList).mockResolvedValue([llm('m1', 'Qwen')] as never);
 
     let emit: (e: unknown) => void = () => undefined;
     vi.mocked(ipc.chatSend).mockImplementation(async (_input, onEvent) => {
@@ -148,9 +166,7 @@ describe('ChatVoice', () => {
 
   it('"Show prompt" fetches the assembled prompt', async () => {
     vi.mocked(ipc.lifecycleStatus).mockResolvedValue(loadedModel);
-    vi.mocked(ipc.modelsList).mockResolvedValue([
-      { metadata: { id: 'm1', display_name: 'Qwen', kind: 'Llm' } },
-    ] as never);
+    vi.mocked(ipc.modelsList).mockResolvedValue([llm('m1', 'Qwen')] as never);
 
     render(<ChatVoice />);
     const details = await screen.findByText(/show prompt/i);
