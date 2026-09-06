@@ -44,8 +44,17 @@ function appDataDir() {
 // 1. Frontend (embedded into the binary at build time via tauri.conf frontendDist).
 run('npm', ['run', 'build']);
 
-// 2. Release binary.
-run('cargo', ['build', '--release', '--manifest-path', join(repo, 'src-tauri', 'Cargo.toml')]);
+// 2. Release binary. `--features custom-protocol` makes Tauri serve the frontend
+//    we just built from the embedded assets — without it the binary falls back
+//    to `build.devUrl` (localhost:1420) and shows a connection-refused page.
+run('cargo', [
+  'build',
+  '--release',
+  '--features',
+  'custom-protocol',
+  '--manifest-path',
+  join(repo, 'src-tauri', 'Cargo.toml'),
+]);
 
 const exe = join(repo, 'src-tauri', 'target', 'release', isWin ? 'localai.exe' : 'localai');
 if (!existsSync(exe)) {

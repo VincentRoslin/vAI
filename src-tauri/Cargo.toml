@@ -11,6 +11,14 @@ publish = false
 name = "localai_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Serve the bundled frontend from the embedded assets via Tauri's custom
+# protocol instead of `build.devUrl`. Required for any standalone binary that
+# isn't launched by `tauri dev` (release builds, `scripts/deploy-local.mjs`).
+# NOT in `default` on purpose: bare `cargo test` / `cargo clippy` then don't
+# need `../dist` to exist. `tauri build` and the deploy script pass it explicitly.
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

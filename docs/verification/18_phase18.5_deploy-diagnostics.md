@@ -36,10 +36,19 @@ MSI, embedded CPython, sibling layout, first-run acquisition, code signing, and 
   send, and voice push-to-talk start/release (+ `log.warn` on caught errors) —
   `target:"frontend"` lines so a hands-on session is reconstructable from the
   log alone.
-- **`scripts/deploy-local.mjs`** — `npm run build` → `cargo build --release` →
-  launch `src-tauri/target/release/localai.exe` in place (detached). Prints
-  `git_sha`, `exe`, and the `config` / `logs` / `diagnostics` paths under
+- **`scripts/deploy-local.mjs`** — `npm run build` →
+  `cargo build --release --features custom-protocol` → launch
+  `src-tauri/target/release/localai.exe` in place (detached). Prints `git_sha`,
+  `exe`, and the `config` / `logs` / `diagnostics` paths under
   `%APPDATA%\com.localai.app\`. `--no-launch` builds + prints only.
+  - **Fix (2026-09-06, Phase 21):** the Phase-6 scaffold dropped Tauri's
+    `custom-protocol` feature, so a plain `cargo build --release` binary ran in
+    *dev* mode and loaded `build.devUrl` (`localhost:1420`) → a
+    connection-refused page inside the window. Added
+    `[features] custom-protocol = ["tauri/custom-protocol"]` to `Cargo.toml`
+    (not in `default` — bare `cargo test` / `clippy` still don't need `../dist`)
+    and the `--features custom-protocol` flag here. The relaunched binary loads
+    the embedded frontend (`frontend::app` logs `core ready`).
 
 ## Gate — execution record
 
