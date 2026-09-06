@@ -1,64 +1,207 @@
 # Phase 16 — First Vertical Slice / Text Chat
 
-> **Architecture frozen at Phase 5** (`PROJECT.md`, `ARCHITECTURE.md`, `AI_PIPELINES.md`, ADR-0001..0015). The design below is settled. Concrete implementation specifics (exact modules, crate APIs, filenames) are filled in at phase entry against the frozen ADRs — they do not change the design.
+> **Status: IN PROGRESS** — step detail finalized at phase entry (2026-09-06)
+> against the frozen architecture + `docs/verification/14_phase15_llama.md`
+> (llama.cpp adapter live; Qwen 0.5B in `models/`).
+
+> **Architecture frozen at Phase 5.** Governing: **ADR-0002** (IPC —
+> Commands/Events/Channels, one `AppError`), **ADR-0009** (persistence),
+> **ADR-0003/0013** (llama.cpp adapter), `docs/spec/AI_PIPELINES.md` §1,
+> `docs/spec/PERFORMANCE.md` (TTFT budget). Concrete step detail below.
 
 ## Objective
-The entire stack does one useful thing reliably: React → typed IPC → Rust →
-conversation service → LLM service → llama.cpp → streamed tokens → UI, with
-working cancellation, persistence, and restart recovery. Basic text chat **only**.
-This gate is the first real product milestone.
+The whole stack does one useful thing reliably: React → typed IPC → Rust →
+**conversation service** → `LlmInstance` → `llama-server` → streamed tokens → UI,
+with working cancellation, SQLite persistence, and restart recovery. **Text chat
+only.** This is the first real product milestone.
 
 ## Depends on
-Phase 15 (LLM adapter), Phase 12 (a model can be acquired), Phase 9
-(persistence), Phase 6 (UI shell + IPC).
+Phase 15 (`llm` adapter, `LlmInstance`), Phase 14 (`lifecycle` — load/unload/
+`begin_use`), Phase 13 (resources — reservation on load), Phase 11 (registry),
+Phase 9 (`db`), Phase 7 (`conversation` + `generation` contracts), Phase 6 (shell).
 
 ## Not in this phase
 - Voice, images, personas, memory, characters, discovery, embeddings, RAG.
-- Multiple conversations UI polish (a single working conversation is enough).
-- Model hot-swap.
+- The **shared** conversation engine (Phase 17 generalizes this thin service).
+- Multi-conversation UX polish — one working conversation is the gate.
+- Model hot-swap / eviction (Phase 23), a scheduler / generation queue (Phase 24).
+- A real context/prompt builder (Phase 20) — Phase 16 renders a minimal ChatML
+  prompt inline.
+- HF token, image/audio message content.
 
 ## Architecture notes
-- A thin conversation *service* here; it is formalized into the shared engine in
-  Phase 17. Do not build two engines — build the minimum, then generalize.
-- All state authoritative in Rust; the UI renders it.
-- Cancellation path: UI → `cancel(taskId)` command → `CancellationToken` → LLM
-  adapter → llama.cpp.
+- **New module `src-tauri/src/conversation/`** — a *thin service*, not the
+  engine. `mod.rs` (`ConversationService` + the in-flight-generation registry),
+  `repo.rs` (all SQL — Rust owns it, ADR-0009 / Article I), `prompt.rs` (ChatML
+  rendering), `tests.rs`.
+- **Ownership:** the service owns conversation/message state (in SQLite via
+  `repo`). The lifecycle manager owns the loaded model; the service calls
+  `begin_use`/`end_use` around a generation. The UI renders; it holds only view
+  state.
+- **Concurrency policy (v1): reject.** One model, one `llama-server` slot →
+  `chat_send` while any generation is in flight returns `AppError::Conflict`.
+  A queue is Phase 24. **Not an ADR** — a documented v1 simplification.
+- **Generation flow** (`chat_send`):
+  1. validate; reject if a generation is already running.
+  2. `repo.append_message(User, text)` — persisted before the command returns.
+  3. spawn a task: `begin_use(model)` → render prompt from the conversation's
+     messages → `LlmInstance::stream(prompt, params, tx, cancel)`; forward each
+     `GenerationEvent` to the command's `Channel`; on `Done` /
+     `Error` / `Cancelled`, `repo.append_message(Assistant, accumulated_text,
+     GenerationMeta{ stop_reason, tokens, duration_ms })`, `end_use`, drop the
+     in-flight entry.
+  4. return the `TaskId` immediately.
+- **Cancellation:** `Mutex<Option<InFlight { task_id, cancel: CancellationToken
+  }>>` on the service. `chat_cancel(task_id)` trips the token → the `stream`
+  future returns → the partial assistant text is persisted with
+  `StopReason::Cancelled`.
+- **Failure:** a backend crash mid-stream → `GenerationEvent::Error` → persist
+  the partial assistant message with `StopReason::Error` (truncated), forward the
+  error frame, `end_use`. The Phase-14 liveness monitor moves the model to
+  `Failed`; the user re-loads it for the next turn.
+- **Model registration:** `models/` holds the Qwen GGUF but the app DB doesn't
+  know it. New `AcquisitionService::register_local_gguf(filename)` — resolve
+  `<models.dir>/<filename>`, parse the GGUF header (`acquisition::gguf`), build
+  the same `ModelDraft` as a completed download, `registry.register`. Exposed as
+  `model_register_local`.
+- **Clean shutdown:** extend the `RunEvent::ExitRequested` hook — cancel any
+  in-flight generation, `unload` every loaded model (the Job Object already
+  guarantees no orphan), then the existing WAL checkpoint.
 
 ## Performance notes
-- **TTFT budget**: first token visible in the UI within the budget set in
-  `PERFORMANCE.md` (derived from the Phase 15 measurement).
-- Incremental rendering must not thrash layout (append, don't re-render the whole
-  transcript).
+- **TTFT budget** (`docs/spec/PERFORMANCE.md`): first token visible in the UI
+  within ~1–2 s with the model loaded. Backend TTFT is ~23 ms (Phase 15) — the
+  budget covers IPC + React append. Measure end-to-end (send click → first
+  delta rendered) and record it.
+- The transcript **appends**; it never re-renders the whole list on a delta
+  (key by message id; the streaming message is a single growing node).
 
-## Step outline
-1. Conversation service: create conversation, append message, persist (Phase 9).
-2. Generation flow: user message → build a minimal prompt → start LLM generation
-   → stream deltas → persist the assistant message on completion.
-3. Cancellation wired end to end.
-4. IPC: send-message command, token-stream channel, cancel command, load-model
-   command.
-5. UI: composer, streaming transcript, stop button, model-not-loaded state.
-6. Restart recovery: on launch, restore the last conversation from the DB.
-7. Failure handling: llama.cpp crash mid-generation → typed error to the UI, the
-   partial assistant message persisted as truncated, model recovers for the next
-   turn.
-8. Clean shutdown during generation (drain or cancel, then exit 0).
-9. Concurrency policy: a second generation request while one is running →
-   rejected or queued per the decision, not a crash.
-10. Manual test script covering the gate scenarios.
+## Steps
 
-## Verification gate (physically executed)
-1. Send a message → tokens stream into the UI; assistant message persists.
-2. Cancel immediately after sending → clean stop, model still usable.
-3. Cancel mid-generation → stops within budget, partial text persisted as
-   truncated, model still usable.
-4. Restart the app → the previous conversation is restored exactly.
-5. Kill the llama.cpp backend mid-generation → detected, typed error shown, next
-   generation works.
-6. Close the app during generation → exits cleanly (0), no orphan process.
-7. A concurrent generation attempt is handled per policy (no crash, no state
-   corruption).
-8. TTFT measured and within the `PERFORMANCE.md` budget.
+**16.1 — V0004 migration: `conversation` + `message`**
+    Do:     `db/migrations/V0004__conversations.sql` — `conversation` (id, kind,
+            title, created_at, updated_at) + `message` (id, conversation_id FK
+            `ON DELETE CASCADE`, role, content JSON, created_at, gen_model,
+            gen_stop_reason, gen_tokens, gen_duration_ms) STRICT; index on
+            `message(conversation_id, rowid)`.
+    Verify: `cargo test db::` — migrate from V0003 → V0004 idempotent; FK
+            cascade works (delete conversation → messages gone).
+
+**16.2 — `conversation/repo.rs`**
+    Do:     `ConversationRepo` on `Arc<Db>`: `create(kind) -> Conversation`,
+            `list() -> Vec<Conversation>` (newest `updated_at` first),
+            `get(id)`, `messages(id) -> Vec<Message>` (rowid order),
+            `append(id, role, content, Option<GenerationMeta>) -> Message`
+            (bumps `conversation.updated_at`), `latest() -> Option<Conversation>`.
+            IDs = UUIDv4 (ADR-0017).
+    Verify: `cargo test conversation::repo` — round-trip a conversation + 3
+            messages incl. one with `GenerationMeta`; `list` ordering; `latest`;
+            survives a reopen.
+
+**16.3 — `conversation/prompt.rs`**
+    Do:     `render_chatml(messages: &[Message], system: &str) -> String` —
+            `<|im_start|>{role}\n{text}<|im_end|>\n` per message +
+            `<|im_start|>assistant\n` tail. Only `MessageContent::Text` (skip
+            others for now). A default system string.
+    Verify: `cargo test conversation::prompt` — a 2-turn transcript renders the
+            exact expected string; empty transcript still has the system + tail.
+
+**16.4 — `ConversationService`: create / list / messages**
+    Do:     `mod.rs` — `ConversationService::new(db, lifecycle)`; thin wrappers
+            over `repo`. `InFlight` state (`Mutex<Option<..>>`).
+    Verify: `cargo test conversation::service_basic` — create → list → messages.
+
+**16.5 — `send` + streaming + persistence (fake `LlmInstance`)**
+    Do:     `send(conversation_id, model_id, text, sink: impl Fn(GenerationEvent))
+            -> AppResult<TaskId>`. Reject if `InFlight` is `Some`. Persist the
+            user message. Spawn: `begin_use` → `render_chatml` → resolve the
+            `LlmInstance` from the lifecycle manager (`llm::as_llm`) → `stream`
+            → forward events + accumulate text → on terminal, persist the
+            assistant message + `end_use` + clear `InFlight`.
+    Verify: `cargo test conversation::send_persists` — with a **fake
+            `LlmInstance`** (reuse the pattern from `llm`/`lifecycle` tests):
+            deltas arrive in order; assistant message persisted with the right
+            `stop_reason` + token count; a 2nd concurrent `send` → `Conflict`.
+
+**16.6 — Cancellation**
+    Do:     `cancel(task_id)`. Trip the token; the fake instance's `stream`
+            observes it and stops; persist the partial text with
+            `StopReason::Cancelled`.
+    Verify: `cargo test conversation::cancel` — mid-stream cancel → a `Cancelled`
+            frame, partial text persisted, `InFlight` cleared, a following `send`
+            works.
+
+**16.7 — Failure handling**
+    Do:     Fake instance emits `GenerationEvent::Error`. Persist partial text
+            with `StopReason::Error`; forward the error; `end_use`; clear
+            `InFlight`.
+    Verify: `cargo test conversation::backend_error` — error frame forwarded,
+            truncated assistant message persisted, next `send` works.
+
+**16.8 — `register_local_gguf` + model IPC**
+    Do:     `AcquisitionService::register_local_gguf(filename)`. IPC:
+            `model_register_local(filename) -> ModelId`, `model_load(id)`,
+            `model_unload(id)` (→ `lifecycle`), keep `lifecycle_status`.
+    Verify: `cargo test acquisition::register_local` — a fixture GGUF in a temp
+            model dir → registered `Llm` entry with parsed quant/context.
+
+**16.9 — Chat IPC**
+    Do:     `ipc/commands.rs` — `conversation_create`, `conversation_list`,
+            `conversation_messages`, `chat_send(req, events: Channel<GenerationEvent>)
+            -> TaskId`, `chat_cancel(task_id)`. `DTO`s (`ChatSendRequest {
+            conversation_id, model_id, text }`). `ConversationService` in managed
+            state. `src/lib/ipc.ts` + `contracts.ts`.
+    Verify: `cargo build`; bindings regenerate; `npm run typecheck`.
+
+**16.10 — Chat UI**
+    Do:     Replace `src/pages/ChatVoice.tsx` with the real slice:
+            - a model bar: `lifecycle_status` + `models_list`; buttons to
+              `model_register_local` (the known Qwen filename if present in
+              `models_list` it's already there), `model_load` / `model_unload`;
+              a clear "no model loaded" state.
+            - transcript: message list, the streaming assistant message a single
+              growing node; auto-scroll.
+            - composer: textarea + Send; Stop button while generating.
+            - on mount: `conversation_list` → if empty `conversation_create`,
+              else open `latest`; `conversation_messages`.
+            Styling per `docs/spec/UI_GUIDELINES.md` + `docs/design/`. Presentation
+            only — all state from IPC.
+    Verify: `npm run test` — a component test: renders the composer; a mocked
+            `chat_send` streams 2 deltas into the transcript; Stop calls
+            `chat_cancel`. `npm run tauri dev` — real end-to-end (see gate).
+
+**16.11 — Restart recovery + clean shutdown**
+    Do:     UI already restores `latest` on mount (16.10). Rust: extend the exit
+            hook — `ConversationService::shutdown()` cancels the in-flight gen;
+            `lifecycle.unload_all()`; then the WAL checkpoint.
+    Verify: covered by gate items 4 + 6 (below).
+
+**16.12 — Gate run + docs + commit**
+    Do:     `node scripts/check.mjs`; run the manual gate script (below) on
+            `tauri dev` with the real Qwen model; `docs/verification/15_phase16_slice.md`;
+            `src-tauri/README.md`, `docs/spec/ARCHITECTURE.md` §2/§3/§5,
+            `docs/contracts.md`, `docs/spec/PERFORMANCE.md`, `ROADMAP.md`. Commit.
+    Verify: check suite green; every gate item recorded with evidence.
+
+## Verification gate (physically executed, `tauri dev` + real Qwen 0.5B)
+1. Send a message → tokens stream into the UI; the assistant message persists
+   (visible after `conversation_messages` refetch).
+2. Cancel immediately after sending → clean stop; the model is still usable
+   (next send works).
+3. Cancel mid-generation → stops within budget; partial text persisted as
+   truncated (`StopReason::Cancelled`); model still usable.
+4. Restart the app → the previous conversation + messages are restored.
+5. Kill `llama-server` mid-generation (`taskkill`) → typed error in the UI;
+   partial text persisted (`StopReason::Error`); after `model_load` again the
+   next generation works.
+6. Close the app during generation → exits cleanly (code 0), no orphan
+   `llama-server` (`tasklist`).
+7. A concurrent `chat_send` while one runs → `Conflict` surfaced in the UI, no
+   crash, no state corruption.
+8. End-to-end TTFT (send click → first delta rendered) measured + within budget.
+9. Full check suite green; bindings regenerated + committed.
 
 ## ADRs / open questions
-- Concurrency policy for simultaneous generations (reject vs queue).
+- **Concurrency = reject** (documented here; Phase 24 scheduler may revisit to
+  queue). No new ADR.
+- No new ADR. `conversation` schema (V0004) is minimal and grows in Phase 17/21.
