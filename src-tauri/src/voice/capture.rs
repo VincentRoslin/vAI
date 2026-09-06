@@ -12,7 +12,8 @@ use tokio::sync::mpsc;
 use crate::ipc::{AppError, AppResult};
 
 /// One selectable input device.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/bindings/")]
 pub struct InputDevice {
     /// Human-readable name; also the selection key persisted in config.
     pub name: String,

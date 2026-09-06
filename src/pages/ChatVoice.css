@@ -115,3 +115,22 @@
 .chat__composer button {
   align-self: flex-end;
 }
+
+.chat__mic {
+  align-self: flex-end;
+  min-width: 2.5rem;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.chat__mic--live {
+  background: var(--accent, #c33);
+  border-color: var(--accent, #c33);
+  animation: chat-mic-pulse 1s ease-in-out infinite;
+}
+
+@keyframes chat-mic-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}

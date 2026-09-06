@@ -418,6 +418,22 @@ pub async fn chat_send(
     .await
 }
 
+/// Generate a reply over the conversation's existing history (no new user turn).
+/// Used after a voice turn was added by the STT pipeline. Streams over `events`.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn chat_generate(
+    chat: State<'_, Arc<ConversationEngine>>,
+    conversation_id: ConversationId,
+    model_id: ModelId,
+    events: Channel<GenerationEvent>,
+) -> AppResult<TaskId> {
+    chat.generate(conversation_id, model_id, move |ev| {
+        let _ = events.send(ev);
+    })
+    .await
+}
+
 /// The engine's streaming state — whether a generation is running and, if so,
 /// its task + conversation.
 #[allow(clippy::needless_pass_by_value)]
@@ -434,6 +450,54 @@ pub async fn chat_cancel(
     task_id: TaskId,
 ) -> AppResult<()> {
     chat.cancel(&task_id).await
+}
+
+// ---------------------------------------------------------------- voice (Phase 18)
+
+use crate::voice::capture::InputDevice;
+use crate::voice::{VoiceInput, VoiceState};
+
+/// List the machine's audio input devices.
+#[must_use]
+#[tauri::command]
+pub fn voice_input_devices() -> Vec<InputDevice> {
+    crate::voice::capture::list_input_devices()
+}
+
+/// Start push-to-talk listening on `conversation_id`; `events` receives every
+/// [`VoiceState`] change until the session ends.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn voice_start(
+    voice: State<'_, Arc<VoiceInput>>,
+    conversation_id: ConversationId,
+    events: Channel<VoiceState>,
+) -> AppResult<()> {
+    let mut rx = voice.subscribe();
+    let _ = events.send(*rx.borrow_and_update());
+    tokio::spawn(async move {
+        while rx.changed().await.is_ok() {
+            if events.send(*rx.borrow_and_update()).is_err() {
+                break;
+            }
+        }
+    });
+    voice.start_listening(conversation_id).await
+}
+
+/// Release push-to-talk — transcribe an utterance in progress, then stop.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn voice_stop(voice: State<'_, Arc<VoiceInput>>) -> AppResult<()> {
+    voice.stop_listening().await;
+    Ok(())
+}
+
+/// The current voice state (poll fallback for the channel).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn voice_state(voice: State<'_, Arc<VoiceInput>>) -> AppResult<VoiceState> {
+    Ok(voice.state())
 }
 
 #[cfg(test)]

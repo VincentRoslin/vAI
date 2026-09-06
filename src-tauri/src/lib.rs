@@ -63,8 +63,13 @@ pub fn run() {
             ipc::commands::conversation_list,
             ipc::commands::conversation_messages,
             ipc::commands::chat_send,
+            ipc::commands::chat_generate,
             ipc::commands::chat_state,
             ipc::commands::chat_cancel,
+            ipc::commands::voice_input_devices,
+            ipc::commands::voice_start,
+            ipc::commands::voice_stop,
+            ipc::commands::voice_state,
         ])
         .build(tauri::generate_context!())
         .expect("error while building LocalAI");
@@ -73,6 +78,9 @@ pub fn run() {
         if let RunEvent::ExitRequested { .. } = event {
             // Cancel any in-flight generation, unload models (the Job Object also
             // kills llama-server), then checkpoint the WAL.
+            if let Some(voice) = handle.try_state::<Arc<voice::VoiceInput>>() {
+                tauri::async_runtime::block_on(voice.cancel_listening());
+            }
             if let Some(chat) = handle.try_state::<Arc<conversation::ConversationEngine>>() {
                 tauri::async_runtime::block_on(chat.shutdown());
             }
@@ -155,11 +163,40 @@ fn setup(app: &mut tauri::App) -> Result<(), String> {
     app.manage(Arc::clone(&lifecycle));
 
     // The one conversation engine (Phase 16 flow, Phase 17 formalized).
-    app.manage(Arc::new(conversation::ConversationEngine::new(
-        database, lifecycle,
-    )));
+    let engine = Arc::new(conversation::ConversationEngine::new(database, lifecycle));
+    app.manage(Arc::clone(&engine));
+
+    // Voice input (Phase 18): STT worker supervisor + capture/VAD/turn service.
+    app.manage(start_voice_input(&engine, &effective, &data_root));
 
     Ok(())
+}
+
+/// Wire the STT worker supervisor + [`voice::VoiceInput`] (Phase 18, ADR-0005 /
+/// 0013 / 0018). Nothing is spawned until the first `voice_start`.
+fn start_voice_input(
+    engine: &Arc<conversation::ConversationEngine>,
+    effective: &config::AppConfig,
+    data_root: &std::path::Path,
+) -> Arc<voice::VoiceInput> {
+    let layout = worker::WorkerLayout::from_config(
+        effective.workers.python.clone(),
+        effective.workers.dir.clone(),
+    );
+    let stt = Arc::new(
+        worker::WorkerSupervisor::new(layout, contracts::worker::WorkerKind::Stt).with_env([(
+            "LOCALAI_STT_MODEL_DIR".to_owned(),
+            effective.models.dir.join("stt").display().to_string(),
+        )]),
+    );
+    let cfg = voice::VoiceConfig {
+        vad_model: effective.models.dir.join("vad").join("silero_vad.onnx"),
+        temp_dir: data_root.join("voice-cache"),
+        input_device: effective.voice.input_device.clone(),
+        vad: voice::vad::VadConfig::default(),
+        pre_roll_ms: 300,
+    };
+    voice::VoiceInput::new(Arc::clone(engine), stt, cfg)
 }
 
 /// Build the resource manager (Phase 13, ADR-0007): whole-GPU NVML + `sysinfo`

@@ -32,7 +32,7 @@ use crate::ipc::{AppError, AppResult};
 
 /// Schema version this binary understands. A file with a higher version is
 /// refused; a lower (or absent) version is migrated forward on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 5;
+pub const CURRENT_SCHEMA_VERSION: u32 = 6;
 
 const FILE_NAME: &str = "config.json";
 const TMP_NAME: &str = "config.json.tmp";
@@ -60,6 +60,35 @@ pub struct AppConfig {
     pub resources: ResourcesConfig,
     /// Where supervised runtime binaries live (schema v5).
     pub runtimes: RuntimesConfig,
+    /// Python worker layout (schema v6, ADR-0018).
+    pub workers: WorkersConfig,
+    /// Voice input settings (schema v6, ADR-0005).
+    pub voice: VoiceConfig,
+}
+
+/// Where the Python worker interpreter + scripts live (schema v6, ADR-0018).
+/// Dev points these at `<repo>/.venv` + `<repo>/workers`; the packaged build
+/// resolves siblings of the executable and ignores these.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct WorkersConfig {
+    /// Absolute directory holding `stt.py`, `tts.py`, …
+    #[ts(type = "string")]
+    pub dir: PathBuf,
+    /// Absolute path to the Python interpreter.
+    #[ts(type = "string")]
+    pub python: PathBuf,
+}
+
+/// Voice input settings (schema v6, ADR-0005). VAD thresholds stay at their
+/// code defaults for v1 (edit the file to override — a nested `config_set` is a
+/// later feature).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct VoiceConfig {
+    /// `cpal` input device name; `null` = the system default.
+    #[ts(type = "string | null")]
+    pub input_device: Option<String>,
 }
 
 /// Location of the supervised runtime binaries (`llama-server`, later the image
@@ -126,6 +155,15 @@ impl AppConfig {
             runtimes: RuntimesConfig {
                 dir: app_data_root.join("runtimes"),
             },
+            workers: WorkersConfig {
+                dir: app_data_root.join("workers"),
+                python: app_data_root.join("python").join(if cfg!(windows) {
+                    "python.exe"
+                } else {
+                    "bin/python3"
+                }),
+            },
+            voice: VoiceConfig { input_device: None },
         }
     }
 
@@ -164,6 +202,16 @@ impl AppConfig {
         if self.runtimes.dir.as_os_str().is_empty() || !self.runtimes.dir.is_absolute() {
             return Err(AppError::Validation(
                 "runtimes.dir must be a non-empty absolute path".to_owned(),
+            ));
+        }
+        if self.workers.dir.as_os_str().is_empty() || !self.workers.dir.is_absolute() {
+            return Err(AppError::Validation(
+                "workers.dir must be a non-empty absolute path".to_owned(),
+            ));
+        }
+        if self.workers.python.as_os_str().is_empty() || !self.workers.python.is_absolute() {
+            return Err(AppError::Validation(
+                "workers.python must be a non-empty absolute path".to_owned(),
             ));
         }
         if self.resources.vram_safety_margin_mb > MAX_VRAM_SAFETY_MARGIN_MB {
@@ -235,6 +283,12 @@ struct SessionOverrides {
     logging_level: Option<String>,
     vram_safety_margin_mb: Option<u32>,
     runtimes_dir: Option<PathBuf>,
+    workers_dir: Option<PathBuf>,
+    workers_python: Option<PathBuf>,
+    /// Outer: was it overridden this session. Inner: the value (`None` = default
+    /// device).
+    #[allow(clippy::option_option)]
+    voice_input_device: Option<Option<String>>,
 }
 
 impl SessionOverrides {
@@ -245,6 +299,9 @@ impl SessionOverrides {
             && self.logging_level.is_none()
             && self.vram_safety_margin_mb.is_none()
             && self.runtimes_dir.is_none()
+            && self.workers_dir.is_none()
+            && self.workers_python.is_none()
+            && self.voice_input_device.is_none()
     }
 
     fn apply(&self, cfg: &mut AppConfig) {
@@ -253,6 +310,15 @@ impl SessionOverrides {
         }
         if let Some(dir) = &self.runtimes_dir {
             cfg.runtimes.dir.clone_from(dir);
+        }
+        if let Some(dir) = &self.workers_dir {
+            cfg.workers.dir.clone_from(dir);
+        }
+        if let Some(py) = &self.workers_python {
+            cfg.workers.python.clone_from(py);
+        }
+        if let Some(dev) = &self.voice_input_device {
+            cfg.voice.input_device.clone_from(dev);
         }
         if let Some(budget) = self.models_budget_gb {
             cfg.models.budget_gb = budget;
@@ -288,17 +354,26 @@ pub enum ConfigKey {
     VramSafetyMarginMb,
     /// `runtimes.dir` — absolute path.
     RuntimesDir,
+    /// `workers.dir` — absolute path (schema v6).
+    WorkersDir,
+    /// `workers.python` — absolute path (schema v6).
+    WorkersPython,
+    /// `voice.input_device` — a `cpal` device name, or empty for the default.
+    VoiceInputDevice,
 }
 
 impl ConfigKey {
     /// Every overridable key.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 9] = [
         Self::ModelsDir,
         Self::ModelsBudgetGb,
         Self::ModelsMinFreeGb,
         Self::LoggingLevel,
         Self::VramSafetyMarginMb,
         Self::RuntimesDir,
+        Self::WorkersDir,
+        Self::WorkersPython,
+        Self::VoiceInputDevice,
     ];
 
     #[must_use]
@@ -310,15 +385,19 @@ impl ConfigKey {
             Self::LoggingLevel => "logging.level",
             Self::VramSafetyMarginMb => "resources.vram_safety_margin_mb",
             Self::RuntimesDir => "runtimes.dir",
+            Self::WorkersDir => "workers.dir",
+            Self::WorkersPython => "workers.python",
+            Self::VoiceInputDevice => "voice.input_device",
         }
     }
 
     #[must_use]
     fn value_type(self) -> &'static str {
         match self {
-            Self::ModelsDir | Self::RuntimesDir => "path",
+            Self::ModelsDir | Self::RuntimesDir | Self::WorkersDir | Self::WorkersPython => "path",
             Self::ModelsBudgetGb | Self::ModelsMinFreeGb | Self::VramSafetyMarginMb => "integer",
             Self::LoggingLevel => "log-directive",
+            Self::VoiceInputDevice => "string",
         }
     }
 
@@ -330,6 +409,9 @@ impl ConfigKey {
             Self::LoggingLevel => cfg.logging.level.clone(),
             Self::VramSafetyMarginMb => cfg.resources.vram_safety_margin_mb.to_string(),
             Self::RuntimesDir => cfg.runtimes.dir.display().to_string(),
+            Self::WorkersDir => cfg.workers.dir.display().to_string(),
+            Self::WorkersPython => cfg.workers.python.display().to_string(),
+            Self::VoiceInputDevice => cfg.voice.input_device.clone().unwrap_or_default(),
         }
     }
 }
@@ -340,6 +422,12 @@ fn apply_kv(cfg: &mut AppConfig, key: ConfigKey, raw: &str) -> AppResult<()> {
     match key {
         ConfigKey::ModelsDir => cfg.models.dir = PathBuf::from(raw),
         ConfigKey::RuntimesDir => cfg.runtimes.dir = PathBuf::from(raw),
+        ConfigKey::WorkersDir => cfg.workers.dir = PathBuf::from(raw),
+        ConfigKey::WorkersPython => cfg.workers.python = PathBuf::from(raw),
+        ConfigKey::VoiceInputDevice => {
+            let t = raw.trim();
+            cfg.voice.input_device = (!t.is_empty()).then(|| t.to_owned());
+        }
         ConfigKey::ModelsBudgetGb => {
             cfg.models.budget_gb = raw.trim().parse().map_err(|_| {
                 AppError::Validation(format!("models.budget_gb must be an integer, got {raw:?}"))
@@ -529,6 +617,11 @@ impl ConfigManager {
             }
             ConfigKey::VramSafetyMarginMb => {
                 state.session.vram_safety_margin_mb = Some(probe.resources.vram_safety_margin_mb);
+            }
+            ConfigKey::WorkersDir => state.session.workers_dir = Some(PathBuf::from(raw)),
+            ConfigKey::WorkersPython => state.session.workers_python = Some(PathBuf::from(raw)),
+            ConfigKey::VoiceInputDevice => {
+                state.session.voice_input_device = Some(probe.voice.input_device.clone());
             }
         }
         Ok(())

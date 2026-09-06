@@ -143,7 +143,7 @@ fn migration_v3_forward_adds_resources_and_runtimes() {
 }
 
 #[test]
-fn migration_v4_to_v5_adds_runtimes_section() {
+fn migration_v4_forward_adds_runtimes_workers_and_voice() {
     let v4 = json!({
         "version": 4,
         "models": { "dir": if cfg!(windows) { r"C:\m" } else { "/m" }, "budget_gb": 50, "min_free_gb": 20 },
@@ -151,12 +151,36 @@ fn migration_v4_to_v5_adds_runtimes_section() {
         "resources": { "vram_safety_margin_mb": 800 },
     });
     let migrated = migrate(v4, &root()).expect("migrates");
-    assert_eq!(migrated["version"], json!(5));
+    assert_eq!(migrated["version"], json!(CURRENT_SCHEMA_VERSION));
     assert_eq!(
         migrated["runtimes"]["dir"],
-        json!(root().join("runtimes").display().to_string())
+        json!(root().join("runtimes").display().to_string()) // v5
     );
+    assert!(migrated["workers"]["dir"].is_string()); // v6
+    assert!(migrated["workers"]["python"].is_string()); // v6
+    assert_eq!(migrated["voice"]["input_device"], json!(null)); // v6
     assert_eq!(migrated["resources"]["vram_safety_margin_mb"], json!(800)); // kept
+
+    let cfg: AppConfig = serde_json::from_value(migrated).expect("deserializes");
+    cfg.validate().expect("valid after migration");
+}
+
+#[test]
+fn migration_v5_to_v6_keeps_runtimes_dir() {
+    let v5 = json!({
+        "version": 5,
+        "models": { "dir": if cfg!(windows) { r"C:\m" } else { "/m" }, "budget_gb": 50, "min_free_gb": 20 },
+        "logging": { "level": "info" },
+        "resources": { "vram_safety_margin_mb": 800 },
+        "runtimes": { "dir": if cfg!(windows) { r"C:\rt" } else { "/rt" } },
+    });
+    let migrated = migrate(v5, &root()).expect("migrates");
+    assert_eq!(migrated["version"], json!(6));
+    assert_eq!(
+        migrated["runtimes"]["dir"],
+        json!(if cfg!(windows) { r"C:\rt" } else { "/rt" })
+    );
+    assert!(migrated["workers"]["python"].is_string());
 }
 
 #[test]

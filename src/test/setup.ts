@@ -17,6 +17,7 @@ const arrayCommands = new Set([
   'lifecycle_status',
   'conversation_list',
   'conversation_messages',
+  'voice_input_devices',
 ]);
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -26,11 +27,13 @@ vi.mock('@tauri-apps/api/core', () => ({
     if (cmd === 'app_ping') return { nonce: 'test', version: '0.1.0' };
     if (cmd === 'config_get') {
       return {
-        version: 5,
+        version: 6,
         models: { dir: '/tmp/models', budget_gb: 100, min_free_gb: 20 },
         logging: { level: 'info' },
         resources: { vram_safety_margin_mb: 1500 },
         runtimes: { dir: '/tmp/runtimes' },
+        workers: { dir: '/tmp/workers', python: '/tmp/py/python' },
+        voice: { input_device: null },
       };
     }
     if (cmd === 'conversation_create') {
@@ -42,8 +45,10 @@ vi.mock('@tauri-apps/api/core', () => ({
         updated_at: '2026-01-01T00:00:00Z',
       };
     }
-    if (cmd === 'chat_send') return 'task-test';
+    if (cmd === 'chat_send' || cmd === 'chat_generate') return 'task-test';
     if (cmd === 'chat_state') return { generating: null };
+    if (cmd === 'voice_start' || cmd === 'voice_stop') return undefined;
+    if (cmd === 'voice_state') return { kind: 'Idle' };
     if (arrayCommands.has(cmd)) return [];
     return undefined;
   }),

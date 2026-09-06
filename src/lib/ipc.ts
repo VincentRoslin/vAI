@@ -27,6 +27,8 @@ import type { LifecycleStatus } from '../bindings/LifecycleStatus';
 import type { Message } from '../bindings/Message';
 import type { RegisteredModel } from '../bindings/RegisteredModel';
 import type { ResourceSnapshot } from '../bindings/ResourceSnapshot';
+import type { InputDevice } from '../bindings/InputDevice';
+import type { VoiceState } from '../bindings/VoiceState';
 
 export type { AppConfig, AppError, AppReady, ConfigKeyInfo, ConfigSet, FrontendLog, Pong };
 
@@ -182,8 +184,45 @@ export async function chatSend(
   });
 }
 
+/** Generate a reply over the conversation's existing history (no new user turn) —
+ * used after a voice turn. `onEvent` receives streamed generation events. */
+export async function chatGenerate(
+  input: { conversationId: string; modelId: string },
+  onEvent: (e: GenerationEvent) => void,
+): Promise<string> {
+  const events = new Channel<GenerationEvent>();
+  events.onmessage = onEvent;
+  return call('chat_generate', {
+    conversationId: input.conversationId,
+    modelId: input.modelId,
+    events,
+  });
+}
+
 /** The engine's streaming state (whether a generation is running). */
 export const chatState = (): Promise<GenerationState> => call('chat_state');
 
 /** Cancel an in-flight generation. */
 export const chatCancel = (taskId: string): Promise<void> => call('chat_cancel', { taskId });
+
+// --- Voice input (Phase 18) ---
+
+/** The machine's audio input devices. */
+export const voiceInputDevices = (): Promise<InputDevice[]> => call('voice_input_devices');
+
+/** Start push-to-talk listening on `conversationId`; `onState` receives every
+ * {@link VoiceState} change until the session ends. */
+export async function voiceStart(
+  conversationId: string,
+  onState: (s: VoiceState) => void,
+): Promise<void> {
+  const events = new Channel<VoiceState>();
+  events.onmessage = onState;
+  return call('voice_start', { conversationId, events });
+}
+
+/** Release push-to-talk — transcribe an utterance in progress, then stop. */
+export const voiceStop = (): Promise<void> => call('voice_stop');
+
+/** Current voice state (poll fallback). */
+export const voiceState = (): Promise<VoiceState> => call('voice_state');

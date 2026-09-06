@@ -27,6 +27,8 @@ export type { ModelsConfig } from '../bindings/ModelsConfig';
 export type { LoggingConfig } from '../bindings/LoggingConfig';
 export type { ResourcesConfig } from '../bindings/ResourcesConfig';
 export type { RuntimesConfig } from '../bindings/RuntimesConfig';
+export type { WorkersConfig } from '../bindings/WorkersConfig';
+export type { VoiceConfig } from '../bindings/VoiceConfig';
 export type { ConfigKey } from '../bindings/ConfigKey';
 export type { ConfigSet } from '../bindings/ConfigSet';
 export type { ConfigKeyInfo } from '../bindings/ConfigKeyInfo';
@@ -74,6 +76,10 @@ export type { Conversation } from '../bindings/Conversation';
 export type { ChatSendRequest } from '../bindings/ChatSendRequest';
 export type { GenerationHandle } from '../bindings/GenerationHandle';
 export type { GenerationState } from '../bindings/GenerationState';
+
+// --- Voice (Phase 18) ---
+export type { VoiceState } from '../bindings/VoiceState';
+export type { InputDevice } from '../bindings/InputDevice';
 
 // Resource reservations + the manager snapshot (Phase 13, ADR-0007).
 export type { ResourceKind } from '../bindings/ResourceKind';

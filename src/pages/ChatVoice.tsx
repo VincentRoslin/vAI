@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { Conversation, GenerationEvent, LifecycleStatus, Message } from '../lib/contracts';
+import type {
+  Conversation,
+  GenerationEvent,
+  LifecycleStatus,
+  Message,
+  VoiceState,
+} from '../lib/contracts';
 import {
   chatCancel,
+  chatGenerate,
   chatSend,
   conversationCreate,
   conversationList,
@@ -13,6 +20,8 @@ import {
   modelsList,
   modelUnload,
   toAppError,
+  voiceStart,
+  voiceStop,
 } from '../lib/ipc';
 import { log } from '../lib/log';
 import './ChatVoice.css';
@@ -29,6 +38,7 @@ export function ChatVoice(): React.JSX.Element {
   const [streaming, setStreaming] = useState<Streaming | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [voice, setVoice] = useState<VoiceState['kind']>('Idle');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const loaded = models.find((m) => m.state === 'Loaded' || m.state === 'Busy');
@@ -152,6 +162,47 @@ export function ChatVoice(): React.JSX.Element {
     if (taskId) await chatCancel(taskId).catch(() => undefined);
   }
 
+  async function talkStart(): Promise<void> {
+    if (!convo || streaming || voice !== 'Idle') return;
+    setNotice(null);
+    try {
+      await voiceStart(convo.id, (s) => setVoice(s.kind));
+    } catch (e) {
+      setVoice('Idle');
+      setNotice(`Voice unavailable: ${toAppError(e).kind}`);
+    }
+  }
+
+  async function talkStop(): Promise<void> {
+    try {
+      await voiceStop();
+    } catch {
+      /* already stopped */
+    }
+    setVoice('Idle');
+    // The transcript is now a user turn; show it, then reply if a model is loaded.
+    setTimeout(() => {
+      void (async () => {
+        await reloadMessages();
+        if (!convo || !loaded || streaming) return;
+        const msgs = await conversationMessages(convo.id).catch(() => []);
+        const last = msgs.at(-1);
+        if (last?.role === 'User') {
+          setStreaming({ text: '', error: null });
+          try {
+            const id = await chatGenerate({ conversationId: convo.id, modelId: loaded.id }, (ev) =>
+              onEvent(ev),
+            );
+            setTaskId(id);
+          } catch (e) {
+            setStreaming(null);
+            setNotice(`Reply failed: ${toAppError(e).kind}`);
+          }
+        }
+      })();
+    }, 250);
+  }
+
   return (
     <section className="chat">
       <header className="chat__bar">
@@ -217,6 +268,18 @@ export function ChatVoice(): React.JSX.Element {
           rows={2}
           disabled={!loaded}
         />
+        <button
+          type="button"
+          className={`chat__mic ${voice !== 'Idle' ? 'chat__mic--live' : ''}`}
+          disabled={!convo || !!streaming}
+          onPointerDown={() => void talkStart()}
+          onPointerUp={() => void talkStop()}
+          onPointerLeave={() => voice !== 'Idle' && void talkStop()}
+          aria-label="Hold to talk"
+          title="Hold to talk"
+        >
+          {voice === 'Idle' ? '🎤' : voiceLabel(voice)}
+        </button>
         {streaming && !streaming.error ? (
           <button type="button" onClick={() => void stop()}>
             Stop
@@ -249,6 +312,23 @@ function Bubble({
       <div className="chat__meta">{meta}</div>
     </div>
   );
+}
+
+function voiceLabel(v: VoiceState['kind']): string {
+  switch (v) {
+    case 'Warming':
+      return '…';
+    case 'Listening':
+      return '👂';
+    case 'Speech':
+      return '🗣';
+    case 'Transcribing':
+      return '✍️';
+    case 'Error':
+      return '⚠️';
+    default:
+      return '🎤';
+  }
 }
 
 function textOf(m: Message): string {

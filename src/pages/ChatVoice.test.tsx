@@ -20,10 +20,13 @@ vi.mock('../lib/ipc', async (importOriginal) => {
     })),
     conversationMessages: vi.fn(async () => []),
     chatSend: vi.fn(),
+    chatGenerate: vi.fn(async () => 'task-gen'),
     chatCancel: vi.fn(async () => undefined),
     modelLoad: vi.fn(async () => undefined),
     modelUnload: vi.fn(async () => undefined),
     modelRegisterLocal: vi.fn(async () => 'm1'),
+    voiceStart: vi.fn(async () => undefined),
+    voiceStop: vi.fn(async () => undefined),
   };
 });
 
@@ -66,5 +69,23 @@ describe('ChatVoice', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     expect(ipc.chatCancel).toHaveBeenCalledWith('task-1');
+  });
+
+  it('push-to-talk starts and stops voice input', async () => {
+    let pushState: (s: unknown) => void = () => undefined;
+    vi.mocked(ipc.voiceStart).mockImplementation(async (_id, onState) => {
+      pushState = onState as (s: unknown) => void;
+    });
+
+    render(<ChatVoice />);
+    const mic = await screen.findByRole('button', { name: /hold to talk/i });
+
+    fireEvent.pointerDown(mic);
+    await waitFor(() => expect(ipc.voiceStart).toHaveBeenCalledWith('c1', expect.any(Function)));
+    pushState({ kind: 'Listening' });
+    await waitFor(() => expect(mic.className).toMatch(/chat__mic--live/));
+
+    fireEvent.pointerUp(mic);
+    await waitFor(() => expect(ipc.voiceStop).toHaveBeenCalled());
   });
 });

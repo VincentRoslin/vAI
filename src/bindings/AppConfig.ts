@@ -3,6 +3,8 @@ import type { LoggingConfig } from "./LoggingConfig";
 import type { ModelsConfig } from "./ModelsConfig";
 import type { ResourcesConfig } from "./ResourcesConfig";
 import type { RuntimesConfig } from "./RuntimesConfig";
+import type { VoiceConfig } from "./VoiceConfig";
+import type { WorkersConfig } from "./WorkersConfig";
 
 /**
  * The full configuration document.
@@ -27,4 +29,12 @@ resources: ResourcesConfig,
 /**
  * Where supervised runtime binaries live (schema v5).
  */
-runtimes: RuntimesConfig, };
+runtimes: RuntimesConfig, 
+/**
+ * Python worker layout (schema v6, ADR-0018).
+ */
+workers: WorkersConfig, 
+/**
+ * Voice input settings (schema v6, ADR-0005).
+ */
+voice: VoiceConfig, };

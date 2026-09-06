@@ -35,8 +35,9 @@ use crate::worker::WorkerSupervisor;
 pub const SAMPLE_RATE: u32 = 16_000;
 
 /// What the UI shows while listening (Tauri `Channel<VoiceState>`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
 #[serde(tag = "kind")]
+#[ts(export, export_to = "../../src/bindings/")]
 pub enum VoiceState {
     /// Not listening.
     Idle,
