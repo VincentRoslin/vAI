@@ -63,8 +63,14 @@ pub trait LoadedInstance: Send + Sync {
     async fn shutdown(&self);
 
     /// The instance's LLM generation capability, if it is a language model.
-    /// Non-LLM instances (STT / TTS / image, later phases) return `None`.
+    /// Non-LLM instances (STT / TTS / image) return `None`.
     fn as_llm(&self) -> Option<&dyn LlmInstance> {
+        None
+    }
+
+    /// The instance's image-generation capability, if it is an image model
+    /// (Phase 22). Non-image instances return `None`.
+    fn as_image(&self) -> Option<&dyn ImageInstance> {
         None
     }
 
@@ -109,6 +115,74 @@ pub trait LlmInstance: Send + Sync {
         tx: mpsc::Sender<GenerationEvent>,
         cancel: CancellationToken,
     );
+}
+
+// ------------------------------------------------------------------ image (P22)
+
+/// A fully-resolved image-generation request handed to an [`ImageInstance`].
+/// The LoRA is already resolved to a validated basename by the caller; the
+/// prompt is untrusted text passed opaquely to the sidecar.
+#[derive(Debug, Clone)]
+pub struct ImageGenerateArgs {
+    /// Positive prompt.
+    pub prompt: String,
+    /// Negative prompt (inert at `guidance 0`).
+    pub negative: Option<String>,
+    /// Width in px (a multiple of 16).
+    pub width: u32,
+    /// Height in px (a multiple of 16).
+    pub height: u32,
+    /// Denoising steps.
+    pub steps: u32,
+    /// `guidance_scale`.
+    pub guidance: f32,
+    /// Seed for the first image; image `i` uses `seed + i`.
+    pub seed: i64,
+    /// How many images to generate.
+    pub batch_count: u32,
+    /// `(basename inside the confined loras dir, weight)`, or `None` for the
+    /// base model.
+    pub lora: Option<(String, f32)>,
+}
+
+/// One image produced by an [`ImageInstance`].
+#[derive(Debug, Clone)]
+pub struct GeneratedPng {
+    /// PNG-encoded bytes.
+    pub bytes: Vec<u8>,
+    /// The seed that produced this image.
+    pub seed: i64,
+}
+
+/// A step-progress frame emitted mid-generation.
+#[derive(Debug, Clone, Copy)]
+pub struct ImageStepProgress {
+    /// 0-based index of the image being generated within the batch.
+    pub image_index: u32,
+    /// Completed denoising steps for the current image.
+    pub step: u32,
+    /// Total steps for the current image.
+    pub total_steps: u32,
+}
+
+/// Image generation on top of a [`LoadedInstance`]. Reached via
+/// [`LoadedInstance::as_image`].
+#[async_trait]
+pub trait ImageInstance: Send + Sync {
+    /// Generate `args.batch_count` images. Progress frames land in `progress`
+    /// (best-effort — a closed receiver is not an error). On cancellation, tear
+    /// down and return [`crate::ipc::AppError::Cancelled`] with no partial
+    /// output.
+    ///
+    /// # Errors
+    /// Transport / timeout / cancellation / OOM / backend errors as
+    /// [`crate::ipc::AppError`].
+    async fn generate(
+        &self,
+        args: ImageGenerateArgs,
+        progress: mpsc::UnboundedSender<ImageStepProgress>,
+        cancel: CancellationToken,
+    ) -> AppResult<Vec<GeneratedPng>>;
 }
 
 #[cfg(test)]

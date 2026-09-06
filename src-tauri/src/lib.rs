@@ -16,6 +16,7 @@ pub mod contracts;
 pub mod conversation;
 pub mod db;
 pub mod diag;
+pub mod image;
 pub mod ipc;
 pub mod job;
 pub mod lifecycle;
