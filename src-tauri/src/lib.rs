@@ -134,6 +134,11 @@ fn setup(app: &mut tauri::App) -> Result<(), String> {
         .app_data_dir()
         .map_err(|err| format!("resolve app data dir: {err}"))?;
 
+    tracing::info!(
+        config_dir = %config_dir.display(),
+        data_root = %data_root.display(),
+        "resolved app dirs"
+    );
     let config_started = Instant::now();
     let manager = config::ConfigManager::load(&config_dir, &data_root)
         .map_err(|err| format!("load configuration: {err}"))?;

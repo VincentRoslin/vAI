@@ -599,7 +599,23 @@ impl ConfigManager {
     /// Propagates [`AppError::Validation`] for an invalid config value, or
     /// [`AppError::Internal`] for an unexpected I/O failure.
     pub fn load(config_dir: &Path, app_data_root: &Path) -> AppResult<Self> {
-        let path = config_dir.join(FILE_NAME);
+        // Prefer `<app_config_dir>/config.json`; fall back to
+        // `<app_data_dir>/config.json` (on some platforms/Tauri versions the two
+        // resolve to different folders — the file may sit in either).
+        let primary = config_dir.join(FILE_NAME);
+        let fallback = app_data_root.join(FILE_NAME);
+        let path = if primary.is_file() || !fallback.is_file() {
+            primary
+        } else {
+            fallback
+        };
+        tracing::info!(
+            config_path = %path.display(),
+            primary = %config_dir.join(FILE_NAME).display(),
+            fallback = %app_data_root.join(FILE_NAME).display(),
+            exists = path.is_file(),
+            "loading config"
+        );
         let (base, recovered) = match fs::read_to_string(&path) {
             Err(err) if err.kind() == ErrorKind::NotFound => {
                 (AppConfig::defaults(app_data_root), false)
@@ -615,7 +631,7 @@ impl ConfigManager {
                     (cfg, false)
                 }
                 Err(parse_err) => {
-                    Self::back_up_corrupt(config_dir, &text)?;
+                    Self::back_up_corrupt(path.parent().unwrap_or(config_dir), &text)?;
                     tracing::warn!(%parse_err, "config file is unparseable — starting from defaults");
                     (AppConfig::defaults(app_data_root), true)
                 }
