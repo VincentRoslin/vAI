@@ -680,6 +680,76 @@ pub async fn diag_export(
     crate::diag::export(&app_data, &config, &registry, &resources, &lifecycle, &chat).await
 }
 
+// ---------------------------------------------------------------- image generation (Phase 22)
+
+use crate::blob::BlobStore;
+use crate::contracts::ids::AssetId;
+use crate::contracts::image::{
+    GeneratedImageRow, ImageEvent, ImageLora, ImagePreset, ImageRequest,
+};
+use crate::image::orchestrator::ImageOrchestrator;
+
+/// Generate one or more images with Krea 2 Turbo. The reply streams back over
+/// `events` — progress frames then one terminal (`Done` / `Error` / `Cancelled`).
+/// Returns the task id (for [`image_cancel`]).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn image_generate(
+    image: State<'_, Arc<ImageOrchestrator>>,
+    req: ImageRequest,
+    events: Channel<ImageEvent>,
+) -> AppResult<TaskId> {
+    let orch = Arc::clone(&image);
+    orch.generate(req, move |ev| {
+        let _ = events.send(ev);
+    })
+    .await
+}
+
+/// Cancel the running image generation.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn image_cancel(
+    image: State<'_, Arc<ImageOrchestrator>>,
+    task_id: TaskId,
+) -> AppResult<()> {
+    image.cancel(&task_id).await
+}
+
+/// The realism LoRAs available to Krea 2.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn image_loras(image: State<'_, Arc<ImageOrchestrator>>) -> AppResult<Vec<ImageLora>> {
+    image.list_loras().await
+}
+
+/// The saved image-generation presets.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn image_presets(
+    image: State<'_, Arc<ImageOrchestrator>>,
+) -> AppResult<Vec<ImagePreset>> {
+    image.list_presets().await
+}
+
+/// Recent generations, newest first.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn image_history(
+    image: State<'_, Arc<ImageOrchestrator>>,
+    limit: u32,
+) -> AppResult<Vec<GeneratedImageRow>> {
+    image.history(limit.clamp(1, 200)).await
+}
+
+/// The PNG bytes of one stored image (rendered via a blob URL by the frontend —
+/// a filesystem path never crosses the wire).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn image_bytes(blob: State<'_, Arc<BlobStore>>, asset: AssetId) -> AppResult<Vec<u8>> {
+    blob.read(&asset)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

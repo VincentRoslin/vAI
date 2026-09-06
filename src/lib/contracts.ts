@@ -29,6 +29,7 @@ export type { ResourcesConfig } from '../bindings/ResourcesConfig';
 export type { RuntimesConfig } from '../bindings/RuntimesConfig';
 export type { WorkersConfig } from '../bindings/WorkersConfig';
 export type { VoiceConfig } from '../bindings/VoiceConfig';
+export type { ImageConfig } from '../bindings/ImageConfig';
 export type { ConfigKey } from '../bindings/ConfigKey';
 export type { ConfigSet } from '../bindings/ConfigSet';
 export type { ConfigKeyInfo } from '../bindings/ConfigKeyInfo';

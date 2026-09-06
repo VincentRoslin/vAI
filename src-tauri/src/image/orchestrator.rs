@@ -152,6 +152,22 @@ impl ImageOrchestrator {
         self.repo.list_generated(limit).await
     }
 
+    /// The registered realism LoRAs (for the picker).
+    ///
+    /// # Errors
+    /// A persistence error.
+    pub async fn list_loras(&self) -> AppResult<Vec<crate::contracts::image::ImageLora>> {
+        self.repo.list_loras().await
+    }
+
+    /// The saved parameter presets.
+    ///
+    /// # Errors
+    /// A persistence error.
+    pub async fn list_presets(&self) -> AppResult<Vec<crate::contracts::image::ImagePreset>> {
+        self.repo.list_presets().await
+    }
+
     async fn run<F>(
         &self,
         req: &ImageRequest,

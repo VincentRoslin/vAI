@@ -88,6 +88,12 @@ pub fn run() {
             ipc::commands::voice_state,
             ipc::commands::diag_snapshot,
             ipc::commands::diag_export,
+            ipc::commands::image_generate,
+            ipc::commands::image_cancel,
+            ipc::commands::image_loras,
+            ipc::commands::image_presets,
+            ipc::commands::image_history,
+            ipc::commands::image_bytes,
         ])
         .build(tauri::generate_context!())
         .expect("error while building LocalAI");
@@ -186,16 +192,19 @@ fn setup(app: &mut tauri::App) -> Result<(), String> {
 
     let resources = start_resource_manager(effective.resources.vram_safety_margin_mb);
     app.manage(Arc::clone(&resources));
-    let lifecycle =
-        start_lifecycle_manager(Arc::clone(&registry), resources, &effective.runtimes.dir);
+    let lifecycle = start_lifecycle_manager(
+        Arc::clone(&registry),
+        Arc::clone(&resources),
+        &effective.runtimes.dir,
+    );
     app.manage(Arc::clone(&lifecycle));
 
     // The one conversation engine (Phase 16 flow, Phase 17 formalized). Holds
     // the persona repo + the one context builder (Phase 20).
     let engine = Arc::new(conversation::ConversationEngine::new(
-        database,
+        Arc::clone(&database),
         Arc::clone(&registry),
-        lifecycle,
+        Arc::clone(&lifecycle),
     ));
     app.manage(Arc::clone(&engine));
 
@@ -203,7 +212,91 @@ fn setup(app: &mut tauri::App) -> Result<(), String> {
     // capture / VAD / playback / barge-in service.
     app.manage(start_voice(&engine, &effective, &data_root));
 
+    // Image generation (Phase 22): the blob store + LoRA/preset registry + the
+    // manual evict/restore orchestrator. The Krea 2 backend registers only when
+    // its sidecar script is present (Phase 22.B) — until then image_generate
+    // returns a clean "no image model registered".
+    let (orchestrator, blob) = start_image(
+        &database, &registry, &resources, &lifecycle, &engine, &effective, &data_root,
+    );
+    app.manage(orchestrator);
+    app.manage(blob);
+
     Ok(())
+}
+
+/// Wire the image subsystem (Phase 22, ADR-0006 / ADR-0013): the blob store,
+/// the LoRA + preset registry (seeded from the confined loras dir), the Krea 2
+/// backend (only if its sidecar script exists — Phase 22.B), and the manual
+/// evict/restore [`image::orchestrator::ImageOrchestrator`].
+fn start_image(
+    database: &Arc<db::Db>,
+    registry: &Arc<models::ModelRegistry>,
+    resources: &Arc<resources::ResourceManager>,
+    lifecycle: &Arc<lifecycle::LifecycleManager>,
+    engine: &Arc<conversation::ConversationEngine>,
+    effective: &config::AppConfig,
+    data_root: &Path,
+) -> (
+    Arc<image::orchestrator::ImageOrchestrator>,
+    Arc<blob::BlobStore>,
+) {
+    let blob = Arc::new(blob::BlobStore::new(data_root.join("blobs")));
+
+    let loras_dir = effective
+        .image
+        .loras_dir
+        .clone()
+        .unwrap_or_else(|| effective.models.dir.join("image").join("loras"));
+    let quant_cache = effective.image.quant_cache_dir.clone().unwrap_or_else(|| {
+        effective
+            .models
+            .dir
+            .join("image")
+            .join("quant_cache")
+            .join("krea2")
+    });
+
+    let repo = image::repo::ImageRepo::new(Arc::clone(database));
+    if let Err(err) = tauri::async_runtime::block_on(repo.seed(&loras_dir)) {
+        tracing::warn!(%err, "image LoRA / preset registry seed failed");
+    }
+
+    // Dev: `<repo>/image_gen/server.py`. Shipped: a sibling of the executable.
+    let image_dir = effective
+        .workers
+        .dir
+        .parent()
+        .map_or_else(|| data_root.join("image_gen"), |p| p.join("image_gen"));
+    let script = image_dir.join("server.py");
+    if script.is_file() {
+        lifecycle.register_backend(
+            image::BACKEND_KEY,
+            Arc::new(image::Krea2Backend::new(
+                effective.workers.python.clone(),
+                script.clone(),
+                Some(quant_cache),
+                Some(loras_dir),
+                data_root.join("image-exchange"),
+            )),
+        );
+        tracing::info!(script = %script.display(), "Krea 2 image backend registered");
+    } else {
+        tracing::info!(
+            expected = %script.display(),
+            "no image sidecar script — image generation unavailable until Phase 22.B"
+        );
+    }
+
+    let orchestrator = Arc::new(image::orchestrator::ImageOrchestrator::new(
+        Arc::clone(lifecycle),
+        Arc::clone(resources),
+        Arc::clone(registry),
+        Arc::clone(engine),
+        Arc::clone(&blob),
+        repo,
+    ));
+    (orchestrator, blob)
 }
 
 /// Wire the STT + TTS worker supervisors + [`voice::VoiceInput`] (Phases 18/19,

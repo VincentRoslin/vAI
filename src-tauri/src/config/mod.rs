@@ -32,7 +32,7 @@ use crate::ipc::{AppError, AppResult};
 
 /// Schema version this binary understands. A file with a higher version is
 /// refused; a lower (or absent) version is migrated forward on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 8;
+pub const CURRENT_SCHEMA_VERSION: u32 = 9;
 
 const FILE_NAME: &str = "config.json";
 const TMP_NAME: &str = "config.json.tmp";
@@ -64,7 +64,32 @@ pub struct AppConfig {
     pub workers: WorkersConfig,
     /// Voice input settings (schema v6, ADR-0005).
     pub voice: VoiceConfig,
+    /// Image generation settings (schema v9, ADR-0006).
+    pub image: ImageConfig,
 }
+
+/// Image-generation settings (schema v9, ADR-0006). The dir overrides are
+/// file-only (like the VAD thresholds); `null` resolves to a subdir of
+/// `models.dir` at wiring time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct ImageConfig {
+    /// Directory holding the realism LoRA `*.safetensors`. `null` ⇒
+    /// `<models.dir>/image/loras`.
+    #[ts(type = "string | null")]
+    pub loras_dir: Option<PathBuf>,
+    /// Directory holding the NF4 quant cache for Krea 2. `null` ⇒
+    /// `<models.dir>/image/quant_cache/krea2`.
+    #[ts(type = "string | null")]
+    pub quant_cache_dir: Option<PathBuf>,
+    /// How long the image sidecar stays resident (~1.6 GB) after a generation
+    /// before it is unloaded. Seconds, `0..=3600`, default 300.
+    pub idle_shutdown_s: u64,
+}
+
+/// Bounds for [`ImageConfig::idle_shutdown_s`].
+pub const MAX_IMAGE_IDLE_SHUTDOWN_S: u64 = 3_600;
+const DEFAULT_IMAGE_IDLE_SHUTDOWN_S: u64 = 300;
 
 /// Where the Python worker interpreter + scripts live (schema v6, ADR-0018).
 /// Dev points these at `<repo>/.venv` + `<repo>/workers`; the packaged build
@@ -182,6 +207,11 @@ impl AppConfig {
                 output_device: None,
                 end_of_speech_ms: DEFAULT_END_OF_SPEECH_MS,
             },
+            image: ImageConfig {
+                loras_dir: None,
+                quant_cache_dir: None,
+                idle_shutdown_s: DEFAULT_IMAGE_IDLE_SHUTDOWN_S,
+            },
         }
     }
 
@@ -240,6 +270,11 @@ impl AppConfig {
         if !(MIN_END_OF_SPEECH_MS..=MAX_END_OF_SPEECH_MS).contains(&self.voice.end_of_speech_ms) {
             return Err(AppError::Validation(format!(
                 "voice.end_of_speech_ms must be {MIN_END_OF_SPEECH_MS}..={MAX_END_OF_SPEECH_MS}"
+            )));
+        }
+        if self.image.idle_shutdown_s > MAX_IMAGE_IDLE_SHUTDOWN_S {
+            return Err(AppError::Validation(format!(
+                "image.idle_shutdown_s must be <= {MAX_IMAGE_IDLE_SHUTDOWN_S}"
             )));
         }
         crate::logging::validate_directive(&self.logging.level)?;
