@@ -547,6 +547,32 @@ pub async fn chat_prompt_preview(
     })
 }
 
+// ---------------------------------------------------------------- memory (Phase 21)
+
+use crate::contracts::ids::MemoryId;
+use crate::contracts::memory::Memory;
+use crate::memory::MemoryScope;
+
+/// Every memory a Persona holds, newest first (FR-52).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn memory_list(
+    chat: State<'_, Arc<ConversationEngine>>,
+    persona_id: PersonaId,
+) -> AppResult<Vec<Memory>> {
+    chat.memory().list(&MemoryScope::Persona(persona_id)).await
+}
+
+/// Delete one memory (FR-53).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn memory_delete(
+    chat: State<'_, Arc<ConversationEngine>>,
+    id: MemoryId,
+) -> AppResult<()> {
+    chat.memory().delete(&id).await
+}
+
 // ---------------------------------------------------------------- voice (Phase 18)
 
 use crate::voice::capture::InputDevice;

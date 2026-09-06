@@ -280,8 +280,10 @@ export function ChatVoice(): React.JSX.Element {
               <>
                 <p className="chat__meta">
                   {preview.provenance.total_tokens}/{preview.provenance.budget_tokens} tok · persona{' '}
-                  {preview.provenance.persona} · history {preview.provenance.history_turns_included}{' '}
-                  in / {preview.provenance.history_turns_dropped} dropped
+                  {preview.provenance.persona} · memory {preview.provenance.memory_items} (
+                  {preview.provenance.memory_tokens} tok) · history{' '}
+                  {preview.provenance.history_turns_included} in /{' '}
+                  {preview.provenance.history_turns_dropped} dropped
                 </p>
                 <pre className="chat__promptpreview">{preview.prompt}</pre>
               </>

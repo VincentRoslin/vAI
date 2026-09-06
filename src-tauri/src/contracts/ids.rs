@@ -118,6 +118,10 @@ id_newtype!(
     MessageId
 );
 id_newtype!(
+    /// Identifies one stored memory (Phase 21).
+    MemoryId
+);
+id_newtype!(
     /// Identifies a resource reservation held against the GPU / system RAM
     /// ledger (Phase 13).
     ReservationId

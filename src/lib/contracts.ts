@@ -85,6 +85,11 @@ export type { PersonaInclusion } from '../bindings/PersonaInclusion';
 export type { Provenance } from '../bindings/Provenance';
 export type { PromptPreview } from '../bindings/PromptPreview';
 
+// Memory (Phase 21).
+export type { MemoryId } from '../bindings/MemoryId';
+export type { MemoryKind } from '../bindings/MemoryKind';
+export type { Memory } from '../bindings/Memory';
+
 // --- Voice (Phase 18 in, Phase 19 out) ---
 export type { VoiceState } from '../bindings/VoiceState';
 export type { InputDevice } from '../bindings/InputDevice';

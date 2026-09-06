@@ -20,6 +20,7 @@ pub mod job;
 pub mod lifecycle;
 pub mod llm;
 pub mod logging;
+pub mod memory;
 pub mod models;
 pub mod resources;
 pub mod voice;
@@ -75,6 +76,8 @@ pub fn run() {
             ipc::commands::persona_create,
             ipc::commands::persona_update,
             ipc::commands::persona_delete,
+            ipc::commands::memory_list,
+            ipc::commands::memory_delete,
             ipc::commands::voice_input_devices,
             ipc::commands::voice_output_devices,
             ipc::commands::voice_start,

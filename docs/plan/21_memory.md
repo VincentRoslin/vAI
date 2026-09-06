@@ -1,12 +1,10 @@
 # Phase 21 — Memory
 
-> **Status: FINALIZED AT PHASE ENTRY** (2026-09-06). Step detail derived against
-> the frozen architecture (ADR-0012, `AI_PIPELINES.md` §9). The design is
-> settled; no split. One new Rust module, one migration, 2 IPC commands, a
-> minimal Settings list. **No new venv, no downloads, no new crate** (FTS5 ships
-> in the bundled `rusqlite` — verified at phase entry). **No config schema
-> change** — the tunables are module constants (precedent: the context builder's
-> `RESPONSE_RESERVE` / `BUDGET_MARGIN`).
+> **Status: COMPLETE** (2026-09-06). All 7 steps done, all 7 gate items pass —
+> evidence in `docs/verification/21_phase21_memory.md`. `memory/` module
+> (`repo` + `extract` + `retrieve` + `MemoryService`), `V0006`, `MemoryId`,
+> `contracts::memory`; builder `max_memory_tokens` sub-budget; `memory_*` IPC.
+> No new ADR (ADR-0012 finalisations recorded), no config change, no new crate.
 
 > **Governing:** ADR-0012 (FTS5 keyword retrieval, per-Persona scope, async
 > schema-constrained LLM extraction with importance + dedup + size-cap gate,

@@ -745,6 +745,129 @@ async fn no_persona_prompt_is_bare_system_plus_history() {
     assert!(!prompt.contains("Personality:"));
 }
 
+// ---------------------------------------------------------------- memory (Phase 21)
+
+#[tokio::test]
+async fn a_persona_turn_extracts_a_memory_that_reaches_the_next_prompt() {
+    use crate::context::persona::{PersonaDraft, PersonaRepo};
+    use crate::memory::MemoryScope;
+
+    // The scripted model "reply" is an extraction JSON block — `generate`
+    // (which extraction calls) and `stream` (the reply) both return it.
+    let json = "{\"memories\":[{\"content\":\"the user keeps honeybees on a rooftop \
+        in Lisbon\",\"kind\":\"Fact\",\"importance\":4}]}";
+    let f = fixture(&[json], Ending::Done).await;
+    let personas = PersonaRepo::new(Arc::clone(&f.db));
+    let repo = ConversationRepo::new(Arc::clone(&f.db));
+    let pid = personas
+        .create(PersonaDraft {
+            name: "Api".to_owned(),
+            summary: String::new(),
+            personality: String::new(),
+            tone: String::new(),
+            style: String::new(),
+            guidance: vec![],
+        })
+        .await
+        .unwrap();
+    let scope = MemoryScope::Persona(pid.clone());
+
+    let convo = f.service.create().await.unwrap();
+    repo.set_persona(&convo.id, Some(pid)).await.unwrap();
+
+    // Turn 1 — a clean completion triggers background extraction.
+    let (tx, rx) = sink_channel();
+    f.service
+        .send(
+            convo.id.clone(),
+            f.model.clone(),
+            "how are the bees doing".to_owned(),
+            move |ev| {
+                let _ = tx.send(ev);
+            },
+        )
+        .await
+        .unwrap();
+    let _ = collect(rx).await;
+    wait_for_idle(&f.service).await;
+
+    // Extraction runs in a spawned task — wait for the row to land.
+    let mut stored = Vec::new();
+    for _ in 0..200 {
+        stored = f.service.memory().list(&scope).await.unwrap();
+        if !stored.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(stored.len(), 1, "one memory extracted + stored");
+    assert!(stored[0].content.contains("honeybees on a rooftop"));
+    assert_eq!(stored[0].importance, 4);
+    assert_eq!(
+        stored[0].source_conversation_id.as_ref().unwrap().as_str(),
+        convo.id.as_str()
+    );
+
+    // Turn 2 — a query sharing vocabulary → the memory is retrieved into the
+    // prompt the adapter receives.
+    let (tx2, rx2) = sink_channel();
+    f.service
+        .send(
+            convo.id.clone(),
+            f.model.clone(),
+            "remind me where the rooftop honeybees are".to_owned(),
+            move |ev| {
+                let _ = tx2.send(ev);
+            },
+        )
+        .await
+        .unwrap();
+    let _ = collect(rx2).await;
+    wait_for_idle(&f.service).await;
+
+    let prompts = f.prompts.lock().unwrap().clone();
+    let turn2 = prompts.last().unwrap();
+    assert!(turn2.contains("Relevant memories:"), "{turn2}");
+    assert!(
+        turn2.contains("honeybees on a rooftop in Lisbon"),
+        "{turn2}"
+    );
+
+    // `preview_prompt` agrees, with the memory counted in provenance.
+    let preview = f.service.preview_prompt(&convo.id, &f.model).await.unwrap();
+    assert!(preview.text.contains("honeybees on a rooftop"));
+    assert!(preview.provenance.memory_items >= 1);
+}
+
+#[tokio::test]
+async fn a_conversation_with_no_persona_stores_no_memory() {
+    let f = fixture(&["{\"memories\":[{\"content\":\"should not be stored\",\"kind\":\"Fact\",\"importance\":5}]}"], Ending::Done).await;
+    let convo = f.service.create().await.unwrap();
+
+    let (tx, rx) = sink_channel();
+    f.service
+        .send(
+            convo.id.clone(),
+            f.model.clone(),
+            "hi".to_owned(),
+            move |ev| {
+                let _ = tx.send(ev);
+            },
+        )
+        .await
+        .unwrap();
+    let _ = collect(rx).await;
+    wait_for_idle(&f.service).await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // No persona ⇒ no scope ⇒ nothing could have been written to `memory`.
+    let total: u32 =
+        f.db.read(|conn| Ok(conn.query_row("SELECT count(*) FROM memory", [], |r| r.get(0))?))
+            .await
+            .unwrap();
+    assert_eq!(total, 0);
+}
+
 // ---------------------------------------------------------------- helpers
 
 async fn wait_for_idle(service: &ConversationEngine) {

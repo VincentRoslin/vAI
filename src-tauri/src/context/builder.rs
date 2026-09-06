@@ -57,22 +57,40 @@ impl RuntimeContext {
     }
 }
 
+/// The fraction of the context window the retrieved-memory section may use
+/// (ADR-0012 "config token budget" — a module constant for v1, like
+/// [`RESPONSE_RESERVE`]).
+pub const MEMORY_CONTEXT_FRACTION: f32 = 0.15;
+
 /// The maximum prompt size for this generation.
 #[derive(Debug, Clone, Copy)]
 pub struct TokenBudget {
     /// `context_tokens - RESPONSE_RESERVE - BUDGET_MARGIN`.
     pub max_prompt_tokens: u32,
+    /// The slice of `max_prompt_tokens` the retrieved-memory section may use
+    /// (`MEMORY_CONTEXT_FRACTION` of the context window, never more than half
+    /// the prompt budget).
+    pub max_memory_tokens: u32,
 }
 
 impl TokenBudget {
     /// From a model's context window.
     #[must_use]
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     pub fn from_context_window(context_tokens: Option<u32>) -> Self {
         let ctx = context_tokens.unwrap_or(4096);
+        let max_prompt_tokens = ctx
+            .saturating_sub(RESPONSE_RESERVE)
+            .saturating_sub(BUDGET_MARGIN);
+        let max_memory_tokens = ((f64::from(ctx) * f64::from(MEMORY_CONTEXT_FRACTION)) as u32)
+            .min(max_prompt_tokens / 2);
         Self {
-            max_prompt_tokens: ctx
-                .saturating_sub(RESPONSE_RESERVE)
-                .saturating_sub(BUDGET_MARGIN),
+            max_prompt_tokens,
+            max_memory_tokens,
         }
     }
 }
@@ -151,7 +169,8 @@ impl ContextBuilder {
         let budget = input.budget.max_prompt_tokens;
 
         // --- system block, trying full persona then a truncated one ---
-        let (system_block, persona_incl, mem_items, mem_tokens) = Self::system_block(input, budget);
+        let (system_block, persona_incl, mem_items, mem_tokens) =
+            Self::system_block(input, budget, input.budget.max_memory_tokens);
         let system_tokens = estimate_tokens(&system_block);
 
         // --- history, newest-first while it fits (hard ceiling: never exceed
@@ -212,7 +231,11 @@ impl ContextBuilder {
 
     /// Build the ChatML `system` turn. Sheds memory, then truncates the persona,
     /// to fit `budget` — never the base `system` line.
-    fn system_block(input: &BuildInput<'_>, budget: u32) -> (String, PersonaInclusion, u32, u32) {
+    fn system_block(
+        input: &BuildInput<'_>,
+        budget: u32,
+        mem_budget: u32,
+    ) -> (String, PersonaInclusion, u32, u32) {
         let base = strip_control(input.system);
         let runtime = format!(
             "Current date: {}.",
@@ -232,12 +255,23 @@ impl ContextBuilder {
             })
             .filter(|s| !s.is_empty());
 
-        let mem_full: Vec<String> = input
-            .memory
-            .iter()
-            .map(|m| strip_control(&m.text))
-            .filter(|s| !s.is_empty())
-            .collect();
+        // Memory arrives ranked best-first. Take from the front while the
+        // running token sum stays within the memory sub-budget; the rest are
+        // dropped (lowest-ranked first).
+        let mut mem_budgeted: Vec<String> = Vec::new();
+        let mut mem_used = 0u32;
+        for m in input.memory {
+            let clean = strip_control(&m.text);
+            if clean.is_empty() {
+                continue;
+            }
+            let cost = estimate_tokens(&clean);
+            if mem_used + cost > mem_budget {
+                break;
+            }
+            mem_used += cost;
+            mem_budgeted.push(clean);
+        }
 
         // Shed order (plan §"Token budget + truncation"): full persona + memory,
         // then drop memory, then truncate the persona, then drop the persona —
@@ -251,7 +285,7 @@ impl ContextBuilder {
                 (Some(p), 0 | 1) => (Some(render_persona(p, false)), PersonaInclusion::Full),
                 (Some(p), _) => (Some(render_persona(p, true)), PersonaInclusion::Truncated),
             };
-            let mem: &[String] = if attempt == 0 { &mem_full } else { &[] };
+            let mem: &[String] = if attempt == 0 { &mem_budgeted } else { &[] };
 
             let block = assemble_system(
                 &base,

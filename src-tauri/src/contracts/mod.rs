@@ -24,6 +24,7 @@ pub mod acquisition;
 pub mod conversation;
 pub mod generation;
 pub mod ids;
+pub mod memory;
 pub mod model;
 pub mod resource;
 pub mod task;

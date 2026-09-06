@@ -29,7 +29,9 @@ use std::time::Instant;
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
-use crate::context::builder::{BuildInput, ContextBuilder, RuntimeContext, TokenBudget};
+use crate::context::builder::{
+    BuildInput, ContextBuilder, MemoryItem, RuntimeContext, TokenBudget,
+};
 use crate::context::persona::PersonaRepo;
 use crate::contracts::conversation::{
     Conversation, ConversationKind, GenerationHandle, GenerationMeta, GenerationState, Message,
@@ -40,6 +42,7 @@ use crate::contracts::ids::{ConversationId, ModelId, TaskId};
 use crate::db::Db;
 use crate::ipc::{AppError, AppResult};
 use crate::lifecycle::LifecycleManager;
+use crate::memory::{MemoryScope, MemoryService};
 use crate::models::ModelRegistry;
 use repo::ConversationRepo;
 
@@ -57,6 +60,7 @@ struct Running {
 pub struct ConversationEngine {
     repo: ConversationRepo,
     personas: PersonaRepo,
+    memory: MemoryService,
     registry: Arc<ModelRegistry>,
     builder: ContextBuilder,
     lifecycle: Arc<LifecycleManager>,
@@ -72,12 +76,20 @@ impl ConversationEngine {
     ) -> Self {
         Self {
             repo: ConversationRepo::new(Arc::clone(&db)),
-            personas: PersonaRepo::new(db),
+            personas: PersonaRepo::new(Arc::clone(&db)),
+            memory: MemoryService::new(db, Arc::clone(&lifecycle)),
             registry,
             builder: ContextBuilder,
             lifecycle,
             running: Mutex::new(None),
         }
+    }
+
+    /// The memory service (retrieval + extraction + the FR-52/53 CRUD),
+    /// reachable for IPC.
+    #[must_use]
+    pub fn memory(&self) -> &MemoryService {
+        &self.memory
     }
 
     // ---------------------------------------------------------------- lifecycle
@@ -280,11 +292,12 @@ impl ConversationEngine {
         }
     }
 
-    /// Cancel any running generation (called on app exit).
+    /// Cancel any running generation + in-flight memory extraction (app exit).
     pub async fn shutdown(&self) {
         if let Some(r) = self.running.lock().await.as_ref() {
             r.cancel.cancel();
         }
+        self.memory.shutdown();
     }
 
     // ---------------------------------------------------------------- internals
@@ -312,17 +325,27 @@ impl ConversationEngine {
                     StopReason::Cancelled => crate::logging::Status::Cancelled,
                     _ => crate::logging::Status::Ok,
                 };
-                if let Err(err) = self
+                let persisted = self
                     .repo
                     .append(
                         &conversation_id,
                         Role::Assistant,
                         MessageContent::Text { text },
-                        Some(meta),
+                        Some(meta.clone()),
                     )
-                    .await
-                {
+                    .await;
+                if let Err(err) = &persisted {
                     err.log("persist assistant message");
+                }
+                // A clean completion → mine the exchange for memories
+                // (per-Persona, off the response path).
+                if persisted.is_ok()
+                    && matches!(
+                        meta.stop_reason,
+                        StopReason::EndOfText | StopReason::MaxTokens | StopReason::StopSequence
+                    )
+                {
+                    self.maybe_extract_memory(&conversation_id, &model_id).await;
                 }
                 status
             }
@@ -363,11 +386,12 @@ impl ConversationEngine {
         model_id: &ModelId,
     ) -> AppResult<crate::context::builder::BuiltPrompt> {
         let history = self.repo.messages(conversation_id).await?;
-        let persona = match self.repo.persona_id(conversation_id).await? {
-            Some(pid) => match self.personas.get(&pid).await {
+        let persona_id = self.repo.persona_id(conversation_id).await?;
+        let persona = match &persona_id {
+            Some(pid) => match self.personas.get(pid).await {
                 Ok(p) => Some(p),
-                // The row was deleted between the two reads (ON DELETE SET NULL
-                // will clear the FK; this only races). Treat as no persona.
+                // The row was deleted between the two reads (races only). Treat
+                // as no persona.
                 Err(AppError::NotFound(_)) => None,
                 Err(e) => return Err(e),
             },
@@ -376,15 +400,70 @@ impl ConversationEngine {
         let model = self.registry.get(model_id).await?;
         let budget = TokenBudget::from_context_window(model.metadata.capabilities.context_tokens);
 
+        // Memory is per-Persona (FR-56): a conversation with no persona has no
+        // memory scope. The query is the latest user turn.
+        let memory: Vec<MemoryItem> = match &persona_id {
+            Some(pid) => {
+                let scope = MemoryScope::Persona(pid.clone());
+                let query = last_user_text(&history).unwrap_or_default();
+                self.memory
+                    .retrieve(&scope, &query)
+                    .await
+                    .unwrap_or_else(|err| {
+                        err.log("memory retrieval");
+                        Vec::new()
+                    })
+                    .into_iter()
+                    .map(|r| MemoryItem {
+                        text: r.memory.content,
+                    })
+                    .collect()
+            }
+            None => Vec::new(),
+        };
+
         Ok(self.builder.build(&BuildInput {
             system: crate::context::builder::DEFAULT_SYSTEM,
             persona: persona.as_ref(),
             character: None,
-            memory: &[],
+            memory: &memory,
             history: &history,
             runtime: RuntimeContext::now(),
             budget,
         }))
+    }
+
+    /// Fire a background memory-extraction pass over the conversation's latest
+    /// exchange, if it has a Persona scope. Off the response path.
+    async fn maybe_extract_memory(&self, conversation_id: &ConversationId, model_id: &ModelId) {
+        let Ok(Some(pid)) = self.repo.persona_id(conversation_id).await else {
+            return;
+        };
+        let Ok(history) = self.repo.messages(conversation_id).await else {
+            return;
+        };
+        let (Some(user_text), Some(assistant)) = (
+            last_user_text(&history),
+            history.iter().rev().find(|m| m.role == Role::Assistant),
+        ) else {
+            return;
+        };
+        let MessageContent::Text {
+            text: assistant_text,
+        } = &assistant.content
+        else {
+            return;
+        };
+        self.memory.spawn_extraction(
+            model_id.clone(),
+            &MemoryScope::Persona(pid),
+            crate::memory::Exchange {
+                conversation_id: conversation_id.clone(),
+                assistant_message_id: Some(assistant.id.to_string()),
+                user_text,
+                assistant_text: assistant_text.clone(),
+            },
+        );
     }
 
     /// Resolve the loaded instance, render the prompt, stream, accumulate.
@@ -475,4 +554,22 @@ impl ConversationEngine {
         };
         Ok((text, meta))
     }
+}
+
+/// The most recent user turn's text (typed message or a transcribed voice
+/// turn) — the memory query + the extraction exchange.
+fn last_user_text(history: &[Message]) -> Option<String> {
+    history.iter().rev().find_map(|m| {
+        if m.role != Role::User {
+            return None;
+        }
+        match &m.content {
+            MessageContent::Text { text } => Some(text.clone()),
+            MessageContent::Audio {
+                transcript: Some(t),
+                ..
+            } => Some(t.clone()),
+            _ => None,
+        }
+    })
 }

@@ -401,6 +401,43 @@ fn conversation_contracts_round_trip() {
 }
 
 #[test]
+fn memory_contracts_round_trip() {
+    use super::ids::MemoryId;
+    use super::memory::{Memory, MemoryKind};
+
+    for kind in [
+        MemoryKind::Fact,
+        MemoryKind::Preference,
+        MemoryKind::Event,
+        MemoryKind::Trait,
+    ] {
+        round_trip(&kind);
+    }
+    round_trip(&Memory {
+        id: MemoryId::from_trusted("mem-1"),
+        kind: MemoryKind::Fact,
+        content: "keeps bees on the roof".into(),
+        importance: 4,
+        source_conversation_id: Some(conversation_id()),
+        created_at: "2026-09-06T00:00:00Z".into(),
+    });
+    round_trip(&Memory {
+        id: MemoryId::from_trusted("mem-2"),
+        kind: MemoryKind::Preference,
+        content: "no oat milk".into(),
+        importance: 3,
+        source_conversation_id: None,
+        created_at: "2026-09-06T00:00:00Z".into(),
+    });
+}
+
+#[test]
+fn memory_unknown_kind_is_rejected() {
+    use super::memory::MemoryKind;
+    assert!(serde_json::from_str::<MemoryKind>("\"Grudge\"").is_err());
+}
+
+#[test]
 fn message_missing_role_is_rejected() {
     let json = r#"{
         "id":"m-1","conversation_id":"c-1",

@@ -24,6 +24,7 @@ import type { Conversation } from '../bindings/Conversation';
 import type { Persona } from '../bindings/Persona';
 import type { PersonaDraft } from '../bindings/PersonaDraft';
 import type { PromptPreview } from '../bindings/PromptPreview';
+import type { Memory } from '../bindings/Memory';
 import type { GenerationEvent } from '../bindings/GenerationEvent';
 import type { GenerationState } from '../bindings/GenerationState';
 import type { LifecycleStatus } from '../bindings/LifecycleStatus';
@@ -243,6 +244,15 @@ export const personaUpdate = (id: string, draft: PersonaDraft): Promise<void> =>
 
 /** Delete a persona. Bound conversations fall back to the default assistant. */
 export const personaDelete = (id: string): Promise<void> => call('persona_delete', { id });
+
+// ---------------------------------------------------------------- memory (Phase 21)
+
+/** Every memory a Persona holds, newest first (FR-52). */
+export const memoryList = (personaId: string): Promise<Memory[]> =>
+  call('memory_list', { personaId });
+
+/** Delete one memory (FR-53). */
+export const memoryDelete = (id: string): Promise<void> => call('memory_delete', { id });
 
 // --- Voice (Phase 18 in, Phase 19 out) ---
 

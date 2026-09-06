@@ -50,7 +50,7 @@ blob store, model lifecycle, resource/VRAM/RAM management, scheduling, task
 management, process supervision, IPC, security-sensitive operations, business
 logic. Single crate (`src-tauri/`); modules interact through defined interfaces.
 
-Modules (see `src-tauri/README.md` for the live list): **as of Phase 19** —
+Modules (see `src-tauri/README.md` for the live list): **as of Phase 21** —
 `lib.rs` (Tauri builder + a `setup()` fn wiring config/DB/logging/registry/acquisition/
 resources/lifecycle/llm/conversation into managed state; exit hook cancels the in-flight
 generation + unloads models + checkpoints the WAL), `logging` (JSON stdout, non-blocking lossy, boundary secret
@@ -91,8 +91,17 @@ all `persona` SQL), `sanitize` (`strip_control` neutralises `<|…|>` control
 tokens in every untrusted string, SECURITY C2), `tokens` (deterministic estimate,
 no tokenizer dep), `builder` (`ContextBuilder::build` — deterministic ChatML
 assembly, budget shed order memory → persona-truncation → never the base system,
-`Provenance` logged at `target: "context"`; empty memory/character slots for
-P21/P26); every generation path assembles its prompt here — `AI_PIPELINES.md` §6),
+`Provenance` logged at `target: "context"`; a `max_memory_tokens` sub-budget
+(P21) caps the ranked memory section; character slot empty for P26); every
+generation path assembles its prompt here — `AI_PIPELINES.md` §6),
+`memory` (**persistent per-Persona memory** — `repo` (`memory` + a standalone
+`memory_fts` FTS5 table, `V0006`, kept in sync in one tx; prune-at-cap;
+scope-filtered BM25 `search`), `extract` (post-turn schema-constrained
+`llm.generate` → strict JSON → importance + Jaccard-dedup + length gate → store
+with provenance; malformed output is inert), `retrieve` (deterministic
+sorted-unique FTS query), `MemoryService` — `retrieve` is a pure read on the
+response path, `spawn_extraction` is fire-and-forget behind a `Semaphore(1)`;
+`MemoryScope::Persona`; recall-gap log; ADR-0012, `AI_PIPELINES.md` §9),
 `job` (`JobObject` — every spawned child dies with the app, ADR-0013),
 `worker` (**the shared stateless-worker supervisor** — spawns `python <script>`
 under a Job Object with the ADR-0015 lockdown env; `WorkerHello` handshake;
@@ -149,7 +158,7 @@ loopback only, launched with the offline/no-telemetry env (ADR-0015).
 | Conversations (all modalities) | `conversation` module — the one engine (`ConversationEngine`) |
 | Prompt assembly + prompt-injection containment (sanitising untrusted sections) | `context` module — the one `ContextBuilder` (`AI_PIPELINES.md` §6) |
 | Persona data (`persona` table) | `context::persona` (`PersonaRepo`) |
-| Memory | `memory` module (FTS5, per-scope) |
+| Memory (`memory` + `memory_fts`; extraction + retrieval) | `memory` module (`MemoryService`; FTS5 BM25, per-Persona scope — ADR-0012) |
 | Relationship state | `character` module (DB row is truth) |
 | Executing AI-proposed effects | Rust, via allow-listed typed actions only |
 
@@ -210,8 +219,11 @@ A `send_image` typed action from the model → Rust validates (schema, allow-lis
   **verified non-zero before** any migration runs.
 - **Blob store:** `app_data/blobs/<sha256[0:2]>/<sha256>`; write blob → fsync →
   commit the `asset_*` row; a reconcile job finds orphans/dangling links.
-- `mem_*` uses FTS5 (BM25); retrieval filtered by `persona:<id>` or
-  `character:<id>`.
+- `memory` + a standalone `memory_fts` FTS5 table (BM25), written together in
+  one transaction; retrieval filtered by `scope` = `persona:<id>` (Tab 1) or
+  `character:<id>` (Tab 3, Phase 26). (Table names follow actual practice —
+  `conversation` / `message` / `persona` / `memory` — not the `mem_*` prefix
+  sketch above.)
 
 ## 7. Resource manager + scheduler
 

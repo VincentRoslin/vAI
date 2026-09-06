@@ -40,6 +40,23 @@ memory, per-Persona / per-Character scoping, discrete relationship stages.
   / `scene` sets are a function of stage — a character-behaviour rule the owner
   controls, not a content filter; NFR-15 unaffected).
 
+## Phase 21 implementation finalisations (2026-09-06 — no design change)
+- **FTS5 is a standalone table** (`memory_fts`, content stored), not
+  external-content + triggers. The `memory` repo writes both tables in one
+  transaction — Rust owns all SQL, so no trigger layer.
+- **Tunables are `memory` module constants** (`MIN_IMPORTANCE` 3, `RETRIEVE_K`
+  8, `PER_SCOPE_CAP` 500, `MEMORY_CONTEXT_FRACTION` 0.15), not config —
+  precedent: the context builder's `RESPONSE_RESERVE` / `BUDGET_MARGIN`.
+- **Dedup by word-set Jaccard** (≥ 0.6) against FTS candidates, not raw BM25
+  magnitude (which is corpus-dependent and unreadable).
+- **Retrieval is a pure read** for v1 — no `retrieved_count` / `last_retrieved`
+  columns; the inline prune-at-cap uses `importance` + `created_at` only.
+- **Extraction concurrency** — `Semaphore(1)`; a request while one runs is
+  dropped (the next turn re-covers recent context).
+- **Recall-gap log is live** — `tracing::info!(target: "memory", …)` fires when a
+  non-empty scope's retrieval matches nothing. Samples inform the deferred
+  embeddings trigger (still: measured gap **and** > ~500/scope).
+
 ## Consequences
 - No vector DB, no extra process for v1.
 - Relationship logic is cheap per turn (rules); the LLM check is occasional.

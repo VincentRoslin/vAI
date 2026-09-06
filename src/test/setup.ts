@@ -20,6 +20,7 @@ const arrayCommands = new Set([
   'voice_input_devices',
   'voice_output_devices',
   'persona_list',
+  'memory_list',
 ]);
 
 vi.mock('@tauri-apps/api/core', () => ({

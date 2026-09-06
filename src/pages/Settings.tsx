@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 
-import type { AppConfig, Persona, PersonaDraft } from '../lib/contracts';
+import type { AppConfig, Memory, Persona, PersonaDraft } from '../lib/contracts';
 import {
   configGet,
   diagExport,
+  memoryDelete,
+  memoryList,
   personaCreate,
   personaDelete,
   personaList,
@@ -61,6 +63,8 @@ export function Settings(): React.JSX.Element {
       </div>
 
       <Personas />
+
+      <Memories />
 
       <div>
         <h2 style={{ fontSize: '1rem' }}>Effective configuration</h2>
@@ -230,6 +234,109 @@ function Personas(): React.JSX.Element {
         <button type="button" onClick={() => setEditing({ id: null, draft: { ...EMPTY_DRAFT } })}>
           New persona
         </button>
+      )}
+
+      {error && <p style={{ color: 'var(--danger, #c33)', fontSize: '0.85rem' }}>{error}</p>}
+    </div>
+  );
+}
+
+/** What each Persona remembers (Phase 21, FR-52/53). View + delete; edit is a
+ * later phase. */
+function Memories(): React.JSX.Element {
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [selected, setSelected] = useState('');
+  const [rows, setRows] = useState<Memory[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    personaList()
+      .then(setPersonas)
+      .catch((e) => setError(`Could not load personas: ${toAppError(e).kind}`));
+  }, []);
+
+  async function refresh(personaId: string): Promise<void> {
+    setError(null);
+    if (!personaId) {
+      setRows([]);
+      return;
+    }
+    try {
+      setRows(await memoryList(personaId));
+    } catch (e) {
+      setError(`Could not load memories: ${toAppError(e).kind}`);
+    }
+  }
+
+  async function remove(id: string): Promise<void> {
+    try {
+      await memoryDelete(id);
+      await refresh(selected);
+    } catch (e) {
+      setError(`Delete failed: ${toAppError(e).kind}`);
+    }
+  }
+
+  return (
+    <div>
+      <h2 style={{ fontSize: '1rem' }}>Memories</h2>
+      <p style={{ opacity: 0.8, fontSize: '0.9rem' }}>
+        What each Persona has remembered across conversations. Extracted automatically after a turn.
+      </p>
+      <label style={{ fontSize: '0.85rem' }}>
+        Persona{' '}
+        <select
+          value={selected}
+          onChange={(e) => {
+            setSelected(e.target.value);
+            void refresh(e.target.value);
+          }}
+        >
+          <option value="">Choose a persona…</option>
+          {personas.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {selected && (
+        <ul
+          style={{
+            listStyle: 'none',
+            padding: 0,
+            display: 'grid',
+            gap: '0.4rem',
+            marginTop: '0.5rem',
+          }}
+        >
+          {rows.map((m) => (
+            <li
+              key={m.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: '0.75rem',
+                border: '1px solid var(--border, #ccc)',
+                borderRadius: 8,
+                padding: '0.4rem 0.6rem',
+                fontSize: '0.85rem',
+              }}
+            >
+              <span>
+                <span style={{ opacity: 0.6 }}>
+                  {m.kind} · {m.importance}/5 ·{' '}
+                </span>
+                {m.content}
+              </span>
+              <button type="button" style={{ flexShrink: 0 }} onClick={() => void remove(m.id)}>
+                Delete
+              </button>
+            </li>
+          ))}
+          {rows.length === 0 && <li style={{ opacity: 0.7 }}>Nothing remembered yet.</li>}
+        </ul>
       )}
 
       {error && <p style={{ color: 'var(--danger, #c33)', fontSize: '0.85rem' }}>{error}</p>}
