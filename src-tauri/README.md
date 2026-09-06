@@ -5,15 +5,16 @@ application state, persistence, model lifecycle, resource management, scheduling
 process supervision, and IPC. Single crate, one module per subsystem
 (`docs/decisions/0001-single-rust-crate.md`).
 
-## Current modules (Phase 18)
+## Current modules (Phase 18.5)
 
 | Module | What | Doc |
 | ------ | ---- | --- |
 | `lib.rs` | The Tauri builder + `run()`; `setup()` (a free fn) assembles config + DB + registry + acquisition + resource manager + lifecycle manager (+ llama.cpp backend) + conversation service into managed state; exit hook cancels the in-flight generation, unloads models, checkpoints the WAL | — |
 | `main.rs` | Thin bin entry | — |
-| `logging/` | Observability — JSON stdout via a non-blocking lossy writer; boundary **secret redaction**; in-memory ring buffer (`recent_lines`); hot-reloadable filter (`set_level` from config / `LOCALAI_LOG`); `operation()` span helper. No network sink. | `docs/plan/10_observability.md` |
+| `logging/` | Observability — JSON stdout via a non-blocking lossy writer; boundary **secret redaction**; in-memory ring buffer (`recent_lines`); **rotating daily file sink** under `<app_data>/logs/` (Phase 18.5, `enable_file_sink` + `sweep_logs`, same redaction); hot-reloadable filter (`set_level` from config / `LOCALAI_LOG`); `operation()` span helper. No network sink. | `docs/plan/10_observability.md`, `docs/plan/18.5_deploy-diagnostics.md` |
 | `ipc/` | Typed IPC boundary — `commands` (`app_*`, `frontend_log`, `config_*`), `error::{AppError, ErrorEnvelope}` | `docs/decisions/0002-ipc-design.md` |
 | `contracts/` | The serializable vocabulary for **both** the IPC and worker boundaries — `ids`, `task`, `model`, `generation`, `conversation`, `resource`, `worker`. No behaviour. | `docs/contracts.md` |
+| `diag.rs` | Local diagnostics snapshot (Phase 18.5) — `DiagSnapshot` (build + effective config + registry + resources + lifecycle + conversation **metadata** + recent redacted log lines + `nvidia-smi`/OS). `collect()` / `export()` (→ `<app_data>/diagnostics/diag-<ts>.json`). `diag_snapshot` / `diag_export` IPC. All local (ADR-0015). | `docs/plan/18.5_deploy-diagnostics.md` |
 | `config/` | The settings authority — one JSON file (`<app_config_dir>/config.json`), layered defaults ← file ← session, schema **v6** (`models` · `logging` · `resources.vram_safety_margin_mb` · `runtimes.dir` · `workers.{dir,python}` · `voice.input_device`) + forward migrations, atomic write | `docs/decisions/0016-configuration.md` |
 | `db/` | SQLite persistence — writer pool (1) + reader pool (4), pragma hook, `refinery` forward-only migrations (`migrations/`) with verified `VACUUM INTO` backup, `write`/`read` helpers, `error::DbError`, `AppMetaRepo` | `docs/decisions/0009-persistence.md` |
 | `models/` | Model registry — `model_entry` rows (`V0002`), `ModelRegistry` CRUD + capability `query`, `ModelDraft`/`ModelFilter`, path confinement (`validate_model_path`), availability computed from `path.exists()`, `Arc`-cached list cleared on write. IDs are UUIDv4 (ADR-0017). | `docs/plan/11_model-registry.md` |

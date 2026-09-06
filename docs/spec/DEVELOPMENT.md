@@ -87,7 +87,21 @@ CI runs the suite on every push; `main` stays releasable.
 
 ## 5. Running subsystems locally
 
-- **Full app:** `npm run tauri dev` (or the project's task alias).
+- **Full app (dev):** `npm run tauri dev` (vite dev server + a debug binary).
+- **Full app (real / release, Phase 18.5):** `node scripts/deploy-local.mjs` —
+  `npm run build` + `cargo build --release`, then launches
+  `src-tauri/target/release/localai.exe` in place against the real
+  `%APPDATA%\com.localai.app\config.json`. Prints the git SHA and the
+  `config` / `logs` / `diagnostics` paths. `--no-launch` builds + prints only.
+  This is for hands-on live-testing; the **installer** is Phase 37.
+  - **Logs:** a rotating JSON-lines file at
+    `%APPDATA%\com.localai.app\logs\localai.jsonl.<date>` (redacted, swept to
+    7 files / ~50 MB). `tail` the newest for a session you want to inspect.
+  - **Diagnostics:** **Settings → Export diagnostics** writes
+    `%APPDATA%\com.localai.app\diagnostics\diag-<ts>.json` (build + config +
+    registry + resources + lifecycle + conversation *metadata* + recent logs +
+    host facts — redacted, no conversation content). Share that file for
+    debugging. Everything stays local (ADR-0015).
 - **`llama-server`:** the app spawns it from `<runtimes.dir>/llama-server.exe`
   (config `runtimes.dir`, default `%APPDATA%\com.localai.app\runtimes`; on the
   reference machine it points at `<repo>/runtime/llama-server/`). Do not run it

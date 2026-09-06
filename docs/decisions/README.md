@@ -41,10 +41,13 @@ added at Phase 8** to close a question Phase 3 deferred (config format).
 - **Config format** → ADR-0016 (Phase 8).
 - **Entity ID generation** → ADR-0017 (Phase 11).
 - **Python worker dev environment** → ADR-0018 (Phase 18).
-- **Log retention / rotation + persistent file sink + diagnostics bundle** →
-  **Phase 37** (packaging), when a windowed build with no terminal makes a file
-  sink necessary. Phase 10 ships structured logging + redaction + an in-memory
-  ring buffer; the file/rotation/bundle is a small addition on top.
+- **Persistent log file sink + rotation + a diagnostics snapshot** → **Phase
+  18.5** (done, 2026-09-06) — pulled forward from Phase 37 because hands-on
+  live-testing needed it. Rotating JSON-lines under `<app_data>/logs/` (redacted,
+  swept), a `diag_export` JSON snapshot, a Settings button, UI breadcrumbs. All
+  local (ADR-0015). Phase 37 still owns the **installer**, embedded CPython,
+  sibling-layout resolution, first-run acquisition, code signing, and a
+  *portable* diagnostics archive.
 
 ### Deferred / to decide during implementation (not blocking the freeze)
 

@@ -22,7 +22,8 @@ const IDENT = 'com.localai.app';
 
 function run(cmd, args, opts = {}) {
   process.stdout.write(`$ ${cmd} ${args.join(' ')}\n`);
-  execFileSync(cmd, args, { cwd: repo, stdio: 'inherit', ...opts });
+  // Windows needs a shell to resolve `npm` (a .cmd shim) under execFileSync.
+  execFileSync(cmd, args, { cwd: repo, stdio: 'inherit', shell: isWin, ...opts });
 }
 
 function gitSha() {
@@ -41,7 +42,7 @@ function appDataDir() {
 }
 
 // 1. Frontend (embedded into the binary at build time via tauri.conf frontendDist).
-run(isWin ? 'npm.cmd' : 'npm', ['run', 'build']);
+run('npm', ['run', 'build']);
 
 // 2. Release binary.
 run('cargo', ['build', '--release', '--manifest-path', join(repo, 'src-tauri', 'Cargo.toml')]);
