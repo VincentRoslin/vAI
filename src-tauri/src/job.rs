@@ -1,6 +1,7 @@
-//! Windows Job Object wrapper — a spawned `llama-server` is assigned to a job
-//! with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, so it cannot outlive this process
-//! even on a hard crash (ADR-0013, gate item 6).
+//! Windows Job Object wrapper — every spawned child (the `llama-server` model
+//! server, a stdio worker) is assigned to a job with
+//! `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, so it cannot outlive this process even
+//! on a hard crash (ADR-0013, orphan-cleanup gate).
 //!
 //! On non-Windows the type is a no-op so the crate still builds.
 

@@ -9,7 +9,6 @@
 //! **Nothing outside this module references llama.cpp** (`ARCHITECTURE.md` §2).
 
 pub mod client;
-pub mod job;
 pub mod protocol;
 pub mod server;
 

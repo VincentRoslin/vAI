@@ -11,8 +11,8 @@ use std::process::Stdio;
 
 use tokio::process::{Child, Command};
 
-use super::job::JobObject;
 use crate::ipc::{AppError, AppResult};
+use crate::job::JobObject;
 
 /// A random 64-hex-char bearer token, minted per launch. Never logged (the
 /// logging layer also redacts `Bearer` / `api-key`).

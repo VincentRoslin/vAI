@@ -14,11 +14,13 @@ pub mod contracts;
 pub mod conversation;
 pub mod db;
 pub mod ipc;
+pub mod job;
 pub mod lifecycle;
 pub mod llm;
 pub mod logging;
 pub mod models;
 pub mod resources;
+pub mod worker;
 
 use std::path::Path;
 use std::sync::Arc;

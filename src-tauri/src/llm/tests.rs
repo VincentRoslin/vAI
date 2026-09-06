@@ -317,6 +317,6 @@ async fn a_llama_server_instance_generates_and_downcasts() {
 #[test]
 fn job_object_can_be_created() {
     // Not llama-server, but proves the Job Object path builds + runs.
-    let job = super::job::JobObject::new().expect("job created");
+    let job = crate::job::JobObject::new().expect("job created");
     drop(job);
 }
