@@ -166,7 +166,7 @@ fn migration_v4_forward_adds_runtimes_workers_and_voice() {
 }
 
 #[test]
-fn migration_v5_to_v6_keeps_runtimes_dir() {
+fn migration_v5_forward_keeps_runtimes_dir_adds_workers_and_voice() {
     let v5 = json!({
         "version": 5,
         "models": { "dir": if cfg!(windows) { r"C:\m" } else { "/m" }, "budget_gb": 50, "min_free_gb": 20 },
@@ -175,12 +175,16 @@ fn migration_v5_to_v6_keeps_runtimes_dir() {
         "runtimes": { "dir": if cfg!(windows) { r"C:\rt" } else { "/rt" } },
     });
     let migrated = migrate(v5, &root()).expect("migrates");
-    assert_eq!(migrated["version"], json!(6));
+    assert_eq!(migrated["version"], json!(CURRENT_SCHEMA_VERSION));
     assert_eq!(
         migrated["runtimes"]["dir"],
-        json!(if cfg!(windows) { r"C:\rt" } else { "/rt" })
+        json!(if cfg!(windows) { r"C:\rt" } else { "/rt" }) // kept
     );
-    assert!(migrated["workers"]["python"].is_string());
+    assert!(migrated["workers"]["python"].is_string()); // v6
+    assert_eq!(migrated["voice"]["output_device"], json!(null)); // v7
+
+    let cfg: AppConfig = serde_json::from_value(migrated).expect("deserializes");
+    cfg.validate().expect("valid after migration");
 }
 
 #[test]

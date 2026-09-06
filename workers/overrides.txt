@@ -1,0 +1,12 @@
+# uv/pip dependency OVERRIDES for the worker venv (ADR-0018).
+#
+# chatterbox-tts 0.1.7 hard-pins `torch==2.6.0`, whose CUDA wheels predate
+# Blackwell (sm_120). We run torch 2.11.0+cu128 on the RTX 5080 — verified: the
+# Chatterbox Turbo model loads and synthesises on GPU (RTF ~0.23 warm), and
+# faster-whisper (CTranslate2, independent CUDA libs) is unaffected.
+#
+#   python -m uv pip install --python .venv -r workers/requirements.txt \
+#     --override workers/overrides.txt
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0
+torchaudio==2.11.0

@@ -68,6 +68,7 @@ pub fn run() {
             ipc::commands::chat_state,
             ipc::commands::chat_cancel,
             ipc::commands::voice_input_devices,
+            ipc::commands::voice_output_devices,
             ipc::commands::voice_start,
             ipc::commands::voice_stop,
             ipc::commands::voice_state,
@@ -174,37 +175,54 @@ fn setup(app: &mut tauri::App) -> Result<(), String> {
     let engine = Arc::new(conversation::ConversationEngine::new(database, lifecycle));
     app.manage(Arc::clone(&engine));
 
-    // Voice input (Phase 18): STT worker supervisor + capture/VAD/turn service.
-    app.manage(start_voice_input(&engine, &effective, &data_root));
+    // Voice (Phase 18 in + Phase 19 out): STT + TTS worker supervisors +
+    // capture / VAD / playback / barge-in service.
+    app.manage(start_voice(&engine, &effective, &data_root));
 
     Ok(())
 }
 
-/// Wire the STT worker supervisor + [`voice::VoiceInput`] (Phase 18, ADR-0005 /
-/// 0013 / 0018). Nothing is spawned until the first `voice_start`.
-fn start_voice_input(
+/// Wire the STT + TTS worker supervisors + [`voice::VoiceInput`] (Phases 18/19,
+/// ADR-0005 / 0013 / 0018). Nothing is spawned until the first `voice_start`.
+fn start_voice(
     engine: &Arc<conversation::ConversationEngine>,
     effective: &config::AppConfig,
     data_root: &std::path::Path,
 ) -> Arc<voice::VoiceInput> {
-    let layout = worker::WorkerLayout::from_config(
-        effective.workers.python.clone(),
-        effective.workers.dir.clone(),
-    );
+    let workers = || {
+        worker::WorkerLayout::from_config(
+            effective.workers.python.clone(),
+            effective.workers.dir.clone(),
+        )
+    };
     let stt = Arc::new(
-        worker::WorkerSupervisor::new(layout, contracts::worker::WorkerKind::Stt).with_env([(
+        worker::WorkerSupervisor::new(workers(), contracts::worker::WorkerKind::Stt).with_env([(
             "LOCALAI_STT_MODEL_DIR".to_owned(),
             effective.models.dir.join("stt").display().to_string(),
         )]),
     );
+    let tts_worker = Arc::new(
+        worker::WorkerSupervisor::new(workers(), contracts::worker::WorkerKind::Tts).with_env([(
+            "LOCALAI_TTS_MODEL_DIR".to_owned(),
+            effective.models.dir.join("tts").display().to_string(),
+        )]),
+    );
+    let temp_dir = data_root.join("voice-cache");
+    let tts = Arc::new(voice::tts::TtsOutput::new(
+        tts_worker,
+        temp_dir.clone(),
+        effective.voice.output_device.clone(),
+    ));
     let cfg = voice::VoiceConfig {
         vad_model: effective.models.dir.join("vad").join("silero_vad.onnx"),
-        temp_dir: data_root.join("voice-cache"),
+        temp_dir,
         input_device: effective.voice.input_device.clone(),
+        output_device: effective.voice.output_device.clone(),
         vad: voice::vad::VadConfig::default(),
         pre_roll_ms: 300,
+        playback_duck: 0.2,
     };
-    voice::VoiceInput::new(Arc::clone(engine), stt, cfg)
+    voice::VoiceInput::new(Arc::clone(engine), stt, tts, cfg)
 }
 
 /// Build the resource manager (Phase 13, ADR-0007): whole-GPU NVML + `sysinfo`

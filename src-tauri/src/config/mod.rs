@@ -32,7 +32,7 @@ use crate::ipc::{AppError, AppResult};
 
 /// Schema version this binary understands. A file with a higher version is
 /// refused; a lower (or absent) version is migrated forward on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 6;
+pub const CURRENT_SCHEMA_VERSION: u32 = 7;
 
 const FILE_NAME: &str = "config.json";
 const TMP_NAME: &str = "config.json.tmp";
@@ -89,6 +89,9 @@ pub struct VoiceConfig {
     /// `cpal` input device name; `null` = the system default.
     #[ts(type = "string | null")]
     pub input_device: Option<String>,
+    /// `cpal` output device name; `null` = the system default (schema v7).
+    #[ts(type = "string | null")]
+    pub output_device: Option<String>,
 }
 
 /// Location of the supervised runtime binaries (`llama-server`, later the image
@@ -163,7 +166,10 @@ impl AppConfig {
                     "bin/python3"
                 }),
             },
-            voice: VoiceConfig { input_device: None },
+            voice: VoiceConfig {
+                input_device: None,
+                output_device: None,
+            },
         }
     }
 
@@ -289,6 +295,8 @@ struct SessionOverrides {
     /// device).
     #[allow(clippy::option_option)]
     voice_input_device: Option<Option<String>>,
+    #[allow(clippy::option_option)]
+    voice_output_device: Option<Option<String>>,
 }
 
 impl SessionOverrides {
@@ -302,6 +310,7 @@ impl SessionOverrides {
             && self.workers_dir.is_none()
             && self.workers_python.is_none()
             && self.voice_input_device.is_none()
+            && self.voice_output_device.is_none()
     }
 
     fn apply(&self, cfg: &mut AppConfig) {
@@ -319,6 +328,9 @@ impl SessionOverrides {
         }
         if let Some(dev) = &self.voice_input_device {
             cfg.voice.input_device.clone_from(dev);
+        }
+        if let Some(dev) = &self.voice_output_device {
+            cfg.voice.output_device.clone_from(dev);
         }
         if let Some(budget) = self.models_budget_gb {
             cfg.models.budget_gb = budget;
@@ -360,11 +372,13 @@ pub enum ConfigKey {
     WorkersPython,
     /// `voice.input_device` — a `cpal` device name, or empty for the default.
     VoiceInputDevice,
+    /// `voice.output_device` — a `cpal` device name, or empty for the default (v7).
+    VoiceOutputDevice,
 }
 
 impl ConfigKey {
     /// Every overridable key.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::ModelsDir,
         Self::ModelsBudgetGb,
         Self::ModelsMinFreeGb,
@@ -374,6 +388,7 @@ impl ConfigKey {
         Self::WorkersDir,
         Self::WorkersPython,
         Self::VoiceInputDevice,
+        Self::VoiceOutputDevice,
     ];
 
     #[must_use]
@@ -388,6 +403,7 @@ impl ConfigKey {
             Self::WorkersDir => "workers.dir",
             Self::WorkersPython => "workers.python",
             Self::VoiceInputDevice => "voice.input_device",
+            Self::VoiceOutputDevice => "voice.output_device",
         }
     }
 
@@ -397,7 +413,7 @@ impl ConfigKey {
             Self::ModelsDir | Self::RuntimesDir | Self::WorkersDir | Self::WorkersPython => "path",
             Self::ModelsBudgetGb | Self::ModelsMinFreeGb | Self::VramSafetyMarginMb => "integer",
             Self::LoggingLevel => "log-directive",
-            Self::VoiceInputDevice => "string",
+            Self::VoiceInputDevice | Self::VoiceOutputDevice => "string",
         }
     }
 
@@ -412,6 +428,7 @@ impl ConfigKey {
             Self::WorkersDir => cfg.workers.dir.display().to_string(),
             Self::WorkersPython => cfg.workers.python.display().to_string(),
             Self::VoiceInputDevice => cfg.voice.input_device.clone().unwrap_or_default(),
+            Self::VoiceOutputDevice => cfg.voice.output_device.clone().unwrap_or_default(),
         }
     }
 }
@@ -427,6 +444,10 @@ fn apply_kv(cfg: &mut AppConfig, key: ConfigKey, raw: &str) -> AppResult<()> {
         ConfigKey::VoiceInputDevice => {
             let t = raw.trim();
             cfg.voice.input_device = (!t.is_empty()).then(|| t.to_owned());
+        }
+        ConfigKey::VoiceOutputDevice => {
+            let t = raw.trim();
+            cfg.voice.output_device = (!t.is_empty()).then(|| t.to_owned());
         }
         ConfigKey::ModelsBudgetGb => {
             cfg.models.budget_gb = raw.trim().parse().map_err(|_| {
@@ -622,6 +643,9 @@ impl ConfigManager {
             ConfigKey::WorkersPython => state.session.workers_python = Some(PathBuf::from(raw)),
             ConfigKey::VoiceInputDevice => {
                 state.session.voice_input_device = Some(probe.voice.input_device.clone());
+            }
+            ConfigKey::VoiceOutputDevice => {
+                state.session.voice_output_device = Some(probe.voice.output_device.clone());
             }
         }
         Ok(())

@@ -6,7 +6,16 @@ import prettier from 'eslint-config-prettier';
 
 export default tseslint.config(
   {
-    ignores: ['dist/', 'node_modules/', 'src-tauri/', 'src/bindings/', 'coverage/'],
+    ignores: [
+      'dist/',
+      'node_modules/',
+      'src-tauri/',
+      'src/bindings/',
+      'coverage/',
+      '.venv/',
+      'runtime/',
+      'models/',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

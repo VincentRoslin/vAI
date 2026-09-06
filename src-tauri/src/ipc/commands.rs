@@ -464,13 +464,22 @@ pub fn voice_input_devices() -> Vec<InputDevice> {
     crate::voice::capture::list_input_devices()
 }
 
-/// Start push-to-talk listening on `conversation_id`; `events` receives every
-/// [`VoiceState`] change until the session ends.
+/// List the machine's audio output devices (Phase 19).
+#[must_use]
+#[tauri::command]
+pub fn voice_output_devices() -> Vec<crate::voice::playback::OutputDevice> {
+    crate::voice::playback::list_output_devices()
+}
+
+/// Start a voice session on `conversation_id`. `model_id = Some` runs the full
+/// listen → think → speak loop with barge-in (Phase 19); `None` transcribes one
+/// utterance (Phase 18). `events` receives every [`VoiceState`] change.
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
 pub async fn voice_start(
     voice: State<'_, Arc<VoiceInput>>,
     conversation_id: ConversationId,
+    model_id: Option<ModelId>,
     events: Channel<VoiceState>,
 ) -> AppResult<()> {
     let mut rx = voice.subscribe();
@@ -482,10 +491,11 @@ pub async fn voice_start(
             }
         }
     });
-    voice.start_listening(conversation_id).await
+    voice.start_listening(conversation_id, model_id).await
 }
 
-/// Release push-to-talk — transcribe an utterance in progress, then stop.
+/// Release push-to-talk / stop the session — transcribe an utterance in
+/// progress, or barge-in on the assistant, then stop.
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
 pub async fn voice_stop(voice: State<'_, Arc<VoiceInput>>) -> AppResult<()> {

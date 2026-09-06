@@ -20,6 +20,10 @@ import sys
 
 PROTOCOL_VERSION = 1
 
+# Keep the JSON-lines protocol clean: some libs print to stdout on import/load.
+_PROTO = sys.stdout
+sys.stdout = sys.stderr
+
 
 def _prime_cuda_dll_path():
     if os.name != "nt":
@@ -48,8 +52,8 @@ def _assert_offline_env():
 
 
 def emit(obj):
-    sys.stdout.write(json.dumps(obj) + "\n")
-    sys.stdout.flush()
+    _PROTO.write(json.dumps(obj) + "\n")
+    _PROTO.flush()
 
 
 def log(msg):

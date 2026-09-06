@@ -1,7 +1,10 @@
-//! Live voice-in gate (Phase 18.B) — the real faster-whisper worker + real
-//! Silero VAD, fed a recorded WAV through the real `VoiceInput` path (no mic).
+//! Live voice gates:
+//! - **18.B** `voice_live_capture_to_turn` — real faster-whisper + real Silero
+//!   VAD, a recorded WAV through the real `VoiceInput` path (no mic).
+//! - **19.B** `voice_live_tts_speaks` — real Chatterbox worker + real `cpal`
+//!   playback: clauses in → audio out, time-to-first-audio recorded.
 //!
-//! Run explicitly (needs the venv + `models/stt/` + an NVIDIA GPU):
+//! Run explicitly (needs the venv + models + an NVIDIA GPU):
 //! `LOCALAI_RUN_VOICE_LIVE=1 cargo test -p localai --lib -- --ignored voice_live`
 
 #![allow(clippy::cast_precision_loss)]
@@ -11,7 +14,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
+use super::tts::TtsOutput;
 use super::{VoiceConfig, VoiceInput};
 use crate::contracts::conversation::MessageContent;
 use crate::contracts::worker::WorkerKind;
@@ -24,6 +29,10 @@ use crate::resources::ResourceManager;
 use crate::voice::vad::VadConfig;
 use crate::worker::{WorkerLayout, WorkerSupervisor};
 
+fn live_enabled() -> bool {
+    std::env::var("LOCALAI_RUN_VOICE_LIVE").is_ok()
+}
+
 fn repo() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -34,7 +43,7 @@ fn repo() -> PathBuf {
 #[tokio::test]
 #[ignore = "needs the venv + models/stt + a GPU; set LOCALAI_RUN_VOICE_LIVE=1"]
 async fn voice_live_capture_to_turn() {
-    if std::env::var("LOCALAI_RUN_VOICE_LIVE").is_err() {
+    if !live_enabled() {
         eprintln!("LOCALAI_RUN_VOICE_LIVE unset — skipping");
         return;
     }
@@ -70,17 +79,30 @@ async fn voice_live_capture_to_turn() {
     let engine = Arc::new(ConversationEngine::new(db, lifecycle));
     let convo = engine.create().await.unwrap();
 
+    let tts = Arc::new(TtsOutput::new(
+        Arc::new(WorkerSupervisor::new(
+            WorkerLayout::for_test(
+                repo().join(".venv/Scripts/python.exe"),
+                repo().join("workers"),
+            ),
+            WorkerKind::Tts,
+        )),
+        tmp.path().join("tts"),
+        None,
+    ));
     let cfg = VoiceConfig {
         vad_model,
         temp_dir: tmp.path().join("seg"),
         input_device: None,
+        output_device: None,
         vad: VadConfig {
             min_silence_ms: 500,
             ..VadConfig::default()
         },
         pre_roll_ms: 300,
+        playback_duck: 0.2,
     };
-    let voice = VoiceInput::new(Arc::clone(&engine), stt, cfg);
+    let voice = VoiceInput::new(Arc::clone(&engine), stt, tts, cfg);
 
     // Feed the recorded fixture, then silence to force the endpoint.
     let fixture =
@@ -104,7 +126,7 @@ async fn voice_live_capture_to_turn() {
 
     let started = Instant::now();
     voice
-        .start_with_frames(convo.id.clone(), rx, rate, 1)
+        .start_with_frames(convo.id.clone(), None, rx, rate, 1)
         .await
         .unwrap();
     tokio::time::timeout(Duration::from_secs(60), voice.wait_idle())
@@ -128,4 +150,111 @@ async fn voice_live_capture_to_turn() {
         lower.contains("quick brown fox") || lower.contains("voice input"),
         "transcript wrong: {text:?}"
     );
+}
+
+/// 19.B — real Chatterbox worker + real `cpal` playback. Clauses in → audio out.
+#[tokio::test]
+#[ignore = "needs the venv + models/tts + a GPU + an output device; LOCALAI_RUN_VOICE_LIVE=1"]
+async fn voice_live_tts_speaks() {
+    if !live_enabled() {
+        eprintln!("LOCALAI_RUN_VOICE_LIVE unset — skipping");
+        return;
+    }
+    let tts_model = repo().join("models/tts");
+    assert!(tts_model.is_dir(), "acquire_fixed(Tts) first");
+
+    let tmp = tempfile::tempdir().unwrap();
+    let worker = Arc::new(
+        WorkerSupervisor::new(
+            WorkerLayout::for_test(
+                repo().join(".venv/Scripts/python.exe"),
+                repo().join("workers"),
+            ),
+            WorkerKind::Tts,
+        )
+        .with_env([(
+            "LOCALAI_TTS_MODEL_DIR".to_owned(),
+            tts_model.display().to_string(),
+        )]),
+    );
+    let out = Arc::new(TtsOutput::new(worker, tmp.path().join("clauses"), None));
+
+    let devices = super::playback::list_output_devices();
+    eprintln!("[19.B] output devices: {devices:?}");
+
+    let (tx, rx) = mpsc::channel::<String>(8);
+    let cancel = CancellationToken::new();
+    let o2 = Arc::clone(&out);
+    let c2 = cancel.clone();
+    let started = Instant::now();
+    let handle = tokio::spawn(async move {
+        let r = o2.speak_stream(rx, c2).await;
+        if let Err(e) = &r {
+            eprintln!("[19.B] speak_stream error: {e:?}");
+        }
+        r
+    });
+
+    for clause in [
+        "Hello, this is the Chatterbox turbo voice.",
+        "It streams one clause at a time so the reply starts quickly.",
+        "Barge in any time to stop it.",
+    ] {
+        tx.send(clause.to_owned()).await.unwrap();
+    }
+    drop(tx);
+
+    // First-audio latency.
+    let mut first_audio = None;
+    while first_audio.is_none() && started.elapsed() < Duration::from_secs(30) {
+        if out.queued_ms().await > 0 {
+            first_audio = Some(started.elapsed());
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    println!(
+        "[19.B] time-to-first-audio: {:?}",
+        first_audio.expect("some audio was produced")
+    );
+
+    let summary = tokio::time::timeout(Duration::from_secs(60), handle)
+        .await
+        .expect("speak_stream finished")
+        .unwrap()
+        .expect("speak ok");
+    assert_eq!(summary.clauses, 3, "all clauses spoken");
+    println!(
+        "[19.B] spoke {} clauses / {} chars",
+        summary.clauses, summary.chars
+    );
+
+    // Barge-in: stop mid-playback → silent fast.
+    let (tx2, rx2) = mpsc::channel::<String>(4);
+    let cancel2 = CancellationToken::new();
+    let o3 = Arc::clone(&out);
+    let c3 = cancel2.clone();
+    let h2 = tokio::spawn(async move { o3.speak_stream(rx2, c3).await });
+    tx2.send(
+        "This is a long sentence that we will interrupt partway through, testing barge in latency."
+            .to_owned(),
+    )
+    .await
+    .unwrap();
+    while out.queued_ms().await == 0 {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let t = Instant::now();
+    cancel2.cancel();
+    out.stop().await;
+    let _ = h2.await;
+    while !out.playback_idle().await && t.elapsed() < Duration::from_millis(500) {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    println!("[19.B] barge-in trigger->silence: {:?}", t.elapsed());
+    assert!(out.playback_idle().await, "playback stopped");
+    assert!(
+        t.elapsed() < Duration::from_millis(300),
+        "barge-in within budget"
+    );
+    drop(tx2);
 }

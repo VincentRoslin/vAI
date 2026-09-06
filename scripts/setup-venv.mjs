@@ -16,6 +16,9 @@ import { dirname, join } from 'node:path';
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const venv = join(repo, '.venv');
 const req = join(repo, 'workers', 'requirements.txt');
+// chatterbox-tts hard-pins torch==2.6.0 (no Blackwell CUDA); we override to
+// 2.11.0+cu128. See workers/overrides.txt.
+const overrides = join(repo, 'workers', 'overrides.txt');
 
 function run(cmd, args) {
   process.stdout.write(`$ ${cmd} ${args.join(' ')}\n`);
@@ -33,7 +36,17 @@ try {
 if (!existsSync(venv)) {
   run(uv[0], [...uv.slice(1), 'venv', '.venv', '--python', '3.11']);
 }
-run(uv[0], [...uv.slice(1), 'pip', 'install', '--python', '.venv', '-r', req]);
+run(uv[0], [
+  ...uv.slice(1),
+  'pip',
+  'install',
+  '--python',
+  '.venv',
+  '-r',
+  req,
+  '--override',
+  overrides,
+]);
 
 const py = join(
   venv,
@@ -42,6 +55,8 @@ const py = join(
 );
 run(py, [
   '-c',
-  "import faster_whisper, ctranslate2; print('ct2 cuda devices:', ctranslate2.get_cuda_device_count())",
+  'import faster_whisper, ctranslate2, torch, chatterbox; ' +
+    "print('ct2 cuda devices:', ctranslate2.get_cuda_device_count()); " +
+    "print('torch cuda:', torch.cuda.is_available())",
 ]);
 process.stdout.write('venv ready at .venv\n');

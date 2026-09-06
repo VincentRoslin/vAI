@@ -113,6 +113,18 @@ impl SileroVad {
         })
     }
 
+    /// Raise/lower the speech-onset threshold at runtime (echo duck while TTS
+    /// plays — ADR-0005).
+    pub fn set_onset_threshold(&mut self, t: f32) {
+        self.cfg.onset_threshold = t.clamp(0.05, 0.98);
+    }
+
+    /// The configured onset threshold.
+    #[must_use]
+    pub fn onset_threshold(&self) -> f32 {
+        self.cfg.onset_threshold
+    }
+
     /// Reset the state machine + LSTM state for a fresh utterance.
     pub fn reset(&mut self) {
         self.state.iter_mut().for_each(|v| *v = 0.0);

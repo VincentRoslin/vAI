@@ -9,4 +9,8 @@ export type VoiceConfig = {
 /**
  * `cpal` input device name; `null` = the system default.
  */
-input_device: string | null, };
+input_device: string | null, 
+/**
+ * `cpal` output device name; `null` = the system default (schema v7).
+ */
+output_device: string | null, };
