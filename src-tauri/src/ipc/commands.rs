@@ -294,6 +294,21 @@ pub async fn acquire_fixed(
     acquisition.acquire_fixed(which).await
 }
 
+// ---------------------------------------------------------------- resources
+
+use crate::contracts::resource::ResourceSnapshot;
+use crate::resources::ResourceManager;
+
+/// The resource manager's current view: last GPU / RAM measurement + what the
+/// reservation ledger holds (ADR-0007).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn resources_snapshot(
+    resources: State<'_, Arc<ResourceManager>>,
+) -> AppResult<ResourceSnapshot> {
+    Ok(resources.snapshot().await)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

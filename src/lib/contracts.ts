@@ -25,6 +25,7 @@ export type { ErrorEnvelope } from '../bindings/ErrorEnvelope';
 export type { AppConfig } from '../bindings/AppConfig';
 export type { ModelsConfig } from '../bindings/ModelsConfig';
 export type { LoggingConfig } from '../bindings/LoggingConfig';
+export type { ResourcesConfig } from '../bindings/ResourcesConfig';
 export type { ConfigKey } from '../bindings/ConfigKey';
 export type { ConfigSet } from '../bindings/ConfigSet';
 export type { ConfigKeyInfo } from '../bindings/ConfigKeyInfo';
@@ -69,10 +70,13 @@ export type { Message } from '../bindings/Message';
 export type { ConversationKind } from '../bindings/ConversationKind';
 export type { Conversation } from '../bindings/Conversation';
 
-// Resource reservations.
+// Resource reservations + the manager snapshot (Phase 13, ADR-0007).
 export type { ResourceKind } from '../bindings/ResourceKind';
 export type { ReservationState } from '../bindings/ReservationState';
 export type { Reservation } from '../bindings/Reservation';
+export type { GpuMemory } from '../bindings/GpuMemory';
+export type { RamInfo } from '../bindings/RamInfo';
+export type { ResourceSnapshot } from '../bindings/ResourceSnapshot';
 
 // Worker protocol (Rust ↔ Python; surfaced here for completeness).
 export type { WorkerKind } from '../bindings/WorkerKind';

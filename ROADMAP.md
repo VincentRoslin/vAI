@@ -24,11 +24,11 @@
 
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
-| **Phase**        | 13 — Resource Manager                                   |
-| **Stage**        | 13.1 — Deps + config v4                                 |
-| **Status**       | `IN PROGRESS`                                           |
+| **Phase**        | 14 — Model Lifecycle Manager                            |
+| **Stage**        | 14.1 — (finalize at phase entry)                        |
+| **Status**       | `NOT STARTED`                                           |
 | **Blocked by**   | —                                                      |
-| **Plan doc**     | `docs/plan/13_resource-manager.md` (finalized)          |
+| **Plan doc**     | `docs/plan/14_model-lifecycle.md`                       |
 | **Last updated** | 2026-09-06                                              |
 | **Updated by**   | phase-13-resources                                      |
 
@@ -50,6 +50,13 @@
 `reqwest`, `docs/verification/11_phase12_acquisition.md`). Live download verified
 (`Qwen 0.5B` GGUF, 50.6 MB/s, HF SHA-256 checked, registered). Gate 5 (fixed
 STT/TTS models, ~5 GB) deferred to before Phase 18 (§6).
+**Phase 13 done** — resource manager (`resources/` module, ADR-0007,
+`docs/verification/12_phase13_resources.md`). `HardwareProbe` (NVML whole-GPU +
+`sysinfo` RAM + mock), closed-form VRAM estimate + EMA calibration, in-memory
+reservation ledger, `request`/`commit`/`observe`/`release`/`reconcile` behind one
+async `Mutex`; `request` never blocks on the driver. Config schema **v4**
+(`resources.vram_safety_margin_mb`). Real probe confirmed on the reference
+machine (16 303 MB VRAM, 31 938 MB RAM).
 
 **Completed:** Phase 0–2 · Product Definition · Phase 3 (research + ADRs + probes)
 · Phase 4 (adversarial review, `03_adversarial_review.md`) · **Phase 5**
@@ -200,14 +207,14 @@ Gate: pick + download + verify + register a small GGUF; resume interrupted
 download; checksum mismatch rejected; insufficient disk refused pre-download;
 STT+TTS models acquired via same path; picker works read-only-offline.
 
-### Phase 13 — Resource Manager *(current pointer)* — `IN PROGRESS` (13.1) — `docs/plan/13_resource-manager.md`
+### Phase 13 — Resource Manager — `COMPLETE` — `docs/verification/12_phase13_resources.md`
 "Can this operation safely use the GPU now?" Lifecycle request → reserve → commit
 → observe → release → reconcile. Mockable hardware. Never file-size == VRAM.
 Gate (mocked): insufficient VRAM → clean failure; duplicate reservation rejected;
 concurrent serialized; failed/cancelled load releases; stale reservation
-recovered; crash → reconcile vs observed.
+recovered; crash → reconcile vs observed. **All 9 gate items pass.**
 
-### Phase 14 — Model Lifecycle Manager — `NOT STARTED` — `docs/plan/14_model-lifecycle.md`
+### Phase 14 — Model Lifecycle Manager *(current pointer)* — `NOT STARTED` — `docs/plan/14_model-lifecycle.md`
 The only component that loads/unloads managed models. Explicit state machine +
 failure/recovery states. No duplicate loads; failed/cancelled loads release.
 Gate: load; concurrent same-model load not duplicated; unload; load under
@@ -409,6 +416,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 13 / 13.1 `IN PROGRESS` | Phase 13 `COMPLETE` → Phase 14 / 14.1 `NOT STARTED` | phase-13 | Resource manager landed: `src-tauri/src/resources/` — `probe` (`HardwareProbe` trait; `NvmlProbe` = `nvml-wrapper` GPU 0 `memory_info` + `sysinfo` RAM, NVML init failure non-fatal; `MockProbe`), `estimate` (`estimate_llm_vram` closed form + `Calibration` per-model EMA factor, clamped), `mod` (`ResourceManager`: in-memory `LedgerEntry` vec; `request`/`commit`/`release`/`observe`/`snapshot`/`reconcile` behind one `tokio::sync::Mutex<Inner>`; `request` reads the cached measurement, never the probe; stale-TTL 120 s, drift-slack 512 MB). Config schema **v4**: `resources.vram_safety_margin_mb` (default 1500, `ConfigKey::VramSafetyMarginMb`, session override, `<= 65536`). Contracts (additive): `GpuMemory`, `RamInfo`, `ResourceSnapshot`. IPC `resources_snapshot`. `lib.rs` builds it over `NvmlProbe`, takes the first measurement, spawns the observe loop (1.5 s busy / 10 s idle). Deps: `nvml-wrapper 0.10`, `sysinfo 0.39` (`system` only). **All 9 gate items PASS** (mock hardware) + real probe confirmed on the reference machine (16 303 MB VRAM / 31 938 MB RAM) and in a `tauri dev` launch. 180 rust tests (+27), 7 vitest. Baselines: `request` ~µs, first NVML+`sysinfo` probe ~13 ms (off the request path). No new ADR (implements ADR-0007); ledger persistence + full TDR flow deferred to Phase 33. Evidence `docs/verification/12_phase13_resources.md`. |
 | 2026-09-06 | Phase 13 `NOT STARTED` | Phase 13 / 13.1 `IN PROGRESS` | phase-13 | Phase entry: `docs/plan/13_resource-manager.md` finalized (11 steps, 9 gate items) against **ADR-0007** (NVML per-process VRAM confirmed unavailable → whole-GPU `{total,used,free}` + our own reservation ledger; closed-form estimate + per-backend EMA calibration; one async `Mutex` serializes `request`/`commit`/`release`/`reconcile`; system-RAM = 2nd constraint) and ADR-0010 (lock ordering). New `src-tauri/src/resources/` (`probe.rs` — `HardwareProbe` trait + `NvmlProbe`/`sysinfo` + `MockProbe`; `estimate.rs`; `mod.rs` — `ResourceManager`; `tests.rs`). `request` reads a cached snapshot (never blocks on NVML); observe loop 1.5 s loaded / 10 s idle. Config schema **v4**: `resources.vram_safety_margin_mb` (default 1500). Deps: `nvml-wrapper 0.10`, `sysinfo` (`system` only). `resources_snapshot` IPC. No new ADR (implements ADR-0007); ledger persistence + full TDR flow deferred to Phase 33. |
 | 2026-09-06 | Phase 12 / 12.1 `IN PROGRESS` | Phase 12 `COMPLETE` (code + offline gates) → Phase 13 / 13.1 `NOT STARTED` | phase-12 | Model acquisition landed: `src-tauri/src/acquisition/` — `gguf` (hand parser), `hf` (search / file-list + header range / fetch), `budget` (pre-transfer guard), `download` (`reqwest` engine: `.part` + `Range` resume + SHA-256 verify + atomic rename + register), `AcquisitionService`, `acquire_fixed` (faster-whisper `large-v3`, `ResembleAI/chatterbox-turbo` — owner-confirmed). `V0003__model_downloads.sql`; config **v3** (`models.min_free_gb`). IPC: `models_list`, `model_delete`, `hf_*`, `download_*`, `downloads_list`, `acquire_fixed`. `/models` picker UI + `Models.test`. **Gates 1–4, 6–9 PASS**: 1/6/8 verified **live** — `Qwen/Qwen2.5-0.5B-Instruct-GGUF` downloaded 491 MB @ 50.6 MB/s, SHA-256 checked against HF's LFS hash, registered with parsed metadata; 2/3/4/6/7 via a mock `Range` server + component test. **Gate 5** (fixed STT/TTS, ~5 GB) deferred → before Phase 18 (§6). The live test surfaced + fixed 3 bugs (LFS hash field `oid` not `sha256`; Windows `\\?\` verbatim paths; `register()` model-dir off-by-one). 153 rust tests (+21). Deps: `reqwest` (0 net crates), `sha2`, `fs4`, `walkdir`, `tiny_http` (dev). Evidence `docs/verification/11_phase12_acquisition.md`. |
 | 2026-09-06 | (no state change) | — | owner-approved | **ADR-0008 amended:** transfer client `hf-hub` → hand-rolled `reqwest` range requests. `hf-hub` 1.0 = +121 transitive crates (incl. `aws-lc-sys` C build + `hf-xet`); `reqwest` = 0 net crates (already in the tree via Tauri) and we need it anyway for the HF search API + GGUF header range. Xet dropped for v1. `docs/decisions/0008` + README updated. |

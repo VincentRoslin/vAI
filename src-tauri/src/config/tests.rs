@@ -108,16 +108,53 @@ fn migration_forward_fills_new_sections_from_defaults() {
 }
 
 #[test]
-fn migration_v2_to_v3_adds_min_free_gb() {
+fn migration_v2_forward_adds_min_free_gb_and_resources() {
     let v2 = json!({
         "version": 2,
         "models": { "dir": if cfg!(windows) { r"C:\m" } else { "/m" }, "budget_gb": 50 },
         "logging": { "level": "warn" },
     });
     let migrated = migrate(v2, &root()).expect("migrates");
-    assert_eq!(migrated["version"], json!(3));
-    assert_eq!(migrated["models"]["min_free_gb"], json!(20));
+    assert_eq!(migrated["version"], json!(CURRENT_SCHEMA_VERSION));
+    assert_eq!(migrated["models"]["min_free_gb"], json!(20)); // v3 default
+    assert_eq!(migrated["resources"]["vram_safety_margin_mb"], json!(1500)); // v4 default
     assert_eq!(migrated["logging"]["level"], json!("warn")); // kept
+}
+
+#[test]
+fn migration_v3_to_v4_adds_resources_section() {
+    let v3 = json!({
+        "version": 3,
+        "models": {
+            "dir": if cfg!(windows) { r"C:\m" } else { "/m" },
+            "budget_gb": 50,
+            "min_free_gb": 15,
+        },
+        "logging": { "level": "warn" },
+    });
+    let migrated = migrate(v3, &root()).expect("migrates");
+    assert_eq!(migrated["version"], json!(4));
+    assert_eq!(migrated["resources"]["vram_safety_margin_mb"], json!(1500));
+    assert_eq!(migrated["models"]["min_free_gb"], json!(15)); // kept
+
+    let cfg: AppConfig = serde_json::from_value(migrated).expect("deserializes");
+    cfg.validate().expect("valid after migration");
+}
+
+#[test]
+fn validation_rejects_an_absurd_vram_margin() {
+    let mut cfg = AppConfig::defaults(&root());
+    cfg.resources.vram_safety_margin_mb = 200_000;
+    let err = cfg.validate().unwrap_err();
+    assert!(matches!(&err, AppError::Validation(m) if m.contains("vram_safety_margin_mb")));
+}
+
+#[test]
+fn apply_kv_sets_vram_margin() {
+    let mut cfg = AppConfig::defaults(&root());
+    apply_kv(&mut cfg, ConfigKey::VramSafetyMarginMb, " 2048 ").unwrap();
+    assert_eq!(cfg.resources.vram_safety_margin_mb, 2048);
+    cfg.validate().expect("valid");
 }
 
 #[test]

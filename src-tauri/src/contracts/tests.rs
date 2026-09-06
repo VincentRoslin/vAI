@@ -17,7 +17,9 @@ use super::model::{
     Device, ModelBackend, ModelCapabilities, ModelKind, ModelMetadata, ModelState, Quant,
     RegisteredModel, RegistryAvailability,
 };
-use super::resource::{Reservation, ReservationState, ResourceKind};
+use super::resource::{
+    GpuMemory, RamInfo, Reservation, ReservationState, ResourceKind, ResourceSnapshot,
+};
 use super::task::{CancelRequest, TaskKind, TaskState, TaskStatus};
 use super::worker::{WorkerHello, WorkerKind, WorkerRequest, WorkerResponse, WorkerResult};
 use super::WORKER_PROTOCOL_VERSION;
@@ -405,6 +407,26 @@ fn resource_contracts_round_trip() {
         amount_mb: 8000,
         task_id: Some(task_id()),
         state: ReservationState::Held,
+    });
+
+    round_trip(&ResourceSnapshot {
+        gpu: Some(GpuMemory {
+            total_mb: 16_384,
+            used_mb: 2_048,
+            free_mb: 14_336,
+        }),
+        ram: Some(RamInfo {
+            total_mb: 32_768,
+            available_mb: 20_000,
+        }),
+        reserved_gpu_mb: 7_000,
+        reserved_ram_mb: 0,
+    });
+    round_trip(&ResourceSnapshot {
+        gpu: None,
+        ram: None,
+        reserved_gpu_mb: 0,
+        reserved_ram_mb: 0,
     });
 }
 

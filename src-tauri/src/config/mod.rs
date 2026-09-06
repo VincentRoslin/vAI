@@ -32,13 +32,17 @@ use crate::ipc::{AppError, AppResult};
 
 /// Schema version this binary understands. A file with a higher version is
 /// refused; a lower (or absent) version is migrated forward on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 3;
+pub const CURRENT_SCHEMA_VERSION: u32 = 4;
 
 const FILE_NAME: &str = "config.json";
 const TMP_NAME: &str = "config.json.tmp";
 const DEFAULT_MODEL_BUDGET_GB: u32 = 100;
 const DEFAULT_MIN_FREE_GB: u32 = 20;
 const DEFAULT_LOG_LEVEL: &str = "info";
+/// VRAM the resource manager holds back on top of every estimate (ADR-0007).
+const DEFAULT_VRAM_SAFETY_MARGIN_MB: u32 = 1500;
+/// An obvious fat-finger guard — no single GPU on the roadmap has this much VRAM.
+const MAX_VRAM_SAFETY_MARGIN_MB: u32 = 65_536;
 
 // ---------------------------------------------------------------- schema
 
@@ -52,6 +56,17 @@ pub struct AppConfig {
     pub models: ModelsConfig,
     /// Logging.
     pub logging: LoggingConfig,
+    /// Resource manager tuning (schema v4).
+    pub resources: ResourcesConfig,
+}
+
+/// Resource-manager tuning (schema v4). See ADR-0007.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct ResourcesConfig {
+    /// VRAM (MB) held back on top of every load estimate, absorbing estimation
+    /// error and driver/WDDM overhead. Default 1500.
+    pub vram_safety_margin_mb: u32,
 }
 
 /// Logging configuration (schema v2).
@@ -91,6 +106,9 @@ impl AppConfig {
             logging: LoggingConfig {
                 level: DEFAULT_LOG_LEVEL.to_owned(),
             },
+            resources: ResourcesConfig {
+                vram_safety_margin_mb: DEFAULT_VRAM_SAFETY_MARGIN_MB,
+            },
         }
     }
 
@@ -125,6 +143,11 @@ impl AppConfig {
             return Err(AppError::Validation(
                 "models.dir must be an absolute path".to_owned(),
             ));
+        }
+        if self.resources.vram_safety_margin_mb > MAX_VRAM_SAFETY_MARGIN_MB {
+            return Err(AppError::Validation(format!(
+                "resources.vram_safety_margin_mb must be <= {MAX_VRAM_SAFETY_MARGIN_MB}"
+            )));
         }
         crate::logging::validate_directive(&self.logging.level)?;
         Ok(())
@@ -188,6 +211,7 @@ struct SessionOverrides {
     models_budget_gb: Option<u32>,
     models_min_free_gb: Option<u32>,
     logging_level: Option<String>,
+    vram_safety_margin_mb: Option<u32>,
 }
 
 impl SessionOverrides {
@@ -196,6 +220,7 @@ impl SessionOverrides {
             && self.models_budget_gb.is_none()
             && self.models_min_free_gb.is_none()
             && self.logging_level.is_none()
+            && self.vram_safety_margin_mb.is_none()
     }
 
     fn apply(&self, cfg: &mut AppConfig) {
@@ -210,6 +235,9 @@ impl SessionOverrides {
         }
         if let Some(level) = &self.logging_level {
             cfg.logging.level.clone_from(level);
+        }
+        if let Some(margin) = self.vram_safety_margin_mb {
+            cfg.resources.vram_safety_margin_mb = margin;
         }
     }
 }
@@ -229,15 +257,18 @@ pub enum ConfigKey {
     ModelsMinFreeGb,
     /// `logging.level` — a `tracing` filter directive.
     LoggingLevel,
+    /// `resources.vram_safety_margin_mb` — integer MB, `0..=65536`.
+    VramSafetyMarginMb,
 }
 
 impl ConfigKey {
     /// Every overridable key.
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::ModelsDir,
         Self::ModelsBudgetGb,
         Self::ModelsMinFreeGb,
         Self::LoggingLevel,
+        Self::VramSafetyMarginMb,
     ];
 
     #[must_use]
@@ -247,6 +278,7 @@ impl ConfigKey {
             Self::ModelsBudgetGb => "models.budget_gb",
             Self::ModelsMinFreeGb => "models.min_free_gb",
             Self::LoggingLevel => "logging.level",
+            Self::VramSafetyMarginMb => "resources.vram_safety_margin_mb",
         }
     }
 
@@ -254,7 +286,7 @@ impl ConfigKey {
     fn value_type(self) -> &'static str {
         match self {
             Self::ModelsDir => "path",
-            Self::ModelsBudgetGb | Self::ModelsMinFreeGb => "integer",
+            Self::ModelsBudgetGb | Self::ModelsMinFreeGb | Self::VramSafetyMarginMb => "integer",
             Self::LoggingLevel => "log-directive",
         }
     }
@@ -265,6 +297,7 @@ impl ConfigKey {
             Self::ModelsBudgetGb => cfg.models.budget_gb.to_string(),
             Self::ModelsMinFreeGb => cfg.models.min_free_gb.to_string(),
             Self::LoggingLevel => cfg.logging.level.clone(),
+            Self::VramSafetyMarginMb => cfg.resources.vram_safety_margin_mb.to_string(),
         }
     }
 }
@@ -287,6 +320,13 @@ fn apply_kv(cfg: &mut AppConfig, key: ConfigKey, raw: &str) -> AppResult<()> {
             })?;
         }
         ConfigKey::LoggingLevel => raw.trim().clone_into(&mut cfg.logging.level),
+        ConfigKey::VramSafetyMarginMb => {
+            cfg.resources.vram_safety_margin_mb = raw.trim().parse().map_err(|_| {
+                AppError::Validation(format!(
+                    "resources.vram_safety_margin_mb must be an integer, got {raw:?}"
+                ))
+            })?;
+        }
     }
     Ok(())
 }
@@ -452,6 +492,9 @@ impl ConfigManager {
             }
             ConfigKey::LoggingLevel => {
                 state.session.logging_level = Some(probe.logging.level.clone());
+            }
+            ConfigKey::VramSafetyMarginMb => {
+                state.session.vram_safety_margin_mb = Some(probe.resources.vram_safety_margin_mb);
             }
         }
         Ok(())

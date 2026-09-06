@@ -21,6 +21,7 @@ import type { HfGgufFile } from '../bindings/HfGgufFile';
 import type { HfModelSummary } from '../bindings/HfModelSummary';
 import type { Pong } from '../bindings/Pong';
 import type { RegisteredModel } from '../bindings/RegisteredModel';
+import type { ResourceSnapshot } from '../bindings/ResourceSnapshot';
 
 export type { AppConfig, AppError, AppReady, ConfigKeyInfo, ConfigSet, FrontendLog, Pong };
 
@@ -125,3 +126,8 @@ export const downloadsList = (): Promise<DownloadInfo[]> => call('downloads_list
 /** Acquire the pinned faster-whisper or Chatterbox model bundle. */
 export const acquireFixed = (which: FixedModelKind): Promise<string[]> =>
   call('acquire_fixed', { which });
+
+// ---------------------------------------------------------------- resources
+
+/** The resource manager's current view: GPU / RAM measurement + reservations. */
+export const resourcesSnapshot = (): Promise<ResourceSnapshot> => call('resources_snapshot');

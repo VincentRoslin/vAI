@@ -1,5 +1,8 @@
 # Phase 13 — Resource Manager
 
+> **Status: COMPLETE** (2026-09-06) — all 9 gate items pass;
+> evidence `docs/verification/12_phase13_resources.md`.
+
 > **Architecture frozen at Phase 5.** Step detail **finalized at phase entry, 2026-09-06**. Governing: **ADR-0007** (NVML whole-GPU `{total,used,free}` + our own reservation ledger — per-process VRAM is **confirmed unavailable** on this driver, probe `02_phase3_probes.md`; closed-form estimate + learned correction; one async mutex; system-RAM as a 2nd constraint; TDR path), **ADR-0010** (lock ordering — the mutex holder performs the whole transition), ADR-0016 (`vram_safety_margin_mb` → config schema v4).
 
 ## Objective

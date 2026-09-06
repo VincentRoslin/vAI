@@ -15,9 +15,10 @@ pub mod db;
 pub mod ipc;
 pub mod logging;
 pub mod models;
+pub mod resources;
 
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use tauri::{Emitter, Manager, RunEvent};
 
@@ -88,6 +89,10 @@ pub fn run() {
             app.manage(registry);
             app.manage(database);
 
+            app.manage(start_resource_manager(
+                effective.resources.vram_safety_margin_mb,
+            ));
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -107,6 +112,7 @@ pub fn run() {
             ipc::commands::download_cancel,
             ipc::commands::downloads_list,
             ipc::commands::acquire_fixed,
+            ipc::commands::resources_snapshot,
         ])
         .build(tauri::generate_context!())
         .expect("error while building LocalAI");
@@ -118,4 +124,42 @@ pub fn run() {
             }
         }
     });
+}
+
+/// Build the resource manager (Phase 13, ADR-0007): whole-GPU NVML + `sysinfo`
+/// behind one probe, our own reservation ledger on top. NVML init failure is
+/// non-fatal — the probe reports unavailable and loads that need VRAM
+/// accounting are refused with a clear message. Takes the first measurement and
+/// spawns the observation loop.
+fn start_resource_manager(vram_safety_margin_mb: u32) -> Arc<resources::ResourceManager> {
+    let probe = Arc::new(resources::probe::NvmlProbe::new());
+    let manager = Arc::new(resources::ResourceManager::new(
+        probe,
+        vram_safety_margin_mb,
+    ));
+    let first = tauri::async_runtime::block_on(manager.observe());
+    tracing::info!(
+        gpu = ?first.gpu,
+        ram = ?first.ram,
+        vram_safety_margin_mb,
+        "resource manager ready"
+    );
+    let handle = Arc::clone(&manager);
+    tauri::async_runtime::spawn(async move { observe_loop(handle).await });
+    manager
+}
+
+/// Poll the hardware probe and reconcile the ledger: ~1.5 s while any
+/// reservation is outstanding, ~10 s when the ledger is empty.
+async fn observe_loop(manager: Arc<resources::ResourceManager>) {
+    const BUSY: Duration = Duration::from_millis(1500);
+    const IDLE: Duration = Duration::from_secs(10);
+    loop {
+        let snapshot = manager.observe().await;
+        let idle = snapshot.reserved_gpu_mb == 0 && snapshot.reserved_ram_mb == 0;
+        if !idle {
+            manager.reconcile().await;
+        }
+        tokio::time::sleep(if idle { IDLE } else { BUSY }).await;
+    }
 }

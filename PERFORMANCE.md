@@ -30,6 +30,8 @@ targets, validated per hardware+model combination.
 | DB 100-row transaction | < ~10 ms | Phase 9 |
 | Memory retrieval (FTS5, per scope) | < ~10 ms | Phase 21 |
 | Model download throughput | saturates the connection | Phase 12 |
+| Resource `request` (cached snapshot, no probe) | < ~1 ms | Phase 13 |
+| Hardware probe (NVML + `sysinfo`), off the request path | ~1–15 ms, on a ~1.5 s poll | Phase 13 |
 | Peak system RAM, normal use | well under 32 GB | Phase 22, Phase 31 |
 
 ## 2. Known bottlenecks and the decisions that address them
@@ -43,6 +45,7 @@ targets, validated per hardware+model combination.
 | STT int8 unavailable on Blackwell | faster-whisper `float16`; VAD-gated (transcribe speech only) |
 | Voice perceived latency | pipeline overlap — synthesize clause 1 while the LLM generates clause 2; play chunk 1 while chunk 2 synthesizes |
 | KV-cache VRAM pressure | flash-attention; optional `q8_0` KV-cache quantization; `-ngl` auto-tuned from measured free VRAM |
+| VRAM accounting must not stall an interactive load | the resource manager's `request` reads the **last cached measurement** + the ledger — never the driver; only the ~1.5 s observe loop touches NVML (Phase 13) |
 | WDDM free-memory lag after unload | scheduler polls measured `free` until it recovers before the next load |
 | Discovery card generation latency | pre-generated pool + idle top-up; lower-res cards (768²/896×1152); on-demand fallback |
 | Large image/character lists in the UI | virtualized lists; thumbnail cache; lazy image loading |

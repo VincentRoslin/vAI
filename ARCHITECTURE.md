@@ -25,7 +25,7 @@ Changes require the STOP → propose → approve → new/updated ADR loop.
 │  ipc  ·  config  ·  observability (tracing)  ·  db  ·  blob store    │
 │  conversation engine  (ONE — chat / voice / character)              │
 │  context builder  (system + persona/character + memory + relationship)│
-│  model registry  ·  acquisition (hf-hub + downloads table)           │
+│  model registry  ·  acquisition (reqwest + downloads table)          │
 │  resource manager (NVML whole-GPU + reservation ledger + RAM watch)  │
 │  scheduler  (priority queue; ONE GPU serialization mutex)            │
 │  lifecycle manager  (the only loader/unloader of managed models)     │
@@ -50,9 +50,9 @@ blob store, model lifecycle, resource/VRAM/RAM management, scheduling, task
 management, process supervision, IPC, security-sensitive operations, business
 logic. Single crate (`src-tauri/`); modules interact through defined interfaces.
 
-Modules (see `src-tauri/README.md` for the live list): **as of Phase 12** —
-`lib.rs` (Tauri builder + config/DB/logging/registry wiring in `setup()`, WAL
-checkpoint on exit), `logging` (JSON stdout, non-blocking lossy, boundary secret
+Modules (see `src-tauri/README.md` for the live list): **as of Phase 13** —
+`lib.rs` (Tauri builder + config/DB/logging/registry/acquisition/resources wiring
+in `setup()`, WAL checkpoint on exit), `logging` (JSON stdout, non-blocking lossy, boundary secret
 redaction, ring buffer, config-driven reloadable level — no network sink), `ipc`
 (`commands`, `error::{AppError, ErrorEnvelope}`), `contracts` (the serializable
 vocabulary for the IPC **and** worker boundaries — `docs/contracts.md`; no
@@ -62,7 +62,11 @@ forward-only migrations with verified backup, `DbError`, ADR-0009), `models` (th
 model registry — `model_entry` rows, CRUD + capability query, path confinement,
 computed availability, UUIDv4 ids per ADR-0017), `acquisition` (HF picker +
 `reqwest` download engine — `.part` + `Range` resume + SHA-256 verify + budget
-guard + auto-register; **the only runtime network egress**; ADR-0008). Each later
+guard + auto-register; **the only runtime network egress**; ADR-0008),
+`resources` (the resource manager — `HardwareProbe` trait over NVML whole-GPU +
+`sysinfo` RAM, mockable; in-memory reservation ledger; closed-form VRAM estimate
++ learned calibration; `request`/`commit`/`observe`/`release`/`reconcile` behind
+one async `Mutex`; `request` never blocks on the driver; ADR-0007). Each later
 phase adds its module and registers it in `src-tauri/README.md` and §3 here.
 
 ### React / TypeScript — presentation only
@@ -95,7 +99,7 @@ loopback only, launched with the offline/no-telemetry env (ADR-0015).
 | Filesystem | Rust core (path-confined) |
 | Configuration | `config` module |
 | Model load / unload | `lifecycle manager` |
-| GPU/VRAM + system-RAM accounting | `resource manager` |
+| GPU/VRAM + system-RAM accounting | `resources` module (`resource manager`) |
 | GPU job ordering + eviction | `scheduler` |
 | Process spawn / health / restart | `worker supervisor` |
 | Conversations (all modalities) | `conversation engine` (one) |
@@ -166,9 +170,16 @@ A `send_image` typed action from the model → Rust validates (schema, allow-lis
 
 ## 7. Resource manager + scheduler
 
-- **Resource manager accounts:** NVML `memory_info` + a reservation ledger +
-  system-RAM watch; closed-form VRAM estimate (GGUF header → layers/heads/ctx →
-  KV cache + weights + overhead + margin) with a learned per-model correction.
+- **Resource manager accounts** (`resources` module, Phase 13): NVML
+  `memory_info` (whole-GPU — per-process VRAM is unavailable on this driver) +
+  `sysinfo` RAM behind one `HardwareProbe` trait (mockable); an **in-memory
+  reservation ledger**; closed-form VRAM estimate (GGUF header →
+  layers/heads/ctx → KV cache + weights + CUDA context + buffers) × a learned
+  per-model EMA correction, + the configured `vram_safety_margin_mb`.
+  Lifecycle `request → commit → observe → release → reconcile`, all behind one
+  async `Mutex`; `request` works off the last cached measurement so it never
+  blocks on the driver. `reconcile` trusts the measurement over the ledger and
+  recovers reservations a crashed caller never released.
 - **Scheduler orders:** priority queue — (1) interactive LLM gen (never
   preempted), (2) STT/TTS, (3) user image gen, (4) character/pool generation
   (idle-only). One GPU serialization mutex; **the mutex holder performs the entire
@@ -190,9 +201,9 @@ content, so injected text cannot restructure the prompt.
 
 ## 9. Offline enforcement
 
-Runtime network egress is forbidden except: (a) the Rust `hf-hub` acquisition path
-(explicit user action), (b) an optional, default-off update check. Every Python
-worker runs with `HF_HUB_OFFLINE=1 / TRANSFORMERS_OFFLINE=1 / *DISABLE_TELEMETRY /
+Runtime network egress is forbidden except: (a) the Rust `reqwest` HF acquisition
+path (explicit user action, ADR-0008), (b) an optional, default-off update check.
+Every Python worker runs with `HF_HUB_OFFLINE=1 / TRANSFORMERS_OFFLINE=1 / *DISABLE_TELEMETRY /
 DO_NOT_TRACK` (ADR-0015) and loads from local paths only. Frontend: no CDN fonts,
 no analytics, a restrictive CSP. Phase 32 verifies with a packet capture.
 
