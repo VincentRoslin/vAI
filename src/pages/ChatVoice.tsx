@@ -92,10 +92,12 @@ export function ChatVoice(): React.JSX.Element {
       }
       if (gguf) {
         setNotice('Loading model…');
+        log.info('ui', `model load requested: ${gguf.metadata.id}`);
         await modelLoad(gguf.metadata.id);
         setNotice(null);
       }
     } catch (e) {
+      log.warn('ui', `model load failed: ${toAppError(e).kind}`);
       setNotice(`Model load failed: ${toAppError(e).kind}`);
     }
     await refreshModels();
@@ -103,6 +105,7 @@ export function ChatVoice(): React.JSX.Element {
 
   async function unload(): Promise<void> {
     if (loaded) {
+      log.info('ui', `model unload requested: ${loaded.id}`);
       await modelUnload(loaded.id).catch((e) => setNotice(`Unload failed: ${toAppError(e).kind}`));
       await refreshModels();
     }
@@ -114,6 +117,7 @@ export function ChatVoice(): React.JSX.Element {
     setDraft('');
     setMessages((m) => [...m, optimisticUser(convo.id, text)]);
     setStreaming({ text: '', error: null });
+    log.info('ui', `send (${text.length} chars)`);
 
     try {
       const id = await chatSend(
@@ -165,15 +169,18 @@ export function ChatVoice(): React.JSX.Element {
   async function talkStart(): Promise<void> {
     if (!convo || streaming || voice !== 'Idle') return;
     setNotice(null);
+    log.info('ui', 'voice: push-to-talk start');
     try {
       await voiceStart(convo.id, (s) => setVoice(s.kind));
     } catch (e) {
       setVoice('Idle');
+      log.warn('ui', `voice start failed: ${toAppError(e).kind}`);
       setNotice(`Voice unavailable: ${toAppError(e).kind}`);
     }
   }
 
   async function talkStop(): Promise<void> {
+    log.info('ui', 'voice: push-to-talk release');
     try {
       await voiceStop();
     } catch {

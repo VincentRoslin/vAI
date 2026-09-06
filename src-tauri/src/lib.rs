@@ -13,6 +13,7 @@ pub mod config;
 pub mod contracts;
 pub mod conversation;
 pub mod db;
+pub mod diag;
 pub mod ipc;
 pub mod job;
 pub mod lifecycle;
@@ -70,6 +71,8 @@ pub fn run() {
             ipc::commands::voice_start,
             ipc::commands::voice_stop,
             ipc::commands::voice_state,
+            ipc::commands::diag_snapshot,
+            ipc::commands::diag_export,
         ])
         .build(tauri::generate_context!())
         .expect("error while building LocalAI");
@@ -113,6 +116,11 @@ fn setup(app: &mut tauri::App) -> Result<(), String> {
     let effective = manager.effective();
     if let Err(err) = logging::set_level(&effective.logging.level) {
         tracing::warn!(%err, "could not apply configured logging.level");
+    }
+    // Persistent rotating file log (Phase 18.5) — so a session we did not watch
+    // is still inspectable. Redacted by the same writer as stdout.
+    if let Err(err) = logging::enable_file_sink(&data_root.join("logs")) {
+        tracing::warn!(%err, "could not enable the log file sink");
     }
     tracing::info!(
         models_dir = %effective.models.dir.display(),

@@ -14,6 +14,7 @@
 use std::collections::VecDeque;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
@@ -27,6 +28,13 @@ use crate::ipc::{AppError, AppResult};
 /// How many recent formatted log lines to keep in memory.
 pub const RING_CAPACITY: usize = 256;
 
+/// File-log rotation base name — rolled daily to `localai.jsonl.<YYYY-MM-DD>`.
+const LOG_FILE_PREFIX: &str = "localai.jsonl";
+/// Keep at most this many rolled log files.
+const LOG_KEEP_FILES: usize = 7;
+/// …and drop the oldest while the directory exceeds this.
+const LOG_MAX_BYTES: u64 = 50 * 1024 * 1024;
+
 type FilterHandle = reload::Handle<EnvFilter, Registry>;
 
 static RING: Mutex<VecDeque<String>> = Mutex::new(VecDeque::new());
@@ -34,6 +42,10 @@ static RELOAD: OnceLock<FilterHandle> = OnceLock::new();
 static GUARD: OnceLock<WorkerGuard> = OnceLock::new();
 static ENV_OVERRIDE: OnceLock<bool> = OnceLock::new();
 static INIT: OnceLock<()> = OnceLock::new();
+/// The optional on-disk sink (Phase 18.5). `None` until [`enable_file_sink`].
+static FILE: OnceLock<NonBlocking> = OnceLock::new();
+static FILE_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
+static FILE_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// Initialize the global subscriber. Idempotent — safe to call from tests.
 pub fn init() {
@@ -68,6 +80,73 @@ pub fn init() {
         .with(filter_layer)
         .with(fmt_layer)
         .try_init();
+}
+
+// ---------------------------------------------------------------- file sink
+
+/// Start writing the (already-redacted) log stream to a rotating JSON-lines file
+/// under `dir` (Phase 18.5). Idempotent — a second call is a no-op. Runs a
+/// startup sweep so the directory does not grow without bound.
+///
+/// # Errors
+/// [`AppError::internal`] if `dir` cannot be created.
+pub fn enable_file_sink(dir: &Path) -> AppResult<PathBuf> {
+    if let Some(existing) = FILE_DIR.get() {
+        return Ok(existing.clone());
+    }
+    std::fs::create_dir_all(dir).map_err(|e| AppError::internal("create log dir", e))?;
+    sweep_logs(dir);
+
+    let appender = tracing_appender::rolling::daily(dir, LOG_FILE_PREFIX);
+    let (non_blocking, guard) = tracing_appender::non_blocking::NonBlockingBuilder::default()
+        .lossy(true)
+        .buffered_lines_limit(8192)
+        .finish(appender);
+    let _ = FILE.set(non_blocking);
+    let _ = FILE_GUARD.set(guard);
+    let _ = FILE_DIR.set(dir.to_path_buf());
+
+    tracing::info!(dir = %dir.display(), "log file sink enabled");
+    Ok(dir.to_path_buf())
+}
+
+/// The active log directory, once [`enable_file_sink`] has run.
+#[must_use]
+pub fn log_dir() -> Option<PathBuf> {
+    FILE_DIR.get().cloned()
+}
+
+/// Keep the newest [`LOG_KEEP_FILES`] rolled files, then drop oldest while the
+/// directory still exceeds [`LOG_MAX_BYTES`].
+fn sweep_logs(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut files: Vec<(PathBuf, u64)> = entries
+        .flatten()
+        .filter_map(|e| {
+            let path = e.path();
+            let name = path.file_name()?.to_string_lossy().into_owned();
+            if !name.starts_with(LOG_FILE_PREFIX) {
+                return None;
+            }
+            let len = e.metadata().ok()?.len();
+            Some((path, len))
+        })
+        .collect();
+    // Names embed the date (`localai.jsonl.2026-09-06`) → lexical sort == age.
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+
+    while files.len() > LOG_KEEP_FILES {
+        let (path, _) = files.remove(0);
+        let _ = std::fs::remove_file(path);
+    }
+    let mut total: u64 = files.iter().map(|(_, n)| n).sum();
+    while total > LOG_MAX_BYTES && files.len() > 1 {
+        let (path, n) = files.remove(0);
+        let _ = std::fs::remove_file(path);
+        total = total.saturating_sub(n);
+    }
 }
 
 // ---------------------------------------------------------------- level
@@ -219,6 +298,9 @@ impl Drop for RedactWriter {
         let redacted = redact_line(&raw);
         push_ring(redacted.trim_end_matches(['\n', '\r']));
         let _ = self.inner.write_all(redacted.as_bytes());
+        if let Some(file) = FILE.get() {
+            let _ = file.clone().write_all(redacted.as_bytes());
+        }
     }
 }
 

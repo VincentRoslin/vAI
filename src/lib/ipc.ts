@@ -29,6 +29,7 @@ import type { RegisteredModel } from '../bindings/RegisteredModel';
 import type { ResourceSnapshot } from '../bindings/ResourceSnapshot';
 import type { InputDevice } from '../bindings/InputDevice';
 import type { VoiceState } from '../bindings/VoiceState';
+import type { DiagSnapshot } from '../bindings/DiagSnapshot';
 
 export type { AppConfig, AppError, AppReady, ConfigKeyInfo, ConfigSet, FrontendLog, Pong };
 
@@ -226,3 +227,13 @@ export const voiceStop = (): Promise<void> => call('voice_stop');
 
 /** Current voice state (poll fallback). */
 export const voiceState = (): Promise<VoiceState> => call('voice_state');
+
+// --- Diagnostics (Phase 18.5) ---
+
+/** A live diagnostics snapshot (build / config / registry / resources /
+ * lifecycle / conversation metadata / recent logs / host facts). Local only. */
+export const diagSnapshot = (): Promise<DiagSnapshot> => call('diag_snapshot');
+
+/** Write a diagnostics snapshot to `<app_data>/diagnostics/` and return its
+ * path (for you to hand to Claude). */
+export const diagExport = (): Promise<string> => call('diag_export');

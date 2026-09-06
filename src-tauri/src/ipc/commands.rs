@@ -500,6 +500,46 @@ pub async fn voice_state(voice: State<'_, Arc<VoiceInput>>) -> AppResult<VoiceSt
     Ok(voice.state())
 }
 
+// ---------------------------------------------------------------- diagnostics (Phase 18.5)
+
+use tauri::{AppHandle, Manager as _};
+
+use crate::diag::DiagSnapshot;
+
+/// A live diagnostics snapshot (build + config + registry + resources +
+/// lifecycle + conversation metadata + recent logs + host facts). All local,
+/// no conversation content (`SECURITY.md`, ADR-0015).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn diag_snapshot(
+    config: State<'_, Arc<ConfigManager>>,
+    registry: State<'_, Arc<ModelRegistry>>,
+    resources: State<'_, Arc<ResourceManager>>,
+    lifecycle: State<'_, Arc<LifecycleManager>>,
+    chat: State<'_, Arc<ConversationEngine>>,
+) -> AppResult<DiagSnapshot> {
+    crate::diag::collect(&config, &registry, &resources, &lifecycle, &chat).await
+}
+
+/// Write a diagnostics snapshot to `<app_data>/diagnostics/diag-<ts>.json` and
+/// return the file path (for the owner to share with the agent).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn diag_export(
+    app: AppHandle,
+    config: State<'_, Arc<ConfigManager>>,
+    registry: State<'_, Arc<ModelRegistry>>,
+    resources: State<'_, Arc<ResourceManager>>,
+    lifecycle: State<'_, Arc<LifecycleManager>>,
+    chat: State<'_, Arc<ConversationEngine>>,
+) -> AppResult<String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| AppError::internal("resolve app data dir", e))?;
+    crate::diag::export(&app_data, &config, &registry, &resources, &lifecycle, &chat).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

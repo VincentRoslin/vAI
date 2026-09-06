@@ -12,7 +12,10 @@ use tracing::subscriber::with_default;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::{fmt, prelude::*, Registry};
 
-use super::{content_preview, operation, push_ring, recent_lines, redact_line, set_level, Status};
+use super::{
+    content_preview, enable_file_sink, operation, push_ring, recent_lines, redact_line, set_level,
+    sweep_logs, Status, LOG_KEEP_FILES,
+};
 use crate::contracts::ids::TaskId;
 use crate::ipc::AppError;
 
@@ -230,4 +233,71 @@ fn ring_buffer_is_bounded_and_ordered() {
     assert!(!mine.is_empty());
     assert!(mine.windows(2).all(|w| w[0] < w[1]), "ring lost push order");
     assert_eq!(*mine.last().unwrap(), total - 1);
+}
+
+// ---------------------------------------------------------------- file sink (Phase 18.5)
+
+#[test]
+fn sweep_logs_keeps_the_newest_files() {
+    let dir = tempfile::tempdir().unwrap();
+    for day in 1..=12 {
+        std::fs::write(
+            dir.path().join(format!("localai.jsonl.2026-09-{day:02}")),
+            b"x",
+        )
+        .unwrap();
+    }
+    // An unrelated file is left alone.
+    std::fs::write(dir.path().join("notes.txt"), b"keep me").unwrap();
+
+    sweep_logs(dir.path());
+
+    let mut kept: Vec<String> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("localai.jsonl"))
+        .collect();
+    kept.sort();
+    assert_eq!(kept.len(), LOG_KEEP_FILES);
+    assert_eq!(kept.last().unwrap(), "localai.jsonl.2026-09-12"); // newest survives
+    assert_eq!(kept.first().unwrap(), "localai.jsonl.2026-09-06"); // 12 - 7 + 1
+    assert!(dir.path().join("notes.txt").is_file());
+}
+
+#[test]
+fn sweep_logs_caps_total_size() {
+    let dir = tempfile::tempdir().unwrap();
+    let big = vec![b'x'; 30 * 1024 * 1024];
+    for day in 1..=3 {
+        std::fs::write(
+            dir.path().join(format!("localai.jsonl.2026-09-{day:02}")),
+            &big,
+        )
+        .unwrap();
+    }
+    sweep_logs(dir.path()); // 90 MB > 50 MB cap, and 3 <= keep-7
+
+    let remaining: u64 = std::fs::read_dir(dir.path())
+        .unwrap()
+        .flatten()
+        .map(|e| e.metadata().unwrap().len())
+        .sum();
+    assert!(remaining <= 60 * 1024 * 1024, "still {remaining} bytes");
+    // Never deletes the last file even if it alone exceeds the cap.
+    assert!(std::fs::read_dir(dir.path()).unwrap().count() >= 1);
+}
+
+#[test]
+fn enable_file_sink_creates_the_dir_and_is_idempotent() {
+    // NB: writes to a process-global OnceLock — first caller wins for the whole
+    // test binary, so assert only on the returned path + dir existence.
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("logs");
+    let first = enable_file_sink(&target);
+    assert!(first.is_ok());
+    let p = first.unwrap();
+    assert!(p.is_dir());
+    // Second call: no error, returns a path (possibly the first process winner).
+    assert!(enable_file_sink(&target).is_ok());
 }

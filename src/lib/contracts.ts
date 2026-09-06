@@ -81,6 +81,12 @@ export type { GenerationState } from '../bindings/GenerationState';
 export type { VoiceState } from '../bindings/VoiceState';
 export type { InputDevice } from '../bindings/InputDevice';
 
+// --- Diagnostics (Phase 18.5) ---
+export type { DiagSnapshot } from '../bindings/DiagSnapshot';
+export type { BuildInfo } from '../bindings/BuildInfo';
+export type { ConversationMeta } from '../bindings/ConversationMeta';
+export type { HostInfo } from '../bindings/HostInfo';
+
 // Resource reservations + the manager snapshot (Phase 13, ADR-0007).
 export type { ResourceKind } from '../bindings/ResourceKind';
 export type { ReservationState } from '../bindings/ReservationState';

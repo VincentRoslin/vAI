@@ -49,6 +49,20 @@ vi.mock('@tauri-apps/api/core', () => ({
     if (cmd === 'chat_state') return { generating: null };
     if (cmd === 'voice_start' || cmd === 'voice_stop') return undefined;
     if (cmd === 'voice_state') return { kind: 'Idle' };
+    if (cmd === 'diag_export') return 'C:\\path\\diagnostics\\diag-test.json';
+    if (cmd === 'diag_snapshot') {
+      return {
+        taken_at: '2026-01-01T00:00:00Z',
+        build: { version: '0.1.0', git_sha: 'abc1234', profile: 'debug' },
+        config: {},
+        models: [],
+        resources: {},
+        lifecycle: [],
+        conversations: [],
+        recent_logs: [],
+        host: { os: 'test', nvidia_smi: null, log_dir: null },
+      };
+    }
     if (arrayCommands.has(cmd)) return [];
     return undefined;
   }),
