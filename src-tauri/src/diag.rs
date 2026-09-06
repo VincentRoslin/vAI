@@ -193,13 +193,15 @@ fn now_rfc3339() -> String {
 fn os_string() -> String {
     #[cfg(windows)]
     {
-        std::process::Command::new("cmd")
-            .args(["/C", "ver"])
-            .output()
-            .ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "Windows".to_owned())
+        {
+            let mut cmd = std::process::Command::new("cmd");
+            cmd.args(["/C", "ver"]);
+            crate::job::hide_console_std(&mut cmd);
+            cmd.output().ok()
+        }
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "Windows".to_owned())
     }
     #[cfg(not(windows))]
     {
@@ -208,13 +210,13 @@ fn os_string() -> String {
 }
 
 fn nvidia_smi() -> Option<String> {
-    let out = std::process::Command::new("nvidia-smi")
-        .args([
-            "--query-gpu=name,driver_version,memory.total,memory.used",
-            "--format=csv,noheader",
-        ])
-        .output()
-        .ok()?;
+    let mut cmd = std::process::Command::new("nvidia-smi");
+    cmd.args([
+        "--query-gpu=name,driver_version,memory.total,memory.used",
+        "--format=csv,noheader",
+    ]);
+    crate::job::hide_console_std(&mut cmd);
+    let out = cmd.output().ok()?;
     if !out.status.success() {
         return None;
     }

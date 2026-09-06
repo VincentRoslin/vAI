@@ -287,6 +287,7 @@ impl WorkerSupervisor {
         for (k, v) in &self.extra_env {
             cmd.env(k, v);
         }
+        crate::job::hide_console(&mut cmd);
 
         let mut child = cmd.spawn().map_err(|e| {
             AppError::BackendUnavailable(format!(

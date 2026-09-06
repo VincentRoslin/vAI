@@ -11,6 +11,32 @@ pub use windows_impl::JobObject;
 #[cfg(not(windows))]
 pub use stub_impl::JobObject;
 
+/// Stop Windows popping a console window for a spawned console app
+/// (`llama-server`, the Python workers, `nvidia-smi`). No-op on other platforms.
+/// Call before `spawn()` / `output()`.
+#[cfg(windows)]
+pub fn hide_console(cmd: &mut tokio::process::Command) {
+    // CREATE_NO_WINDOW
+    cmd.creation_flags(0x0800_0000);
+}
+
+/// See [`hide_console`]. Non-Windows: nothing to suppress.
+#[cfg(not(windows))]
+#[allow(clippy::missing_const_for_fn)]
+pub fn hide_console(_cmd: &mut tokio::process::Command) {}
+
+/// [`hide_console`] for a blocking [`std::process::Command`].
+#[cfg(windows)]
+pub fn hide_console_std(cmd: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(0x0800_0000);
+}
+
+/// See [`hide_console_std`].
+#[cfg(not(windows))]
+#[allow(clippy::missing_const_for_fn)]
+pub fn hide_console_std(_cmd: &mut std::process::Command) {}
+
 #[cfg(windows)]
 mod windows_impl {
     use std::io;

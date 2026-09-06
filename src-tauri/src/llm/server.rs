@@ -108,16 +108,16 @@ impl ServerProcess {
         }
         let job = JobObject::new().map_err(|e| AppError::internal("create job object", e))?;
 
-        let mut child = Command::new(binary)
-            .args(args.to_argv())
+        let mut cmd = Command::new(binary);
+        cmd.args(args.to_argv())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| {
-                AppError::BackendUnavailable(format!("failed to start llama-server: {e}"))
-            })?;
+            .kill_on_drop(true);
+        crate::job::hide_console(&mut cmd);
+        let mut child = cmd.spawn().map_err(|e| {
+            AppError::BackendUnavailable(format!("failed to start llama-server: {e}"))
+        })?;
 
         if let Some(handle) = raw_handle(&child) {
             if let Err(err) = job.assign(handle) {
