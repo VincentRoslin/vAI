@@ -20,7 +20,7 @@ added at Phase 8** to close a question Phase 3 deferred (config format).
 | 0001 | Single Rust crate with module boundaries | ACCEPTED |
 | 0002 | IPC: Channels, Events, one AppError, ts-rs, 3-tab shell | ACCEPTED |
 | 0003 | LLM runtime: `llama-server` as a supervised child (loopback) | ACCEPTED |
-| 0004 | Build llama.cpp from source, pinned, sm_120 | ACCEPTED |
+| 0004 | llama.cpp binary — pinned, sm_120 (prebuilt for v1; source build documented) | ACCEPTED (amended 2026-09-06) |
 | 0005 | Voice: faster-whisper fp16 / Silero / Chatterbox / cpal | ACCEPTED |
 | 0006 | Image subsystem: diffusers sidecar, Krea 2 Turbo NF4 (cache required) | ACCEPTED |
 | 0007 | Resource manager: nvml whole-GPU + ledger + RAM watch + TDR path | ACCEPTED |

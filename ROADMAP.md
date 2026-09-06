@@ -25,7 +25,7 @@
 | Field            | Value                                                    |
 | ---------------- | ------------------------------------------------------- |
 | **Phase**        | 16 — First Vertical Slice / Text Chat                   |
-| **Stage**        | 16.1 — (finalize at phase entry; run 15.D first)        |
+| **Stage**        | 16.1 — (finalize at phase entry)                        |
 | **Status**       | `NOT STARTED`                                           |
 | **Blocked by**   | —                                                      |
 | **Plan doc**     | `docs/plan/16_vertical-slice-text-chat.md`              |
@@ -64,14 +64,17 @@ traits + `FakeBackend`; state machine `Unloaded→Loading→Loaded⇄Busy→Unlo
 reservation held across the load, released on every exit; bounded retry; ~2 s
 liveness monitor. `ModelState::Busy` added additively. No real backend yet —
 Phase 15.
-**Phase 15 done (split)** — llama.cpp adapter (`llm/` module, ADR-0003/0004/0013,
+**Phase 15 done** — llama.cpp adapter (`llm/` module, ADR-0003/0004 amended/0013,
 `docs/verification/14_phase15_llama.md`). `LlamaBackend`/`LlamaServer`; supervised
 `llama-server` child on a free loopback port + `--api-key` bearer + Windows Job
 Object; `/health` + `/completion` non-stream + SSE stream client with per-call
-deadline + cancel; all llama.cpp JSON confined to `llm/protocol`. Tested against
-an in-process stub. **Gate items 1 / 5 / 8 + the real sides of 2 / 3 / 6 deferred
-to plan 15.D** (no CUDA `llama-server` binary on the machine + no real GGUF) —
-§6; runs before Phase 16.
+deadline + cancel; all llama.cpp JSON confined to `llm/protocol`. **All 9 gate
+items pass** — stub tests in the adapter build + **15.D run live on the RTX 5080**
+with a **pinned prebuilt** (`b10819`, CUDA 13.3) + the real Qwen 0.5B GGUF:
+load ~775 ms, **TTFT ≈ 23 ms, ≈ 278 tok/s**, cancel frees the slot,
+external kill detected, no orphan. Config schema **v5** (`runtimes.dir`);
+binary + models kept **in-repo** (`runtime/`, `models/`, gitignored) per owner
+preference.
 
 **Completed:** Phase 0–2 · Product Definition · Phase 3 (research + ADRs + probes)
 · Phase 4 (adversarial review, `03_adversarial_review.md`) · **Phase 5**
@@ -237,16 +240,14 @@ insufficient resources rejected pre-spawn; cancel mid-load releases; forced
 failure → recovery; unexpected exit detected + reconciled; state-machine tests.
 **All 9 gate items pass** (`FakeBackend`; real backend is Phase 15).
 
-### Phase 15 — llama.cpp Adapter — `COMPLETE (split — 15.D deferred)` — `docs/verification/14_phase15_llama.md`
+### Phase 15 — llama.cpp Adapter — `COMPLETE` — `docs/verification/14_phase15_llama.md`
 First LLM backend behind a clean `LlmBackend` interface; llama.cpp detail confined
 to the adapter; transport per the Phase 3 ADR.
 Gate: startup + readiness; non-streaming + streaming generation; cancellation
 reaches the job; timeout handled; crash detected + recovered; clean shutdown no
-orphan; no raw config leaks past the adapter.
-**Split (owner-approved):** adapter + supervision + HTTP/SSE client built and
-**tested against an in-process stub** (gate 4/7/9 + stub 2/3/6 PASS). The
-real-CUDA-`llama-server` + real-GGUF items (1, 5, 8, real 2/3/6) → **plan 15.D**,
-§6 — runs before Phase 16.
+orphan; no raw config leaks past the adapter. **All 9 pass** — stub tests +
+**15.D live** on the RTX 5080 (pinned prebuilt `b10819` + real Qwen 0.5B GGUF;
+TTFT ≈ 23 ms, ≈ 278 tok/s). ADR-0004 amended (pinned prebuilt for v1).
 
 ---
 
@@ -436,6 +437,7 @@ Newest first. One line per state transition (§3 rule 6).
 
 | Date       | From | To | By | Note |
 | ---------- | ---- | -- | -- | ---- |
+| 2026-09-06 | Phase 15 `COMPLETE` (split — 15.D deferred) | Phase 15 `COMPLETE` (all gates) | phase-15 | **Plan 15.D run.** Owner call: a **pinned official prebuilt** instead of the ADR-0004 source build — **ADR-0004 amended** (prebuilt = primary path for v1, source build stays documented). Pin: `ggml-org/llama.cpp` `b10819` (commit `6a1a922d2`), `llama-b10819-bin-win-cuda-13.3-x64.zip` (sha `c9069222…`) + `cudart-…-13.3-x64.zip` (sha `1462a050…`); CUDA 13.3 → Blackwell sm_120 OK. Config schema **v5**: `runtimes.dir` (`RuntimesConfig`, `ConfigKey::RuntimesDir`, session override, default `<app_data>/runtimes`). Owner wants no runtime blobs outside the repo → the machine's `config.json` points `runtimes.dir` + `models.dir` at `<repo>/runtime/llama-server` + `<repo>/models` (both `.gitignore`d, ~1 GB); DB + config.json stay in `%APPDATA%`. `--flash-attn` dropped from the argv (`b10819` made it take an arg; `auto` default is right). 4 `#[ignore]`d live tests (`llm::live_tests`, env-var-gated) on the RTX 5080: **gate 1** load+`/health` ≈ 775 ms · **gate 2** non-stream "red, blue, yellow" + 12-delta stream · **gate 3** cancel → `Cancelled`, slot frees (next gen works) · **gate 5** `taskkill` → `health()` Err · **gate 6** no orphan (`tasklist`) · **gate 8** TTFT ≈ 23 ms, ≈ 278 tok/s (Qwen 0.5B Q4_K_M). WDDM hang not observed over 4 cycles. 212 rust tests (+3; 5 ignored), check suite green, `tauri dev` registers the backend. Evidence `docs/verification/14_phase15_llama.md`. |
 | 2026-09-06 | (no state change) | — | owner-approved | **Docs tidy:** the 7 frozen spec docs (`PROJECT`, `ARCHITECTURE`, `AI_PIPELINES`, `SECURITY`, `PERFORMANCE`, `UI_GUIDELINES`, `DEVELOPMENT`) moved from the repo root to `docs/spec/` (+ `docs/spec/README.md` index). Root `.md` is now just `README` / `CLAUDE` / `ROADMAP`. Organisational only — no content change. Verified: zero markdown-link references repo-wide (all mentions are bare unique names), so nothing broke; `CLAUDE.md` Document Map + nav table, `README.md`, `docs/spec/DEVELOPMENT.md` §2 layout, and `scripts/check.mjs` updated. |
 | 2026-09-06 | Phase 15 / 15.1 `IN PROGRESS` (split) | Phase 15 `COMPLETE` (split — 15.D deferred) → Phase 16 / 16.1 `NOT STARTED` | phase-15 | llama.cpp adapter landed (split scope): `src-tauri/src/llm/` — `protocol` (llama.cpp `/completion` JSON + SSE parser + `stop_type`→`StopReason` — the **only** file with llama.cpp shapes), `server` (`pick_free_port`, `bearer_token` 64-hex/launch, `ServerArgs::to_argv`, `ServerProcess` spawn-under-Job-Object + `try_wait` + graceful-kill), `job` (Windows Job Object `KILL_ON_JOB_CLOSE`; non-Windows no-op), `client` (`LlamaClient` `/health` + non-stream + SSE stream, bearer on every call, per-call `Timeout`, `select!` on `CancellationToken` → `Cancelled` + response drop), `mod` (`LlamaBackend: ModelBackend`; `LlamaServer: LoadedInstance + LlmInstance`; `as_llm` downcast helper; `BACKEND_KEY="llama.cpp"`). `lifecycle::backend::LoadedInstance` gains `as_any` (additive internal hook for Phase 16). `lib.rs` registers the backend iff `<app_data>/runtimes/llama-server.exe` exists (logs + skips otherwise). Deps: `windows` (JobObjects — already transitive) + `tokio` `process` feature (+`signal-hook-registry`). **Gate 4/7/9 + stub sides of 2/3/6 PASS** (13 tests vs an in-process `tiny_http` stub); **1/5/8 + real 2/3/6 NOT EXECUTED — deferred `15.D`** (no CUDA `llama-server`; ADR-0004 build needs a ~3 GB Toolkit; owner wants it fresh; run before Phase 16, with the real Qwen 0.5B GGUF, owner-cleared). 209 rust tests (+13), 7 vitest, check suite green. `tauri dev` clean. No new ADR (confirms ADR-0013). Build recipe → `DEVELOPMENT.md` §5. Evidence `docs/verification/14_phase15_llama.md`. |
 | 2026-09-06 | Phase 15 `NOT STARTED` | Phase 15 / 15.1 `IN PROGRESS` (split) | phase-15 | Phase entry: `docs/plan/15_llama-cpp-adapter.md` finalized (10 steps + a deferred `15.D`). **Owner decision: split the phase** — the machine has no CUDA Toolkit / `nvcc` (ADR-0004 build needs a ~3 GB install), and the owner wants a *fresh* llama.cpp, not one reused from another project. New `src-tauri/src/llm/` module built + tested against an **in-process `tiny_http` stub `llama-server`** now: `ModelBackend` impl, process supervision (free port + `--api-key` bearer per ADR-0013 — `llama-server` is upstream HTTP, no named pipe — + Windows Job Object kill-on-close), `/health` poll, `/completion` non-stream + SSE stream client, cancellation + timeout, `LlmInstance` capability trait + `as_any` downcast hook on `LoadedInstance` (additive). Gate items **4, 7, 9 + the stub sides of 2/3/6** PASS now; **1, real-2, real-3, 5, 6-real, 8** (real CUDA `llama-server` + real Qwen 0.5B GGUF) **deferred → §6**. Owner cleared downloading project assets for `15.D`. Deps to add: `windows` (JobObjects), `getrandom`. No new ADR (confirms ADR-0013). |
@@ -487,20 +489,15 @@ _None blocking._
   register, 50.6 MB/s). Run `acquire_fixed` (via the `/models` UI or a live test)
   before **Phase 18**, when voice needs the models. Does not block Phase 13+.
 
-- **Phase 15 gate items 1 / real-2 / real-3 / 5 / 6-real / 8 — `NOT EXECUTED`
-  (deferred, `15.D`).** The `llm/` adapter, process supervision (free port +
-  `--api-key` bearer + Windows Job Object), and the full `/health` + `/completion`
-  SSE client are built and pass against an in-process stub. The real run needs a
-  **fresh** CUDA `llama-server` binary — the machine has no CUDA Toolkit / `nvcc`
-  (ADR-0004: ~3 GB install to build from source; or a pinned prebuilt) — plus the
-  real `Qwen/Qwen2.5-0.5B-Instruct-GGUF` (~400 MB, owner-cleared to download when
-  doing `15.D`). Run `15.D` before or with **Phase 16** (the first vertical
-  slice needs real tokens). Owner wants the binary fresh, not reused from another
-  project.
-
 - **Phase 15 watch item**: WDDM hang risk on the first sustained `llama-server`
-  generation (Hyper-V enabled on host — inconclusive from inspection). Mitigations
-  in `docs/verification/02_phase3_probes.md`.
+  generation (Hyper-V enabled on host). **Not observed** in 15.D over 4 back-to-back
+  load+generate cycles — but those were short. Keep the 3-step mitigation ladder
+  (`docs/verification/02_phase3_probes.md`) in reach for longer runs at Phase 16.
+
+- **Phase 16 entry — register the Qwen 0.5B GGUF in the app DB.** The file is at
+  `<repo>/models/qwen2.5-0.5b-instruct-q4_k_m.gguf`; the 15.D live tests used a
+  throwaway DB. Phase 16 needs it in the real registry (add a "register a local
+  file" path, or a dev seed).
 - Phase 1's deferred tooling (formatter/linter/hooks/README) → **done in Phase 6.**
 
 ---

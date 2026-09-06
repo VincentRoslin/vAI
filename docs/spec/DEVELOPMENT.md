@@ -78,36 +78,46 @@ CI runs the suite on every push; `main` stays releasable.
 ## 5. Running subsystems locally
 
 - **Full app:** `npm run tauri dev` (or the project's task alias).
-- **`llama-server`:** the app spawns it from
-  `%APPDATA%\com.localai.app\runtimes\llama-server.exe` (+ its CUDA DLLs) — do
-  not run it by hand. **Not built yet** (Phase 15 was split — the adapter is
-  done, the binary is deferred to plan step `15.D`). Build recipe (ADR-0004,
-  sm_120 / CUDA 13 — *documented, not yet executed*):
+- **`llama-server`:** the app spawns it from `<runtimes.dir>/llama-server.exe`
+  (config `runtimes.dir`, default `%APPDATA%\com.localai.app\runtimes`; on the
+  reference machine it points at `<repo>/runtime/llama-server/`). Do not run it
+  by hand. **In use: the pinned prebuilt** (ADR-0004 amended, Phase 15.D) —
+  release **`b10819`**, CUDA 13.3, sm_120-capable:
 
   ```powershell
-  # prerequisite: CUDA Toolkit 13.x (~3 GB) — `nvcc --version` must work
+  # from https://github.com/ggml-org/llama.cpp/releases/tag/b10819
+  #   llama-b10819-bin-win-cuda-13.3-x64.zip   (binaries)
+  #   cudart-llama-bin-win-cuda-13.3-x64.zip   (CUDA 13.3 runtime DLLs)
+  # extract BOTH into  <runtimes.dir>/llama-server/   (SHA-256s in
+  #   docs/verification/14_phase15_llama.md). ~540 MB, gitignored.
+  ```
+
+  Source-build fallback (ADR-0004, needs CUDA Toolkit 13.x — `nvcc` on PATH):
+
+  ```powershell
   git clone https://github.com/ggml-org/llama.cpp
-  cd llama.cpp; git checkout <pinned-commit>          # pin recorded at 15.D
+  cd llama.cpp; git checkout b10819
   cmake -B build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=120 `
         -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release
   cmake --build build --config Release --target llama-server -j
-  # copy build\bin\llama-server.exe + the CUDA runtime DLLs it links
-  #   → %APPDATA%\com.localai.app\runtimes\
   ```
 
-  Alternative (ADR-0004 fallback): a pinned official prebuilt from the
-  llama.cpp releases page. `scripts\build-llama.ps1` will wrap whichever path
-  is chosen.
+  `scripts\build-llama.ps1` will wrap the chosen path (Phase 37 packaging).
 - **Python workers:** the app spawns them from the venv; for isolated testing,
   `uv run workers/<name>.py` with the offline env (ADR-0015) set.
 - **DB:** `%APPDATA%\com.localai.app\localai.db` (+ `-wal` / `-shm`), created and
   migrated on first run (ADR-0009). Pre-migration backups: `db-backups/`
   (last 5). Delete `localai.db*` to reset. `scripts/db-reset.ps1` (Phase 14) will
   wipe + re-migrate + seed.
-- **Config:** `%APPDATA%\com.localai.app\config.json` (ADR-0016). Absent on a
-  fresh machine — the app runs on defaults and only writes the file when a value
-  changes. Delete it to reset to defaults; an unparseable file is auto-backed-up
-  to `config.json.corrupt-<unix>` and defaults are used.
+- **Config:** `%APPDATA%\com.localai.app\config.json` (ADR-0016, schema **v5**).
+  Absent on a fresh machine — the app runs on defaults and only writes the file
+  when a value changes. Delete it to reset to defaults; an unparseable file is
+  auto-backed-up to `config.json.corrupt-<unix>` and defaults are used.
+  - `models.dir` (default `<app_data>/models`) and `runtimes.dir` (default
+    `<app_data>/runtimes`) can point anywhere. The reference machine sets both
+    to repo-local paths (`<repo>/models`, `<repo>/runtime/llama-server`) — both
+    `.gitignore`d — so no large runtime blob lives outside the project. The DB +
+    `config.json` themselves stay in `%APPDATA%` (small, conventional).
 
 ## 6. Line endings
 

@@ -32,7 +32,7 @@ use crate::ipc::{AppError, AppResult};
 
 /// Schema version this binary understands. A file with a higher version is
 /// refused; a lower (or absent) version is migrated forward on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 4;
+pub const CURRENT_SCHEMA_VERSION: u32 = 5;
 
 const FILE_NAME: &str = "config.json";
 const TMP_NAME: &str = "config.json.tmp";
@@ -58,6 +58,20 @@ pub struct AppConfig {
     pub logging: LoggingConfig,
     /// Resource manager tuning (schema v4).
     pub resources: ResourcesConfig,
+    /// Where supervised runtime binaries live (schema v5).
+    pub runtimes: RuntimesConfig,
+}
+
+/// Location of the supervised runtime binaries (`llama-server`, later the image
+/// server + Python workers). Schema v5. See ADR-0003 / ADR-0013.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct RuntimesConfig {
+    /// Absolute directory holding `llama-server(.exe)` (+ its CUDA DLLs).
+    /// Default: `<app_data>/runtimes`. Point it into the project to keep large
+    /// binaries with the repo.
+    #[ts(type = "string")]
+    pub dir: PathBuf,
 }
 
 /// Resource-manager tuning (schema v4). See ADR-0007.
@@ -109,6 +123,9 @@ impl AppConfig {
             resources: ResourcesConfig {
                 vram_safety_margin_mb: DEFAULT_VRAM_SAFETY_MARGIN_MB,
             },
+            runtimes: RuntimesConfig {
+                dir: app_data_root.join("runtimes"),
+            },
         }
     }
 
@@ -142,6 +159,11 @@ impl AppConfig {
         if !self.models.dir.is_absolute() {
             return Err(AppError::Validation(
                 "models.dir must be an absolute path".to_owned(),
+            ));
+        }
+        if self.runtimes.dir.as_os_str().is_empty() || !self.runtimes.dir.is_absolute() {
+            return Err(AppError::Validation(
+                "runtimes.dir must be a non-empty absolute path".to_owned(),
             ));
         }
         if self.resources.vram_safety_margin_mb > MAX_VRAM_SAFETY_MARGIN_MB {
@@ -212,6 +234,7 @@ struct SessionOverrides {
     models_min_free_gb: Option<u32>,
     logging_level: Option<String>,
     vram_safety_margin_mb: Option<u32>,
+    runtimes_dir: Option<PathBuf>,
 }
 
 impl SessionOverrides {
@@ -221,11 +244,15 @@ impl SessionOverrides {
             && self.models_min_free_gb.is_none()
             && self.logging_level.is_none()
             && self.vram_safety_margin_mb.is_none()
+            && self.runtimes_dir.is_none()
     }
 
     fn apply(&self, cfg: &mut AppConfig) {
         if let Some(dir) = &self.models_dir {
             cfg.models.dir.clone_from(dir);
+        }
+        if let Some(dir) = &self.runtimes_dir {
+            cfg.runtimes.dir.clone_from(dir);
         }
         if let Some(budget) = self.models_budget_gb {
             cfg.models.budget_gb = budget;
@@ -259,16 +286,19 @@ pub enum ConfigKey {
     LoggingLevel,
     /// `resources.vram_safety_margin_mb` — integer MB, `0..=65536`.
     VramSafetyMarginMb,
+    /// `runtimes.dir` — absolute path.
+    RuntimesDir,
 }
 
 impl ConfigKey {
     /// Every overridable key.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::ModelsDir,
         Self::ModelsBudgetGb,
         Self::ModelsMinFreeGb,
         Self::LoggingLevel,
         Self::VramSafetyMarginMb,
+        Self::RuntimesDir,
     ];
 
     #[must_use]
@@ -279,13 +309,14 @@ impl ConfigKey {
             Self::ModelsMinFreeGb => "models.min_free_gb",
             Self::LoggingLevel => "logging.level",
             Self::VramSafetyMarginMb => "resources.vram_safety_margin_mb",
+            Self::RuntimesDir => "runtimes.dir",
         }
     }
 
     #[must_use]
     fn value_type(self) -> &'static str {
         match self {
-            Self::ModelsDir => "path",
+            Self::ModelsDir | Self::RuntimesDir => "path",
             Self::ModelsBudgetGb | Self::ModelsMinFreeGb | Self::VramSafetyMarginMb => "integer",
             Self::LoggingLevel => "log-directive",
         }
@@ -298,6 +329,7 @@ impl ConfigKey {
             Self::ModelsMinFreeGb => cfg.models.min_free_gb.to_string(),
             Self::LoggingLevel => cfg.logging.level.clone(),
             Self::VramSafetyMarginMb => cfg.resources.vram_safety_margin_mb.to_string(),
+            Self::RuntimesDir => cfg.runtimes.dir.display().to_string(),
         }
     }
 }
@@ -307,6 +339,7 @@ impl ConfigKey {
 fn apply_kv(cfg: &mut AppConfig, key: ConfigKey, raw: &str) -> AppResult<()> {
     match key {
         ConfigKey::ModelsDir => cfg.models.dir = PathBuf::from(raw),
+        ConfigKey::RuntimesDir => cfg.runtimes.dir = PathBuf::from(raw),
         ConfigKey::ModelsBudgetGb => {
             cfg.models.budget_gb = raw.trim().parse().map_err(|_| {
                 AppError::Validation(format!("models.budget_gb must be an integer, got {raw:?}"))
@@ -484,6 +517,7 @@ impl ConfigManager {
         probe.validate()?;
         match key {
             ConfigKey::ModelsDir => state.session.models_dir = Some(PathBuf::from(raw)),
+            ConfigKey::RuntimesDir => state.session.runtimes_dir = Some(PathBuf::from(raw)),
             ConfigKey::ModelsBudgetGb => {
                 state.session.models_budget_gb = Some(probe.models.budget_gb);
             }

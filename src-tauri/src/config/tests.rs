@@ -122,7 +122,7 @@ fn migration_v2_forward_adds_min_free_gb_and_resources() {
 }
 
 #[test]
-fn migration_v3_to_v4_adds_resources_section() {
+fn migration_v3_forward_adds_resources_and_runtimes() {
     let v3 = json!({
         "version": 3,
         "models": {
@@ -133,12 +133,42 @@ fn migration_v3_to_v4_adds_resources_section() {
         "logging": { "level": "warn" },
     });
     let migrated = migrate(v3, &root()).expect("migrates");
-    assert_eq!(migrated["version"], json!(4));
-    assert_eq!(migrated["resources"]["vram_safety_margin_mb"], json!(1500));
+    assert_eq!(migrated["version"], json!(CURRENT_SCHEMA_VERSION));
+    assert_eq!(migrated["resources"]["vram_safety_margin_mb"], json!(1500)); // v4
+    assert!(migrated["runtimes"]["dir"].is_string()); // v5
     assert_eq!(migrated["models"]["min_free_gb"], json!(15)); // kept
 
     let cfg: AppConfig = serde_json::from_value(migrated).expect("deserializes");
     cfg.validate().expect("valid after migration");
+}
+
+#[test]
+fn migration_v4_to_v5_adds_runtimes_section() {
+    let v4 = json!({
+        "version": 4,
+        "models": { "dir": if cfg!(windows) { r"C:\m" } else { "/m" }, "budget_gb": 50, "min_free_gb": 20 },
+        "logging": { "level": "info" },
+        "resources": { "vram_safety_margin_mb": 800 },
+    });
+    let migrated = migrate(v4, &root()).expect("migrates");
+    assert_eq!(migrated["version"], json!(5));
+    assert_eq!(
+        migrated["runtimes"]["dir"],
+        json!(root().join("runtimes").display().to_string())
+    );
+    assert_eq!(migrated["resources"]["vram_safety_margin_mb"], json!(800)); // kept
+}
+
+#[test]
+fn apply_kv_sets_runtimes_dir() {
+    let mut cfg = AppConfig::defaults(&root());
+    let p = if cfg!(windows) { r"C:\rt" } else { "/rt" };
+    apply_kv(&mut cfg, ConfigKey::RuntimesDir, p).unwrap();
+    assert_eq!(cfg.runtimes.dir, PathBuf::from(p));
+    cfg.validate().expect("valid");
+
+    apply_kv(&mut cfg, ConfigKey::RuntimesDir, "relative/rt").unwrap();
+    assert!(cfg.validate().is_err());
 }
 
 #[test]

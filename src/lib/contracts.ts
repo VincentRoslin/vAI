@@ -26,6 +26,7 @@ export type { AppConfig } from '../bindings/AppConfig';
 export type { ModelsConfig } from '../bindings/ModelsConfig';
 export type { LoggingConfig } from '../bindings/LoggingConfig';
 export type { ResourcesConfig } from '../bindings/ResourcesConfig';
+export type { RuntimesConfig } from '../bindings/RuntimesConfig';
 export type { ConfigKey } from '../bindings/ConfigKey';
 export type { ConfigSet } from '../bindings/ConfigSet';
 export type { ConfigKeyInfo } from '../bindings/ConfigKeyInfo';

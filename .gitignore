@@ -15,6 +15,11 @@ src-tauri/gen/schemas/
 npm-debug.log*
 *.local
 
+# Large runtime assets kept in-project (owner preference) — NOT committed.
+# llama-server(.exe) + CUDA DLLs (~540 MB); downloaded GGUF models.
+/runtime/
+/models/
+
 # Editor
 .idea/
 .DS_Store

@@ -1,9 +1,11 @@
 # Phase 15 — llama.cpp Adapter
 
-> **Status: COMPLETE for the split scope** (2026-09-06) — gate items 4, 7, 9 +
-> the stub sides of 2/3/6 pass; items 1, 5, 8 and the real sides of 2/3/6 are
-> **deferred to `15.D`** (ROADMAP §6). Evidence
-> `docs/verification/14_phase15_llama.md`. Step detail finalized at phase entry.
+> **Status: COMPLETE** (2026-09-06) — all 9 gate items pass. The adapter build
+> covered 4/7/9 + stub 2/3/6; **`15.D` was then run live** on the RTX 5080 with a
+> **pinned prebuilt** (`b10819`, CUDA 13.3 — ADR-0004 amended) + the real Qwen
+> 0.5B GGUF: 1, 2, 3, 5, 6, 8 all pass (TTFT ≈ 23 ms, ≈ 278 tok/s). Config
+> schema **v5** added `runtimes.dir`; binary + models kept in-repo (gitignored).
+> Evidence `docs/verification/14_phase15_llama.md`.
 > **Split, by owner decision:** the adapter, process supervision, transport, and
 > the full HTTP/SSE client are built now and tested against an **in-process stub
 > `llama-server`**. The gate items that need a real CUDA `llama-server` binary +

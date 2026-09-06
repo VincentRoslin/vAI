@@ -24,10 +24,11 @@ vi.mock('@tauri-apps/api/core', () => ({
     if (cmd === 'app_ping') return { nonce: 'test', version: '0.1.0' };
     if (cmd === 'config_get') {
       return {
-        version: 4,
+        version: 5,
         models: { dir: '/tmp/models', budget_gb: 100, min_free_gb: 20 },
         logging: { level: 'info' },
         resources: { vram_safety_margin_mb: 1500 },
+        runtimes: { dir: '/tmp/runtimes' },
       };
     }
     if (arrayCommands.has(cmd)) return [];

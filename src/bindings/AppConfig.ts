@@ -2,6 +2,7 @@
 import type { LoggingConfig } from "./LoggingConfig";
 import type { ModelsConfig } from "./ModelsConfig";
 import type { ResourcesConfig } from "./ResourcesConfig";
+import type { RuntimesConfig } from "./RuntimesConfig";
 
 /**
  * The full configuration document.
@@ -22,4 +23,8 @@ logging: LoggingConfig,
 /**
  * Resource manager tuning (schema v4).
  */
-resources: ResourcesConfig, };
+resources: ResourcesConfig, 
+/**
+ * Where supervised runtime binaries live (schema v5).
+ */
+runtimes: RuntimesConfig, };

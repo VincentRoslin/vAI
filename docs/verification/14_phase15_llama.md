@@ -1,17 +1,27 @@
-# 14 — Phase 15: llama.cpp Adapter (split)
+# 14 — Phase 15: llama.cpp Adapter
 
-**Date:** 2026-09-06
+**Date:** 2026-09-06 (adapter) · 2026-09-06 (15.D — real binary)
 **Branch:** `main` (local; no remote).
-**Method:** new `src-tauri/src/llm/` module; 13 tests against an in-process
-`tiny_http` stub `llama-server` + pure-unit tests; a `npm run tauri dev` launch.
-**The real CUDA `llama-server` binary + a real GGUF are not available on this
-machine** (no CUDA Toolkit / `nvcc`; ADR-0004 build needs a ~3 GB install), so
-the gate items that need them are **NOT EXECUTED — deferred to plan step 15.D**,
-tracked in `ROADMAP.md` §6. This split was decided with the owner.
+**Method:** new `src-tauri/src/llm/` module; 13 stub tests (in-process
+`tiny_http` mimicking `llama-server`) + pure-unit tests; then **15.D**: a pinned
+prebuilt CUDA `llama-server` + the real Qwen 0.5B GGUF, 4 `#[ignore]`d live
+tests, run on the reference machine (RTX 5080).
 
-Governing: **ADR-0003** (`llama-server` supervised child), **ADR-0004** (build
-from source, sm_120 — recipe now in `DEVELOPMENT.md` §5), **ADR-0013** (transport).
-Plan: `docs/plan/15_llama-cpp-adapter.md`. **No new ADR** (confirms ADR-0013).
+**15.D was run** — a **pinned prebuilt** was used instead of the ADR-0004
+source build (owner call: no CUDA Toolkit on the machine, and a prebuilt is
+faster). Pin: **`ggml-org/llama.cpp` release `b10819`** (commit `6a1a922d2`),
+assets `llama-b10819-bin-win-cuda-13.3-x64.zip`
+(sha256 `c9069222…`) + `cudart-llama-bin-win-cuda-13.3-x64.zip`
+(sha256 `1462a050…`). CUDA 13.3 build → Blackwell sm_120 works. Kept
+**in-project** (owner preference — no runtime files outside the repo):
+`runtime/llama-server/` (gitignored). Model: `models/qwen2.5-0.5b-instruct-q4_k_m.gguf`
+(sha256 `74a4da8c…`, gitignored).
+
+Governing: **ADR-0003** (`llama-server` supervised child), **ADR-0004** (amended
+in practice — *pinned prebuilt* accepted as the primary path here, source build
+stays the documented fallback), **ADR-0013** (transport), **ADR-0016** (config —
+schema **v5** `runtimes.dir`). Plan: `docs/plan/15_llama-cpp-adapter.md`.
+**No new ADR.**
 
 ---
 
@@ -44,8 +54,13 @@ Plan: `docs/plan/15_llama-cpp-adapter.md`. **No new ADR** (confirms ADR-0013).
   internal trait method; `FakeBackend`'s instance implements it too) — the
   Phase 16 integration point.
 - `lib.rs` — `start_lifecycle_manager` registers `LlamaBackend` **iff**
-  `%APPDATA%\com.localai.app\runtimes\llama-server.exe` exists; otherwise logs
-  an info line and LLM loads stay unavailable (until 15.D).
+  `<runtimes.dir>/llama-server.exe` exists; otherwise logs an info line and LLM
+  loads stay unavailable.
+- **Config schema v5** (`RuntimesConfig { dir }`, `ConfigKey::RuntimesDir`,
+  session override; default `<app_data>/runtimes`). The reference machine's
+  `config.json` points it — and `models.dir` — into the repo
+  (`runtime/llama-server`, `models/`), both `.gitignore`d, per the owner's
+  "no runtime files outside the project" preference.
 - Deps: `windows` (`Win32_System_JobObjects` + `_Threading` + `_Foundation`) and
   the `tokio` `process` feature. `windows` was already transitive (via
   `sysinfo`); `process` adds `signal-hook-registry` (1 crate).
@@ -56,47 +71,39 @@ Plan: `docs/plan/15_llama-cpp-adapter.md`. **No new ADR** (confirms ADR-0013).
 
 | # | Check | Result |
 | - | ----- | ------ |
-| 1 | Startup + readiness check succeed for a real GGUF | **NOT EXECUTED — deferred (15.D).** No CUDA `llama-server` binary. The `load` path (spawn → `/health` poll → `Ok`, with child-exit and timeout branches) is written; the health-poll client half is proven against the stub (gate 2). |
-| 2 | Non-streaming and streaming generation produce correct output | **PASS (stub) / real deferred (15.D).** `non_streaming_completion_returns_text_and_stop_reason`: `complete()` → text `"hello world"`, 2 tokens, `EndOfText`. `streaming_completion_yields_ordered_deltas_then_done`: SSE → `TokenDelta{0,"hel"}`, `TokenDelta{1,"lo"}`, `Done{EndOfText, 2}` — indices contiguous, order preserved. `sse_lines_parse` + `chunk_stop_reason_maps_every_variant` cover the parser. |
-| 3 | Cancellation stops generation and frees the slot | **PASS (app side) / real slot-free deferred (15.D).** `a_mid_stream_cancel_emits_cancelled`: a stalled stream + `CancellationToken::cancel()` → the stream ends promptly with `GenerationEvent::Cancelled` and the client drops the HTTP response (so a real server sees the disconnect). |
+| 1 | Startup + readiness check succeed for a real GGUF | **PASS (live, 15.D)** — `live_startup_and_non_streaming_generation`: `LlamaBackend::load` spawned the pinned `llama-server`, polled `/health`, and returned `Ok` in **~775 ms** for the real Qwen 0.5B Q4_K_M on the RTX 5080. |
+| 2 | Non-streaming and streaming generation produce correct output | **PASS (live, 15.D)** — non-stream: *"The three primary colors are red, blue, and yellow."* (13 tok, `EndOfText`). Stream: 12 `TokenDelta`s with contiguous indices → `Done{EndOfText, 13}`. Stub tests (`non_streaming_completion_returns_text_and_stop_reason`, `streaming_completion_yields_ordered_deltas_then_done`, `sse_lines_parse`, `chunk_stop_reason_maps_every_variant`) cover the parser edges. |
+| 3 | Cancellation stops generation and frees the slot | **PASS (live, 15.D)** — `live_cancel_frees_the_slot`: a 512-token stream cancelled after the first delta → the stream ends with `GenerationEvent::Cancelled`; **a fresh non-stream generation immediately after succeeds** (*"…red, blue, and yellow."*), proving the server slot was released. Stub `a_mid_stream_cancel_emits_cancelled` covers the client-drop mechanics. |
 | 4 | A timeout is handled with a typed error | **PASS** — `a_stalled_server_hits_the_deadline`: a server that accepts then never responds → `complete()` returns `AppError::Timeout` at the 200 ms deadline. The stream path has the same `tokio::time::timeout` guard on connect + per-chunk idle. |
-| 5 | Killing the backend is detected; Phase 14 → `Failed`; recovery works | **NOT EXECUTED — deferred (15.D)** for the llama-server-specific exit detection (`ServerProcess::exit_status` + `health()` checking the child). **The lifecycle side is already proven** in Phase 14 (`docs/verification/13`, `a_dead_backend_is_detected_and_reconciled`) with `FakeBackend`. |
-| 6 | Clean shutdown leaves no orphan process (process-list check) | **PARTIAL.** `job_object_can_be_created` proves the Job Object path builds + runs. A real orphan-check (spawn a child, drop the job, confirm it is gone from `tasklist`) with `llama-server` is **deferred (15.D)**; `ServerProcess` also sets `kill_on_drop(true)` and an explicit `shutdown`. |
+| 5 | Killing the backend is detected; Phase 14 → `Failed`; recovery works | **PASS (live, 15.D)** — `live_external_kill_is_detected_and_no_orphan_on_shutdown`: `taskkill /F` the `llama-server` pid → `LoadedInstance::health()` returns `Err` (the child-exit branch fires before the HTTP call). The Phase-14 `Failed`-transition + reload is already proven in `docs/verification/13` with `FakeBackend` (the liveness monitor calls `health()`). |
+| 6 | Clean shutdown leaves no orphan process (process-list check) | **PASS (live, 15.D)** — same test: after `instance.shutdown()`, `tasklist /FI "PID eq <pid>"` shows the process gone. `job_object_can_be_created` + `ServerProcess`'s `kill_on_drop(true)` + the `KILL_ON_JOB_CLOSE` job are the belt-and-braces. |
 | 7 | No file outside the adapter references llama.cpp | **PASS** — `git grep -l llama` outside `src-tauri/src/llm/` returns only: the `"llama.cpp"` **backend-key string** in `acquisition` (the opaque registry identifier, ADR-0017) + `lib.rs` (`llm::BACKEND_KEY` / `llm::LlamaBackend` wiring) + doc comments + one test string. No llama.cpp **types, protocol, or flags** leak — `CompletionRequest`, the SSE parser, `--api-key`, `/completion` all live only in `llm/`. |
-| 8 | TTFT + tokens/sec recorded | **NOT EXECUTED — deferred (15.D).** Needs the real binary + Qwen 0.5B GGUF. `PERFORMANCE.md` rows marked "not yet measured". |
-| 9 | Full check suite green; bindings regenerated | **PASS** — `node scripts/check.mjs` all green: `cargo fmt` / `clippy -D warnings` / **209 rust tests** (+13 llm; 1 `#[ignore]`d) / `tsc` / eslint / prettier / **7 vitest** / `vite build`. No new bindings (the `as_any` hook is not a wire contract; `ModelState`/`LifecycleStatus` unchanged this phase). |
+| 8 | TTFT + tokens/sec recorded | **PASS (live, 15.D)** — `live_streaming_generation_with_ttft_and_throughput`: **TTFT ≈ 23 ms · ≈ 278 tokens/sec** (13 tok in 46.7 ms) for Qwen 0.5B Q4_K_M, `-ngl -1`, ctx 4096, on the RTX 5080. Recorded in `docs/spec/PERFORMANCE.md`. (A larger model at Phase 16 sets the chat-relevant baseline.) |
+| 9 | Full check suite green; bindings regenerated | **PASS** — `node scripts/check.mjs` all green: `cargo fmt` / `clippy -D warnings` / **212 rust tests** (+3; 5 `#[ignore]`d incl. the 4 live 15.D tests) / `tsc` / eslint / prettier / **7 vitest** / `vite build`. New bindings: `RuntimesConfig`, `ConfigKey` (+ `RuntimesDir`), `AppConfig` (+ `runtimes`). |
 
-### Wire-in confirmation (15.8)
+### Wire-in confirmation
 
-`npm run tauri dev` on the reference machine:
+`npm run tauri dev` on the reference machine — the app loads `config.json`
+(migrated v1→v5), points `models.dir` + `runtimes.dir` into the repo, and
+**registers the backend**:
 
 ```
-{"message":"resource manager ready","gpu":"Some(GpuMemory { total_mb: 16303, ... })", ...}
-{"message":"no llama-server binary — LLM loads unavailable until it is installed (plan 15.D)",
- "expected":"C:\\Users\\Vincent\\AppData\\Roaming\\com.localai.app\\runtimes\\llama-server.exe"}
+{"message":"configuration loaded","models_dir":"C:\\Users\\Vincent\\Desktop\\vAI\\models",...}
+{"message":"resource manager ready","gpu":"Some(GpuMemory { total_mb: 16303, ... })",...}
+{"message":"llama.cpp backend registered","binary":"C:\\Users\\Vincent\\Desktop\\vAI\\runtime\\llama-server\\llama-server.exe"}
 ```
 
-Clean startup; the backend registration is correctly skipped.
+### 15.D — how to re-run
 
----
+```
+LOCALAI_LLAMA_SERVER=<repo>/runtime/llama-server/llama-server.exe \
+LOCALAI_TEST_GGUF=<repo>/models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+cargo test --manifest-path src-tauri/Cargo.toml llm::live_tests -- --ignored --nocapture --test-threads=1
+```
 
-## Deferred — plan step 15.D (before / with Phase 16)
-
-Phase 16 (the first vertical slice) needs real streamed tokens, so 15.D runs
-before or alongside it. Steps:
-
-1. **Get a fresh CUDA `llama-server`** — the owner wants it built for this
-   project, *not* reused from another. Either: install CUDA Toolkit 13.x and run
-   the `DEVELOPMENT.md` §5 build (pin the llama.cpp commit here when done), or a
-   pinned official prebuilt (ADR-0004 fallback). Place at
-   `%APPDATA%\com.localai.app\runtimes\llama-server.exe` (+ CUDA DLLs).
-2. **Download** `Qwen/Qwen2.5-0.5B-Instruct-GGUF`
-   (`qwen2.5-0.5b-instruct-q4_k_m.gguf`, ~400 MB) via the `/models` picker
-   (owner-cleared).
-3. Run gate items **1, 2 (real), 3 (real slot-free), 5, 6 (real orphan check),
-   8 (TTFT + tokens/sec)** and record the numbers here + in `PERFORMANCE.md`.
-4. Watch the WDDM-hang risk on the first sustained generation
-   (`docs/verification/02_phase3_probes.md`) — 3-step mitigation ladder ready.
+WDDM-hang watch (`docs/verification/02_phase3_probes.md`): **not observed** —
+four back-to-back load+generate cycles completed cleanly. Keep the mitigation
+ladder ready for longer sustained runs at Phase 16.
 
 ---
 
@@ -114,9 +121,25 @@ before or alongside it. Steps:
 - **`-ngl -1`** (offload all layers) for now; Phase 23 does resource-aware layer
   placement. If the model doesn't fit, `llama-server` fails on load and the
   lifecycle manager's retry/`Failed` path (Phase 14) handles it.
-- **Binary discovery by convention** (`<app_data>/runtimes/llama-server.exe`),
-  not a config key — added when the binary lands at 15.D.
+- **`--flash-attn` dropped from the argv** — `b10819` changed it to
+  `[on|off|auto]` (default `auto`, which enables FA where the model supports it);
+  forcing it risks failures on edge models, and `auto` is the right default.
+- **Pinned prebuilt, not the source build** (owner call, ADR-0004 amended):
+  release `b10819`, CUDA 13.3, sm_120-capable. ~540 MB (`ggml-cuda.dll` +
+  `cublasLt64_13.dll` dominate), kept in `runtime/llama-server/` (gitignored).
+- **`runtimes.dir` is config (v5)**, default `<app_data>/runtimes`; the machine
+  overrides it — and `models.dir` — to repo-local paths so no runtime blob
+  lives outside the project. The DB + `config.json` stay in
+  `%APPDATA%\com.localai.app\` (small, conventional; ADR-0009).
 
-**Phase 15 complete for the split scope** (gate items 4, 7, 9 + the stub sides
-of 2, 3, 6 pass; items 1, 5, 8 and the real sides of 2/3/6 deferred to 15.D with
-the reason recorded). Pointer → Phase 16 (15.D runs first).
+## Not done here (deferred by design)
+
+- Generation *through* the lifecycle manager end to end from the UI — Phase 16.
+  This phase exercises `LlmInstance` directly on the loaded instance.
+- Resource-aware `-ngl` — Phase 23. Multi-model / hot-swap — Phase 23/24.
+- Registering the downloaded GGUF into the **app's** DB — Phase 16 entry (the
+  live tests use a throwaway DB). The file is in place at `models/`.
+
+**Phase 15 COMPLETE** — all 9 gate items pass (4, 7, 9 + stub 2/3/6 in the
+adapter build; 1, 2, 3, 5, 6, 8 live on the reference machine in 15.D). Pointer
+→ Phase 16.

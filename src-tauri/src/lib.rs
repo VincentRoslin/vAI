@@ -97,7 +97,7 @@ pub fn run() {
             app.manage(start_lifecycle_manager(
                 Arc::clone(&registry),
                 resources,
-                &data_root,
+                &effective.runtimes.dir,
             ));
 
             Ok(())
@@ -174,13 +174,13 @@ async fn observe_loop(manager: Arc<resources::ResourceManager>) {
 
 /// Build the model lifecycle manager (Phase 14) and register the backends it
 /// knows about. The llama.cpp adapter (Phase 15) is registered when a
-/// `llama-server` binary is present at `<app_data>/runtimes/llama-server(.exe)`;
-/// until then (deferred step 15.D) LLM loads are unavailable. Spawns the
+/// `llama-server` binary is present in `runtimes.dir` (config, default
+/// `<app_data>/runtimes`); until then LLM loads are unavailable. Spawns the
 /// liveness monitor.
 fn start_lifecycle_manager(
     registry: Arc<models::ModelRegistry>,
     resources: Arc<resources::ResourceManager>,
-    data_root: &Path,
+    runtimes_dir: &Path,
 ) -> Arc<lifecycle::LifecycleManager> {
     let manager = Arc::new(lifecycle::LifecycleManager::new(
         registry,
@@ -188,7 +188,7 @@ fn start_lifecycle_manager(
         lifecycle::RetryPolicy::default(),
     ));
 
-    let binary = data_root.join("runtimes").join(if cfg!(windows) {
+    let binary = runtimes_dir.join(if cfg!(windows) {
         "llama-server.exe"
     } else {
         "llama-server"

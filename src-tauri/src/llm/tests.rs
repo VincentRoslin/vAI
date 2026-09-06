@@ -90,8 +90,8 @@ fn server_argv_carries_the_essentials() {
     assert!(joined.contains("--api-key abc"));
     assert!(joined.contains("--n-gpu-layers -1"));
     assert!(joined.contains("--ctx-size 8192"));
-    assert!(joined.contains("--flash-attn"));
     assert!(joined.contains("--no-webui"));
+    assert!(joined.contains("--no-warmup"));
     assert_eq!(spec.base_url(), "http://127.0.0.1:55123");
 }
 

@@ -73,7 +73,8 @@ impl ServerArgs {
             self.n_gpu_layers.to_string(),
             "--ctx-size".into(),
             self.ctx_size.to_string(),
-            "--flash-attn".into(),
+            // Flash Attention: default 'auto' (enabled where the model supports
+            // it) — do not force it, older/edge models fail with it 'on'.
             "--no-webui".into(),
             "--no-warmup".into(),
         ]
@@ -126,6 +127,13 @@ impl ServerProcess {
         }
 
         Ok(Self { child, _job: job })
+    }
+
+    /// The child's OS process id, while it is running.
+    #[cfg(test)]
+    #[must_use]
+    pub fn child_id(&self) -> Option<u32> {
+        self.child.id()
     }
 
     /// Has the child already exited? (`Some(code)` when it has.)

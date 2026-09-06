@@ -16,6 +16,9 @@ pub mod server;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod live_tests;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -174,6 +177,16 @@ impl LlamaServer {
             client,
             estimated_vram_mb,
         }
+    }
+
+    /// The `llama-server` child's OS process id, for the live gate tests.
+    #[cfg(test)]
+    pub(crate) async fn child_id(&self) -> Option<u32> {
+        self.process
+            .lock()
+            .await
+            .as_ref()
+            .and_then(ServerProcess::child_id)
     }
 }
 

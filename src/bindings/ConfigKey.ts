@@ -4,4 +4,4 @@
  * A settable configuration key. The set is small and explicit; it grows
  * additively as phases add settings.
  */
-export type ConfigKey = "ModelsDir" | "ModelsBudgetGb" | "ModelsMinFreeGb" | "LoggingLevel" | "VramSafetyMarginMb";
+export type ConfigKey = "ModelsDir" | "ModelsBudgetGb" | "ModelsMinFreeGb" | "LoggingLevel" | "VramSafetyMarginMb" | "RuntimesDir";
