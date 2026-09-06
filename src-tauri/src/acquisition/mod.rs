@@ -9,6 +9,7 @@ pub mod budget;
 pub mod download;
 pub mod gguf;
 pub mod hf;
+mod krea2;
 
 #[cfg(test)]
 mod tests;
@@ -159,6 +160,18 @@ impl AcquisitionService {
             ids.push(self.engine.start(dl, None).await?);
         }
         Ok(ids)
+    }
+
+    /// Acquire the Krea 2 Turbo image model (Phase 22.B, ADR-0019): verify the
+    /// bf16 weights are already in the HF cache (never pulled), build the NF4
+    /// quant cache once if it is absent, and register the model. Idempotent.
+    ///
+    /// # Errors
+    /// [`AppError::NotFound`] if the bf16 weights are missing;
+    /// [`AppError::BackendUnavailable`] if a needed one-time quantize cannot run;
+    /// a persistence error from the registry.
+    pub async fn acquire_image(&self) -> AppResult<ModelId> {
+        krea2::acquire_image(&self.config, self.engine.registry()).await
     }
 
     /// Every download row.

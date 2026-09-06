@@ -28,7 +28,7 @@ pub mod resources;
 pub mod voice;
 pub mod worker;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -59,6 +59,7 @@ pub fn run() {
             ipc::commands::download_cancel,
             ipc::commands::downloads_list,
             ipc::commands::acquire_fixed,
+            ipc::commands::acquire_image_model,
             ipc::commands::resources_snapshot,
             ipc::commands::lifecycle_status,
             ipc::commands::model_register_local,
@@ -229,26 +230,6 @@ fn setup(app: &mut tauri::App) -> Result<(), String> {
 /// the LoRA + preset registry (seeded from the confined loras dir), the Krea 2
 /// backend (only if its sidecar script exists — Phase 22.B), and the manual
 /// evict/restore [`image::orchestrator::ImageOrchestrator`].
-/// Swap a `.venv` path component for `.venv-image` (ADR-0018 two-venv
-/// amendment). Returns the input unchanged when there is no `.venv` component.
-fn image_venv_python(workers_python: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    let mut swapped = false;
-    for comp in workers_python.components() {
-        if comp.as_os_str() == ".venv" {
-            out.push(".venv-image");
-            swapped = true;
-        } else {
-            out.push(comp.as_os_str());
-        }
-    }
-    if swapped {
-        out
-    } else {
-        workers_python.to_path_buf()
-    }
-}
-
 fn start_image(
     database: &Arc<db::Db>,
     registry: &Arc<models::ModelRegistry>,
@@ -293,7 +274,7 @@ fn start_image(
     // dev `.venv/Scripts/python.exe` -> `.venv-image/Scripts/python.exe`. Falls
     // back to the workers interpreter when there is no `.venv` component to swap
     // (packaged build — a sibling layout ADR-0014 owns).
-    let image_python = image_venv_python(&effective.workers.python);
+    let image_python = image::image_venv_python(&effective.workers.python);
     if script.is_file() {
         lifecycle.register_backend(
             image::BACKEND_KEY,

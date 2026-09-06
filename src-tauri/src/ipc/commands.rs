@@ -294,6 +294,15 @@ pub async fn acquire_fixed(
     acquisition.acquire_fixed(which).await
 }
 
+/// Acquire the Krea 2 Turbo image model (Phase 22.B): verify the bf16 weights
+/// are in the HuggingFace cache, build the NF4 quant cache once if absent, and
+/// register it. Downloads nothing. Returns the registry id.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn acquire_image_model(acquisition: State<'_, AcquisitionService>) -> AppResult<ModelId> {
+    acquisition.acquire_image().await
+}
+
 // ---------------------------------------------------------------- resources
 
 use crate::contracts::resource::ResourceSnapshot;

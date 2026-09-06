@@ -41,6 +41,35 @@ use server::{bearer_token, pick_free_port, SidecarArgs, SidecarProcess};
 /// the `backend` string acquisition writes for the Krea 2 model.
 pub const BACKEND_KEY: &str = "krea2-diffusers";
 
+/// The diffusers-format repo id the sidecar resolves from the **offline** HF
+/// cache (`HF_HUB_OFFLINE=1`, ADR-0015) when the registry path is a marker dir
+/// rather than a full local diffusers layout. The `unsloth/*` mirror is ungated;
+/// `krea/Krea-2-Turbo` is gated. Overridable in the sidecar via `KREA2_MODEL_ID`.
+pub const KREA2_MODEL_ID: &str = "unsloth/Krea-2-Turbo";
+
+/// Swap a `.venv` path component for `.venv-image` (ADR-0018 two-venv
+/// amendment — the image sidecar + `quantize.py` run from their own venv).
+/// Returns the input unchanged when there is no `.venv` component (packaged
+/// build — ADR-0014 sibling layout).
+#[must_use]
+pub fn image_venv_python(workers_python: &std::path::Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    let mut swapped = false;
+    for comp in workers_python.components() {
+        if comp.as_os_str() == ".venv" {
+            out.push(".venv-image");
+            swapped = true;
+        } else {
+            out.push(comp.as_os_str());
+        }
+    }
+    if swapped {
+        out
+    } else {
+        workers_python.to_path_buf()
+    }
+}
+
 const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const PROGRESS_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const DEFAULT_LOAD_TIMEOUT: Duration = Duration::from_secs(180);
@@ -105,12 +134,24 @@ impl ModelBackend for Krea2Backend {
         cancel: CancellationToken,
     ) -> AppResult<Box<dyn LoadedInstance>> {
         let model = &req.model;
+        // A full local diffusers layout (has `model_index.json`) is loaded
+        // directly; a marker dir — what acquisition registers when the weights
+        // live in the shared HF cache — falls back to the repo id the sidecar
+        // resolves offline.
+        let model_ref = {
+            let p = PathBuf::from(&model.path);
+            if p.join("model_index.json").is_file() {
+                p.display().to_string()
+            } else {
+                KREA2_MODEL_ID.to_owned()
+            }
+        };
         let args = SidecarArgs {
             python: self.python.clone(),
             script: self.script.clone(),
             port: pick_free_port()?,
             token: bearer_token(),
-            model_path: Some(PathBuf::from(&model.path)),
+            model_path: Some(PathBuf::from(model_ref)),
             quant_cache: self.quant_cache.clone(),
             loras_dir: self.loras_dir.clone(),
             extra: self.extra_args.clone(),
