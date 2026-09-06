@@ -36,9 +36,10 @@ vi.mock('@tauri-apps/api/core', () => ({
         resources: { vram_safety_margin_mb: 1500 },
         runtimes: { dir: '/tmp/runtimes' },
         workers: { dir: '/tmp/workers', python: '/tmp/py/python' },
-        voice: { input_device: null, output_device: null },
+        voice: { input_device: null, output_device: null, end_of_speech_ms: 900 },
       };
     }
+    if (cmd === 'config_set') return undefined;
     if (cmd === 'conversation_create') {
       return {
         id: 'conv-test',

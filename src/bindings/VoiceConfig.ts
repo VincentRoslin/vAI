@@ -13,4 +13,11 @@ input_device: string | null,
 /**
  * `cpal` output device name; `null` = the system default (schema v7).
  */
-output_device: string | null, };
+output_device: string | null, 
+/**
+ * How long a silence must last (ms) before a spoken turn is considered
+ * finished — the VAD end-of-speech hang time. Higher = more room to pause
+ * between sentences before the turn is sent. `300..=5000`, default 900
+ * (schema v8). Applied at the next voice session.
+ */
+end_of_speech_ms: number, };

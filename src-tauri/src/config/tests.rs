@@ -188,6 +188,41 @@ fn migration_v5_forward_keeps_runtimes_dir_adds_workers_and_voice() {
 }
 
 #[test]
+fn migration_v7_forward_adds_end_of_speech_ms() {
+    let v7 = json!({
+        "version": 7,
+        "models": { "dir": if cfg!(windows) { r"C:\m" } else { "/m" }, "budget_gb": 50, "min_free_gb": 20 },
+        "logging": { "level": "info" },
+        "resources": { "vram_safety_margin_mb": 800 },
+        "runtimes": { "dir": if cfg!(windows) { r"C:\rt" } else { "/rt" } },
+        "workers": { "dir": if cfg!(windows) { r"C:\w" } else { "/w" }, "python": if cfg!(windows) { r"C:\p\python.exe" } else { "/p/python" } },
+        "voice": { "input_device": "USB Mic", "output_device": null },
+    });
+    let migrated = migrate(v7, &root()).expect("migrates");
+    assert_eq!(migrated["version"], json!(CURRENT_SCHEMA_VERSION));
+    assert_eq!(migrated["voice"]["input_device"], json!("USB Mic")); // kept
+    assert_eq!(migrated["voice"]["end_of_speech_ms"], json!(900)); // v8 default
+
+    let cfg: AppConfig = serde_json::from_value(migrated).expect("deserializes");
+    cfg.validate().expect("valid after migration");
+}
+
+#[test]
+fn end_of_speech_ms_is_range_checked() {
+    let mut cfg = AppConfig::defaults(&root());
+    apply_kv(&mut cfg, ConfigKey::VoiceEndOfSpeechMs, "1500").unwrap();
+    assert_eq!(cfg.voice.end_of_speech_ms, 1500);
+    cfg.validate().expect("valid");
+
+    apply_kv(&mut cfg, ConfigKey::VoiceEndOfSpeechMs, "50").unwrap();
+    assert!(
+        matches!(cfg.validate(), Err(AppError::Validation(m)) if m.contains("end_of_speech_ms"))
+    );
+
+    assert!(apply_kv(&mut cfg, ConfigKey::VoiceEndOfSpeechMs, "soon").is_err());
+}
+
+#[test]
 fn apply_kv_sets_runtimes_dir() {
     let mut cfg = AppConfig::defaults(&root());
     let p = if cfg!(windows) { r"C:\rt" } else { "/rt" };

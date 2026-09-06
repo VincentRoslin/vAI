@@ -8,7 +8,12 @@ vi.mock('../lib/ipc', async (importOriginal) => {
   const real = await importOriginal<typeof import('../lib/ipc')>();
   return {
     ...real,
-    configGet: vi.fn(async () => ({ version: 6, models: { dir: '/m' } })),
+    configGet: vi.fn(async () => ({
+      version: 8,
+      models: { dir: '/m' },
+      voice: { input_device: null, output_device: null, end_of_speech_ms: 900 },
+    })),
+    configSet: vi.fn(async () => undefined),
     diagExport: vi.fn(async () => 'C:\\data\\diagnostics\\diag-x.json'),
     personaList: vi.fn(async () => [
       {
@@ -44,11 +49,28 @@ describe('Settings', () => {
   it('shows the config and exports diagnostics', async () => {
     render(<Settings />);
 
-    await waitFor(() => expect(screen.getByText(/"version": 6/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/"version": 8/)).toBeTruthy());
 
     fireEvent.click(screen.getByRole('button', { name: /export diagnostics/i }));
     await waitFor(() => expect(ipc.diagExport).toHaveBeenCalled());
     expect(await screen.findByText(/diag-x\.json/)).toBeTruthy();
+  });
+
+  it('saves the end-of-speech pause', async () => {
+    render(<Settings />);
+    const input = await screen.findByLabelText(/pause \(ms\)/i);
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe('900'));
+
+    fireEvent.change(input, { target: { value: '1400' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() =>
+      expect(ipc.configSet).toHaveBeenCalledWith({
+        key: 'VoiceEndOfSpeechMs',
+        value: '1400',
+        persist: true,
+      }),
+    );
+    expect(await screen.findByText(/restart the app/i)).toBeTruthy();
   });
 
   it('creates a persona through the form', async () => {

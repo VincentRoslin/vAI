@@ -32,7 +32,7 @@ use crate::ipc::{AppError, AppResult};
 
 /// Schema version this binary understands. A file with a higher version is
 /// refused; a lower (or absent) version is migrated forward on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 7;
+pub const CURRENT_SCHEMA_VERSION: u32 = 8;
 
 const FILE_NAME: &str = "config.json";
 const TMP_NAME: &str = "config.json.tmp";
@@ -92,7 +92,18 @@ pub struct VoiceConfig {
     /// `cpal` output device name; `null` = the system default (schema v7).
     #[ts(type = "string | null")]
     pub output_device: Option<String>,
+    /// How long a silence must last (ms) before a spoken turn is considered
+    /// finished — the VAD end-of-speech hang time. Higher = more room to pause
+    /// between sentences before the turn is sent. `300..=5000`, default 900
+    /// (schema v8). Applied at the next voice session.
+    pub end_of_speech_ms: u32,
 }
+
+/// Bounds for [`VoiceConfig::end_of_speech_ms`].
+pub const MIN_END_OF_SPEECH_MS: u32 = 300;
+/// See [`MIN_END_OF_SPEECH_MS`].
+pub const MAX_END_OF_SPEECH_MS: u32 = 5_000;
+const DEFAULT_END_OF_SPEECH_MS: u32 = 900;
 
 /// Location of the supervised runtime binaries (`llama-server`, later the image
 /// server + Python workers). Schema v5. See ADR-0003 / ADR-0013.
@@ -169,6 +180,7 @@ impl AppConfig {
             voice: VoiceConfig {
                 input_device: None,
                 output_device: None,
+                end_of_speech_ms: DEFAULT_END_OF_SPEECH_MS,
             },
         }
     }
@@ -223,6 +235,11 @@ impl AppConfig {
         if self.resources.vram_safety_margin_mb > MAX_VRAM_SAFETY_MARGIN_MB {
             return Err(AppError::Validation(format!(
                 "resources.vram_safety_margin_mb must be <= {MAX_VRAM_SAFETY_MARGIN_MB}"
+            )));
+        }
+        if !(MIN_END_OF_SPEECH_MS..=MAX_END_OF_SPEECH_MS).contains(&self.voice.end_of_speech_ms) {
+            return Err(AppError::Validation(format!(
+                "voice.end_of_speech_ms must be {MIN_END_OF_SPEECH_MS}..={MAX_END_OF_SPEECH_MS}"
             )));
         }
         crate::logging::validate_directive(&self.logging.level)?;
@@ -297,6 +314,7 @@ struct SessionOverrides {
     voice_input_device: Option<Option<String>>,
     #[allow(clippy::option_option)]
     voice_output_device: Option<Option<String>>,
+    voice_end_of_speech_ms: Option<u32>,
 }
 
 impl SessionOverrides {
@@ -311,6 +329,7 @@ impl SessionOverrides {
             && self.workers_python.is_none()
             && self.voice_input_device.is_none()
             && self.voice_output_device.is_none()
+            && self.voice_end_of_speech_ms.is_none()
     }
 
     fn apply(&self, cfg: &mut AppConfig) {
@@ -331,6 +350,9 @@ impl SessionOverrides {
         }
         if let Some(dev) = &self.voice_output_device {
             cfg.voice.output_device.clone_from(dev);
+        }
+        if let Some(ms) = self.voice_end_of_speech_ms {
+            cfg.voice.end_of_speech_ms = ms;
         }
         if let Some(budget) = self.models_budget_gb {
             cfg.models.budget_gb = budget;
@@ -374,11 +396,13 @@ pub enum ConfigKey {
     VoiceInputDevice,
     /// `voice.output_device` — a `cpal` device name, or empty for the default (v7).
     VoiceOutputDevice,
+    /// `voice.end_of_speech_ms` — integer ms, `300..=5000` (v8).
+    VoiceEndOfSpeechMs,
 }
 
 impl ConfigKey {
     /// Every overridable key.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::ModelsDir,
         Self::ModelsBudgetGb,
         Self::ModelsMinFreeGb,
@@ -389,6 +413,7 @@ impl ConfigKey {
         Self::WorkersPython,
         Self::VoiceInputDevice,
         Self::VoiceOutputDevice,
+        Self::VoiceEndOfSpeechMs,
     ];
 
     #[must_use]
@@ -404,6 +429,7 @@ impl ConfigKey {
             Self::WorkersPython => "workers.python",
             Self::VoiceInputDevice => "voice.input_device",
             Self::VoiceOutputDevice => "voice.output_device",
+            Self::VoiceEndOfSpeechMs => "voice.end_of_speech_ms",
         }
     }
 
@@ -411,7 +437,10 @@ impl ConfigKey {
     fn value_type(self) -> &'static str {
         match self {
             Self::ModelsDir | Self::RuntimesDir | Self::WorkersDir | Self::WorkersPython => "path",
-            Self::ModelsBudgetGb | Self::ModelsMinFreeGb | Self::VramSafetyMarginMb => "integer",
+            Self::ModelsBudgetGb
+            | Self::ModelsMinFreeGb
+            | Self::VramSafetyMarginMb
+            | Self::VoiceEndOfSpeechMs => "integer",
             Self::LoggingLevel => "log-directive",
             Self::VoiceInputDevice | Self::VoiceOutputDevice => "string",
         }
@@ -429,6 +458,7 @@ impl ConfigKey {
             Self::WorkersPython => cfg.workers.python.display().to_string(),
             Self::VoiceInputDevice => cfg.voice.input_device.clone().unwrap_or_default(),
             Self::VoiceOutputDevice => cfg.voice.output_device.clone().unwrap_or_default(),
+            Self::VoiceEndOfSpeechMs => cfg.voice.end_of_speech_ms.to_string(),
         }
     }
 }
@@ -448,6 +478,13 @@ fn apply_kv(cfg: &mut AppConfig, key: ConfigKey, raw: &str) -> AppResult<()> {
         ConfigKey::VoiceOutputDevice => {
             let t = raw.trim();
             cfg.voice.output_device = (!t.is_empty()).then(|| t.to_owned());
+        }
+        ConfigKey::VoiceEndOfSpeechMs => {
+            cfg.voice.end_of_speech_ms = raw.trim().parse().map_err(|_| {
+                AppError::Validation(format!(
+                    "voice.end_of_speech_ms must be an integer, got {raw:?}"
+                ))
+            })?;
         }
         ConfigKey::ModelsBudgetGb => {
             cfg.models.budget_gb = raw.trim().parse().map_err(|_| {
@@ -646,6 +683,9 @@ impl ConfigManager {
             }
             ConfigKey::VoiceOutputDevice => {
                 state.session.voice_output_device = Some(probe.voice.output_device.clone());
+            }
+            ConfigKey::VoiceEndOfSpeechMs => {
+                state.session.voice_end_of_speech_ms = Some(probe.voice.end_of_speech_ms);
             }
         }
         Ok(())

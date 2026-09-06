@@ -234,7 +234,10 @@ fn start_voice(
         temp_dir,
         input_device: effective.voice.input_device.clone(),
         output_device: effective.voice.output_device.clone(),
-        vad: voice::vad::VadConfig::default(),
+        vad: voice::vad::VadConfig {
+            min_silence_ms: effective.voice.end_of_speech_ms,
+            ..voice::vad::VadConfig::default()
+        },
         pre_roll_ms: 300,
         playback_duck: 0.2,
     };

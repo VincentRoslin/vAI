@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import type { AppConfig, Memory, Persona, PersonaDraft } from '../lib/contracts';
 import {
   configGet,
+  configSet,
   diagExport,
   memoryDelete,
   memoryList,
@@ -15,8 +16,9 @@ import {
 import { log } from '../lib/log';
 import './Settings.css';
 
-/** Settings — read-only config view + a diagnostics export (Phase 18.5).
- * Editing config lands in a later phase; for now the file is the source. */
+/** Settings — personas, memories, voice tuning, a diagnostics export, and a
+ * read-only dump of the effective config. Most config keys are still file-only;
+ * edit `config.json` for those. */
 export function Settings(): React.JSX.Element {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [diagPath, setDiagPath] = useState<string | null>(null);
@@ -65,6 +67,8 @@ export function Settings(): React.JSX.Element {
         )}
       </div>
 
+      <Voice config={config} />
+
       <Personas />
 
       <Memories />
@@ -81,6 +85,59 @@ export function Settings(): React.JSX.Element {
 
       {error && <p className="settings__error">{error}</p>}
     </section>
+  );
+}
+
+/** Voice tuning (Phase 19 / config v8). Currently just the end-of-speech pause
+ * — how long a silence lasts before your spoken turn is sent. */
+function Voice({ config }: { config: AppConfig | null }): React.JSX.Element {
+  const [ms, setMs] = useState('');
+  const [status, setStatus] = useState('');
+
+  useEffect(() => {
+    if (config?.voice) setMs(String(config.voice.end_of_speech_ms));
+  }, [config]);
+
+  async function save(): Promise<void> {
+    const n = Number(ms);
+    if (!Number.isFinite(n) || n < 300 || n > 5000) {
+      setStatus('Enter a value between 300 and 5000 ms.');
+      return;
+    }
+    try {
+      await configSet({ key: 'VoiceEndOfSpeechMs', value: String(Math.round(n)), persist: true });
+      setStatus('Saved — restart the app for it to take effect.');
+    } catch (e) {
+      setStatus(`Save failed: ${toAppError(e).kind}`);
+    }
+  }
+
+  return (
+    <div className="settings__section">
+      <h2>Voice</h2>
+      <p className="settings__hint">
+        End-of-speech pause — how long to wait after you stop talking before the turn is sent. Raise
+        it if you get cut off mid-thought; lower it for snappier replies. 300–5000&nbsp;ms.
+      </p>
+      <div className="settings__form-actions">
+        <label className="settings__picker">
+          Pause (ms)
+          <input
+            type="number"
+            min={300}
+            max={5000}
+            step={100}
+            value={ms}
+            onChange={(e) => setMs(e.target.value)}
+            style={{ width: '7ch' }}
+          />
+        </label>
+        <button type="button" onClick={() => void save()}>
+          Apply
+        </button>
+      </div>
+      {status && <p className="settings__saved">{status}</p>}
+    </div>
   );
 }
 
