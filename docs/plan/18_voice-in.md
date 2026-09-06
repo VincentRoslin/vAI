@@ -1,12 +1,11 @@
 # Phase 18 — Voice: capture · Silero VAD · faster-whisper STT
 
-> **Status: FINALIZED AT PHASE ENTRY** (2026-09-06). Step detail below is derived
-> against the frozen architecture. The phase is **split** (precedent: Phase 15):
-> **18.A** — the Rust half (capture · VAD · worker supervisor · engine wiring),
-> verifiable now against a **fake STT worker**; **18.B** — the real faster-whisper
-> Python worker + the live capture→transcript gate, which needs the dev Python
-> environment stood up (**ADR-0018**, + owner go-ahead for the ~1 GB of
-> CUDA/cuDNN wheels).
+> **Status: COMPLETE** (2026-09-06) — all 7 gate items pass. Evidence
+> `docs/verification/17_phase18_voice-in.md`. Both halves done: **18.A** (the Rust
+> half — `worker/` + `voice/`, verified against the stdlib fake worker) and
+> **18.B** (the real `workers/stt.py` + a live capture→transcript gate on the RTX
+> 5080 — "Hello local AI, this is a voice input test." → one user turn). The
+> owner cleared both downloads. **ADR-0018** added (dev `uv` venv).
 
 > **Architecture frozen at Phase 5.** Governing: **ADR-0005** (faster-whisper
 > fp16, Silero VAD in the Rust core, `cpal` 16 kHz mono, transcribe per

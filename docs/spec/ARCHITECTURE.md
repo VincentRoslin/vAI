@@ -50,7 +50,7 @@ blob store, model lifecycle, resource/VRAM/RAM management, scheduling, task
 management, process supervision, IPC, security-sensitive operations, business
 logic. Single crate (`src-tauri/`); modules interact through defined interfaces.
 
-Modules (see `src-tauri/README.md` for the live list): **as of Phase 17** —
+Modules (see `src-tauri/README.md` for the live list): **as of Phase 18** —
 `lib.rs` (Tauri builder + a `setup()` fn wiring config/DB/logging/registry/acquisition/
 resources/lifecycle/llm/conversation into managed state; exit hook cancels the in-flight
 generation + unloads models + checkpoints the WAL), `logging` (JSON stdout, non-blocking lossy, boundary secret
@@ -83,7 +83,17 @@ conversation/message SQL, `prompt` renders ChatML (text + transcribed audio),
 `ConversationEngine`: `add_user_turn(typed content)` + `generate(sink)` (voice
 drives the two seams; `send` = both for text), an explicit `GenerationState`
 (`Idle`/`Generating{task,convo}`), first-class cancellation; one generation at a
-time — a concurrent `generate` is `Conflict`). Each later
+time — a concurrent `generate` is `Conflict`),
+`job` (`JobObject` — every spawned child dies with the app, ADR-0013),
+`worker` (**the shared stateless-worker supervisor** — spawns `python <script>`
+under a Job Object with the ADR-0015 lockdown env; `WorkerHello` handshake;
+request/response mux by `WorkerJobId`; bounded restart → `Failed`; dev vs ship
+layout resolution; reused by STT/TTS/embedder),
+`voice` (voice input — `cpal` capture on a parked thread, `rubato` → 16 kHz mono,
+**Silero v5 VAD in-core** via `ort` with a `SpeechStart/SpeechEnd/MaxDurationCut`
+state machine, endpointed-segment WAV, `VoiceInput` → `ConversationEngine::
+add_user_turn(Text)` — the same path typed input takes; push-to-talk for v1;
+low-confidence transcripts dropped, never a blank turn; ADR-0005). Each later
 phase adds its module and registers it in `src-tauri/README.md` and §3 here.
 
 ### React / TypeScript — presentation only
@@ -118,7 +128,9 @@ loopback only, launched with the offline/no-telemetry env (ADR-0015).
 | Model load / unload + runtime `ModelState` | `lifecycle` module (`lifecycle manager`) |
 | GPU/VRAM + system-RAM accounting | `resources` module (`resource manager`) |
 | GPU job ordering + eviction | `scheduler` |
-| Process spawn / health / restart | `worker supervisor` |
+| Process spawn / health / restart | `job` (`JobObject`) + `worker` (`WorkerSupervisor`) for workers; `llm`/image server for model servers — all Rust-supervised |
+| Audio capture + device selection | `voice::capture` (Rust core, `cpal`) |
+| Voice-activity detection / endpointing | `voice::vad` (Silero, in-core — ADR-0005) |
 | Conversations (all modalities) | `conversation` module — the one engine (`ConversationEngine`) |
 | Prompt assembly | `context builder` (one) |
 | Memory | `memory` module (FTS5, per-scope) |
