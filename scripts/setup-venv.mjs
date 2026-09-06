@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Create / refresh the two Python venvs (ADR-0018 + the 2026-09-06 two-venv
-// amendment). Idempotent. Needs `uv` on PATH or importable as `python -m uv`
-// (install: `python -m pip install --user uv`).
+// amendment). Idempotent. Needs `uv` (install: `python -m pip install --user uv`)
+// — found on PATH or in Python's per-user Scripts dir automatically.
 //
 //   node scripts/setup-venv.mjs            # both
 //   node scripts/setup-venv.mjs workers    # just <repo>/.venv
@@ -25,13 +25,36 @@ import { dirname, join } from 'node:path';
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const only = process.argv[2]; // undefined | "workers" | "image"
 
-// `uv` directly, else `python -m uv`.
-let uv = ['uv'];
-try {
-  execFileSync('uv', ['--version'], { stdio: 'ignore' });
-} catch {
-  uv = [process.platform === 'win32' ? 'python' : 'python3', '-m', 'uv'];
+// Locate `uv`: on PATH, else the `uv.exe` a `pip install --user uv` drops into
+// Python's per-user scripts dir (not on PATH by default; `python -m uv` does NOT
+// work — uv ships as a binary with no importable module).
+function findUv() {
+  try {
+    execFileSync('uv', ['--version'], { stdio: 'ignore' });
+    return 'uv';
+  } catch {
+    /* not on PATH */
+  }
+  const py = process.platform === 'win32' ? 'python' : 'python3';
+  try {
+    const base = execFileSync(py, ['-c', 'import site;print(site.getuserbase())'], {
+      encoding: 'utf8',
+    }).trim();
+    const cand =
+      process.platform === 'win32' ? join(base, 'Scripts', 'uv.exe') : join(base, 'bin', 'uv');
+    if (existsSync(cand)) return cand;
+  } catch {
+    /* fall through */
+  }
+  throw new Error(
+    'uv not found. Install it and retry:\n' +
+      '  python -m pip install --user uv\n' +
+      'then add its Scripts dir to PATH, or just re-run this script (it looks ' +
+      'there automatically).',
+  );
 }
+
+const uvBin = findUv();
 
 function run(cmd, args) {
   process.stdout.write(`$ ${cmd} ${args.join(' ')}\n`);
@@ -50,12 +73,12 @@ function venvPython(dir) {
 // name: gitignored dir; reqs: -r files; overrides: --override file (optional).
 function buildVenv({ dir, reqs, overrides, check }) {
   if (!existsSync(join(repo, dir))) {
-    run(uv[0], [...uv.slice(1), 'venv', dir, '--python', '3.11']);
+    run(uvBin, ['venv', dir, '--python', '3.11']);
   }
-  const args = [...uv.slice(1), 'pip', 'install', '--python', dir];
+  const args = ['pip', 'install', '--python', dir];
   for (const r of reqs) args.push('-r', r);
   if (overrides) args.push('--override', overrides);
-  run(uv[0], args);
+  run(uvBin, args);
   run(venvPython(dir), ['-c', check]);
   process.stdout.write(`venv ready at ${dir}\n`);
 }
