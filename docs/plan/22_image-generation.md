@@ -392,7 +392,7 @@ base64) rather than inline bytes; `Model::availability()` now checks
    detail level, this file's stage boxes.
    Verify: `node scripts/check.mjs` green; every 22.A gate item recorded.
 
-### 22.B — Real sidecar + venv + NF4 acquisition  *(blocked: venv deps + Krea 2 asset decisions — see phase-entry questions)*
+### 22.B — Real sidecar + venv + NF4 acquisition  *(unblocked 2026-09-06 — phase-entry questions resolved; assets staged)*
 
 1. **ADR-0018 amended**: add the image deps to `workers/requirements.txt` (or a
    sibling `image_gen/requirements.txt` installed into the same `.venv`);
@@ -459,20 +459,29 @@ base64) rather than inline bytes; `Model::availability()` now checks
 - **torchao NVFP4 vs NF4** (ROADMAP §7 O7) — a data point at 22.C if cheap;
   otherwise stays deferred, NF4 ships.
 
-## Phase-entry questions for the owner (raise before 22.B)
+## Phase-entry questions — RESOLVED 2026-09-06 (owner)
 
-1. **Krea 2 bf16 weights** — reuse the existing `~/.cache/huggingface/hub/
-   models--unsloth--Krea-2-Turbo` (~34 GB), or re-pull fresh?
-2. **NF4 quant cache** — reuse the reference project's
-   `image_gen/quantized_cache/krea2/` (~9.6 GB, copy into `<models.dir>/image/
-   quant_cache/krea2/`), or regenerate it here via `quantize.py` (one-time,
-   ~24 GB RAM spike, a few minutes)? Regenerating is cleaner provenance;
-   reusing is faster and avoids the RAM spike.
-3. **LoRA files** — the 3 `.safetensors` (`krea2-realism`, `krea2-skin`,
-   `krea2-lustify-nsfw`): copy the owner's existing files into `<models.dir>/
-   image/loras/`, or download fresh (`krea2-realism` ≈ `gokaygokay/Krea-2-Realism`
-   on HF; `krea2-lustify-nsfw` is Civitai → needs a token)? Owner confirmed
-   2026-09-06 all 3 are in the registry regardless of source.
-4. **Venv deps** — OK to add `diffusers @ git`, `bitsandbytes`, `peft`
-   (~2–4 GB with CUDA libs already partly present) to the one dev `.venv`
-   (ADR-0018)?
+1. **Krea 2 bf16 weights** — **reuse the existing HF cache** at
+   `C:\Users\Vincent\.cache\huggingface\hub\models--unsloth--Krea-2-Turbo`
+   (~34 GB, present). Acquisition verifies the snapshot is present; it never
+   re-pulls. `KREA2_MODEL_ID` stays `unsloth/Krea-2-Turbo` (ungated mirror).
+2. **NF4 quant cache** — **copied** from the reference project's
+   `image_gen/quantized_cache/krea2/` → `<models.dir>/image/quant_cache/krea2/`
+   (done: `transformer` 6.8 GB + `text_encoder` 2.9 GB + `fingerprint.json`,
+   recipe `{diffusers 0.41.0.dev0, transformers 5.16.1, bitsandbytes 0.50.2,
+   torch 2.11.0+cu128}`). *Rec was "regenerate for provenance"; owner chose copy
+   to skip the ~24 GB RAM spike.* `quantize.py` is still written and exercised at
+   22.C — it also runs on any machine whose libs don't match the fingerprint.
+3. **LoRA files** — **copied** the owner's 3 `.safetensors` from
+   `image_gen/loras/` → `<models.dir>/image/loras/` (done: `krea2-realism`
+   469 MB, `krea2-skin` 192 MB, `krea2-lustify-nsfw` 116 MB). No Civitai token,
+   no HF pull. `ImageRepo::seed` registers all 3.
+4. **Venv deps** — **approved.** New sibling `image_gen/requirements.txt`
+   installed into the same dev `.venv` (ADR-0018 amended). `diffusers` pinned to
+   a **commit hash** (Krea2Pipeline has no tagged release), not `@ git` floating,
+   for reproducibility; `bitsandbytes>=0.50` (Blackwell), `peft`, `accelerate`,
+   `fastapi`, `uvicorn`, `pydantic`, `pillow`, `sentencepiece`.
+
+Staging note: assets were copied in by hand for the 22.C live gate. The
+`FixedModel::Image` acquisition path is still built (idempotent — detects a
+present + fingerprint-valid cache and present LoRAs, and skips).
