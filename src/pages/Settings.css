@@ -1,0 +1,152 @@
+.settings {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  max-width: 760px;
+}
+
+.settings h1 {
+  margin: 0;
+}
+
+.settings__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.settings__section h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+.settings__hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  max-width: 60ch;
+}
+
+.settings__error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--danger);
+}
+
+.settings__saved {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.settings__config {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  overflow-x: auto;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--bg-sunken);
+}
+
+/* --- row lists (personas, memories) --- */
+
+.settings__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+
+.settings__row-main {
+  min-width: 0;
+  font-size: 0.88rem;
+}
+
+.settings__row-main strong {
+  font-weight: 600;
+}
+
+.settings__row-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.settings__row-actions button {
+  font-size: 0.82rem;
+  padding: var(--space-1) var(--space-2);
+}
+
+.settings__muted {
+  color: var(--text-muted);
+}
+
+.settings__empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: var(--space-1) 0;
+}
+
+/* --- forms --- */
+
+.settings__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 440px;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.settings__field input,
+.settings__field textarea {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.settings__field textarea {
+  resize: vertical;
+  min-height: 4.5em;
+}
+
+.settings__form-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.settings__picker {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}

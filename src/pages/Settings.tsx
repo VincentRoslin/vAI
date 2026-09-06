@@ -13,6 +13,7 @@ import {
   toAppError,
 } from '../lib/ipc';
 import { log } from '../lib/log';
+import './Settings.css';
 
 /** Settings — read-only config view + a diagnostics export (Phase 18.5).
  * Editing config lands in a later phase; for now the file is the source. */
@@ -43,20 +44,22 @@ export function Settings(): React.JSX.Element {
   }
 
   return (
-    <section style={{ padding: '1.5rem', display: 'grid', gap: '1.5rem', maxWidth: 720 }}>
-      <h1 style={{ margin: 0 }}>Settings</h1>
+    <section className="settings">
+      <h1>Settings</h1>
 
-      <div>
-        <h2 style={{ fontSize: '1rem' }}>Diagnostics</h2>
-        <p style={{ opacity: 0.8, fontSize: '0.9rem' }}>
+      <div className="settings__section">
+        <h2>Diagnostics</h2>
+        <p className="settings__hint">
           Writes a local JSON snapshot (build, config, models, resources, recent logs, host info —
           no conversation content) you can share with Claude for debugging.
         </p>
-        <button type="button" onClick={() => void exportDiag()} disabled={busy}>
-          {busy ? 'Exporting…' : 'Export diagnostics'}
-        </button>
+        <div className="settings__form-actions">
+          <button type="button" onClick={() => void exportDiag()} disabled={busy}>
+            {busy ? 'Exporting…' : 'Export diagnostics'}
+          </button>
+        </div>
         {diagPath && (
-          <p style={{ fontSize: '0.85rem', wordBreak: 'break-all' }}>
+          <p className="settings__saved">
             Saved to <code>{diagPath}</code>
           </p>
         )}
@@ -66,25 +69,17 @@ export function Settings(): React.JSX.Element {
 
       <Memories />
 
-      <div>
-        <h2 style={{ fontSize: '1rem' }}>Effective configuration</h2>
-        <p style={{ opacity: 0.8, fontSize: '0.9rem' }}>
+      <div className="settings__section">
+        <h2>Effective configuration</h2>
+        <p className="settings__hint">
           Read-only. Edit <code>config.json</code> in the app data folder to change it.
         </p>
-        <pre
-          style={{
-            fontSize: '0.8rem',
-            overflowX: 'auto',
-            padding: '0.75rem',
-            border: '1px solid var(--border, #ccc)',
-            borderRadius: 8,
-          }}
-        >
+        <pre className="settings__config">
           {config ? JSON.stringify(config, null, 2) : 'Loading…'}
         </pre>
       </div>
 
-      {error && <p style={{ color: 'var(--danger, #c33)' }}>{error}</p>}
+      {error && <p className="settings__error">{error}</p>}
     </section>
   );
 }
@@ -146,53 +141,43 @@ function Personas(): React.JSX.Element {
   }
 
   return (
-    <div>
-      <h2 style={{ fontSize: '1rem' }}>Personas</h2>
-      <p style={{ opacity: 0.8, fontSize: '0.9rem' }}>
+    <div className="settings__section">
+      <h2>Personas</h2>
+      <p className="settings__hint">
         Structured behaviour for Tab&nbsp;1 chats. A conversation&apos;s persona is fixed once it
         has a message.
       </p>
 
-      <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: '0.5rem' }}>
+      <ul className="settings__list">
         {list.map((p) => (
-          <li
-            key={p.id}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: '0.75rem',
-              border: '1px solid var(--border, #ccc)',
-              borderRadius: 8,
-              padding: '0.5rem 0.75rem',
-            }}
-          >
-            <span>
+          <li key={p.id} className="settings__row">
+            <span className="settings__row-main">
               <strong>{p.name}</strong>
-              {p.summary ? ` — ${p.summary}` : ''}
+              {p.summary ? <span className="settings__muted"> — {p.summary}</span> : null}
             </span>
-            <span style={{ flexShrink: 0 }}>
+            <span className="settings__row-actions">
               <button type="button" onClick={() => setEditing({ id: p.id, draft: toDraft(p) })}>
                 Edit
-              </button>{' '}
+              </button>
               <button type="button" onClick={() => void remove(p.id)}>
                 Delete
               </button>
             </span>
           </li>
         ))}
-        {list.length === 0 && <li style={{ opacity: 0.7 }}>No personas yet.</li>}
+        {list.length === 0 && <li className="settings__empty">No personas yet.</li>}
       </ul>
 
       {editing ? (
         <form
+          className="settings__form"
           onSubmit={(e) => {
             e.preventDefault();
             void save();
           }}
-          style={{ display: 'grid', gap: '0.5rem', marginTop: '0.75rem', maxWidth: 480 }}
         >
           {(['name', 'summary', 'personality', 'tone', 'style'] as const).map((field) => (
-            <label key={field} style={{ display: 'grid', gap: '0.25rem', fontSize: '0.85rem' }}>
+            <label key={field} className="settings__field">
               {field}
               <input
                 value={editing.draft[field]}
@@ -202,7 +187,7 @@ function Personas(): React.JSX.Element {
               />
             </label>
           ))}
-          <label style={{ display: 'grid', gap: '0.25rem', fontSize: '0.85rem' }}>
+          <label className="settings__field">
             guidance (one rule per line)
             <textarea
               rows={3}
@@ -221,22 +206,24 @@ function Personas(): React.JSX.Element {
               }
             />
           </label>
-          <div>
+          <div className="settings__form-actions">
             <button type="submit" disabled={busy || !editing.draft.name.trim()}>
               {busy ? 'Saving…' : 'Save'}
-            </button>{' '}
+            </button>
             <button type="button" onClick={() => setEditing(null)}>
               Cancel
             </button>
           </div>
         </form>
       ) : (
-        <button type="button" onClick={() => setEditing({ id: null, draft: { ...EMPTY_DRAFT } })}>
-          New persona
-        </button>
+        <div className="settings__form-actions">
+          <button type="button" onClick={() => setEditing({ id: null, draft: { ...EMPTY_DRAFT } })}>
+            New persona
+          </button>
+        </div>
       )}
 
-      {error && <p style={{ color: 'var(--danger, #c33)', fontSize: '0.85rem' }}>{error}</p>}
+      {error && <p className="settings__error">{error}</p>}
     </div>
   );
 }
@@ -278,13 +265,13 @@ function Memories(): React.JSX.Element {
   }
 
   return (
-    <div>
-      <h2 style={{ fontSize: '1rem' }}>Memories</h2>
-      <p style={{ opacity: 0.8, fontSize: '0.9rem' }}>
+    <div className="settings__section">
+      <h2>Memories</h2>
+      <p className="settings__hint">
         What each Persona has remembered across conversations. Extracted automatically after a turn.
       </p>
-      <label style={{ fontSize: '0.85rem' }}>
-        Persona{' '}
+      <label className="settings__picker">
+        Persona
         <select
           value={selected}
           onChange={(e) => {
@@ -302,44 +289,27 @@ function Memories(): React.JSX.Element {
       </label>
 
       {selected && (
-        <ul
-          style={{
-            listStyle: 'none',
-            padding: 0,
-            display: 'grid',
-            gap: '0.4rem',
-            marginTop: '0.5rem',
-          }}
-        >
+        <ul className="settings__list">
           {rows.map((m) => (
-            <li
-              key={m.id}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                gap: '0.75rem',
-                border: '1px solid var(--border, #ccc)',
-                borderRadius: 8,
-                padding: '0.4rem 0.6rem',
-                fontSize: '0.85rem',
-              }}
-            >
-              <span>
-                <span style={{ opacity: 0.6 }}>
+            <li key={m.id} className="settings__row">
+              <span className="settings__row-main">
+                <span className="settings__muted">
                   {m.kind} · {m.importance}/5 ·{' '}
                 </span>
                 {m.content}
               </span>
-              <button type="button" style={{ flexShrink: 0 }} onClick={() => void remove(m.id)}>
-                Delete
-              </button>
+              <span className="settings__row-actions">
+                <button type="button" onClick={() => void remove(m.id)}>
+                  Delete
+                </button>
+              </span>
             </li>
           ))}
-          {rows.length === 0 && <li style={{ opacity: 0.7 }}>Nothing remembered yet.</li>}
+          {rows.length === 0 && <li className="settings__empty">Nothing remembered yet.</li>}
         </ul>
       )}
 
-      {error && <p style={{ color: 'var(--danger, #c33)', fontSize: '0.85rem' }}>{error}</p>}
+      {error && <p className="settings__error">{error}</p>}
     </div>
   );
 }

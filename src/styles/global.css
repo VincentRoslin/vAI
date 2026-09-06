@@ -25,12 +25,69 @@ button {
   cursor: pointer;
   border: 1px solid var(--border);
   background: var(--bg-elevated);
-  border-radius: var(--radius);
-  padding: 6px 12px;
+  border-radius: var(--radius-control);
+  padding: var(--space-2) var(--space-3);
+  line-height: 1.2;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
 }
 
-button:hover {
+button:hover:not(:disabled) {
   border-color: var(--accent);
+  background: var(--surface-hover);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Consistent form controls across every page. */
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: var(--space-2) var(--space-3);
+  transition: border-color 0.12s ease;
+}
+
+input:hover:not(:disabled),
+select:hover:not(:disabled),
+textarea:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* Native select — swap the platform chevron for a token-coloured one so it
+   matches in dark mode. */
+select {
+  appearance: none;
+  padding-right: calc(var(--space-3) + 14px);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%239aa4af' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--space-3) center;
 }
 
 a {

@@ -1,26 +1,30 @@
 .models {
   padding: var(--space-6);
-  max-width: 900px;
+  max-width: 860px;
 }
 
 .models h1 {
-  margin-top: 0;
+  margin: 0 0 var(--space-6);
 }
 
 .models__block {
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 .models__block h2 {
   font-size: 0.95rem;
   color: var(--text-muted);
-  margin-bottom: var(--space-3);
+  margin: 0;
 }
 
 .models__empty,
 .models__status {
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  margin: 0;
 }
 
 .models__list {
@@ -46,7 +50,10 @@
 
 .models__name {
   font-weight: 500;
+  font-size: 0.9rem;
   margin-right: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .models__tag {
@@ -89,25 +96,19 @@
 }
 
 .models__fixed {
-  margin-top: var(--space-3);
   display: flex;
   gap: var(--space-2);
+  flex-wrap: wrap;
 }
 
 .models__search {
   display: flex;
   gap: var(--space-2);
-  margin-bottom: var(--space-3);
 }
 
 .models__search input {
   flex: 1;
-  font: inherit;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  background: var(--surface);
-  color: var(--text);
+  min-width: 0;
 }
 
 .models__result {
