@@ -40,6 +40,10 @@ sysinfo = { version = "0.39.6", default-features = false, features = ["system"] 
 async-trait = "0.1.92"
 tokio-util = { version = "0.7.19", default-features = false }
 windows = { version = "0.62", features = ["Win32_System_JobObjects", "Win32_System_Threading", "Win32_Foundation"] }
+cpal = "0.15"
+rubato = "0.15"
+hound = "3.5.1"
+ort = { version = "2.0.0-rc.13", default-features = false, features = ["load-dynamic", "ndarray"] }
 
 [dev-dependencies]
 serde_json = "1"

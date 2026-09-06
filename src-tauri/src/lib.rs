@@ -20,6 +20,7 @@ pub mod llm;
 pub mod logging;
 pub mod models;
 pub mod resources;
+pub mod voice;
 pub mod worker;
 
 use std::path::Path;

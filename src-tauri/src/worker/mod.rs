@@ -64,6 +64,9 @@ pub struct WorkerSupervisor {
     layout: WorkerLayout,
     kind: WorkerKind,
     policy: RestartPolicy,
+    /// Extra env for the child, on top of the ADR-0015 lockdown (e.g. the STT
+    /// worker's model dir). Never a network knob.
+    extra_env: Vec<(String, String)>,
     inner: Mutex<Inner>,
 }
 
@@ -113,12 +116,20 @@ impl WorkerSupervisor {
             layout,
             kind,
             policy,
+            extra_env: Vec::new(),
             inner: Mutex::new(Inner {
                 running: None,
                 restarts: 0,
                 failed: false,
             }),
         }
+    }
+
+    /// Add child environment variables (applied after the ADR-0015 lockdown).
+    #[must_use]
+    pub fn with_env(mut self, vars: impl IntoIterator<Item = (String, String)>) -> Self {
+        self.extra_env.extend(vars);
+        self
     }
 
     /// Send one job to the worker and await its terminal result.
@@ -273,6 +284,9 @@ impl WorkerSupervisor {
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         env::apply(&mut cmd);
+        for (k, v) in &self.extra_env {
+            cmd.env(k, v);
+        }
 
         let mut child = cmd.spawn().map_err(|e| {
             AppError::BackendUnavailable(format!(
