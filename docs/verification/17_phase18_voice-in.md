@@ -68,9 +68,14 @@ cleared both downloads ("Download fresh versions").
 - **Open-mic + VAD ducking** is deferred (ADR-0005 — push-to-talk for v1).
 - **Streaming partial transcripts** — not v1 (ADR-0005). The `WorkerResult::
   Progress` frame is wired through the supervisor for when they land.
-- Recommended: a manual `tauri dev` mic click-through by the owner (hold the mic,
-  speak, watch it land + reply). The automated path covers the whole stack from a
-  recorded fixture.
+- **Manual `tauri dev` click-through — DONE (owner, 2026-09-06).** Owner ran
+  `tauri dev`, loaded Qwen (llama-server on a free port, ~1492 MB), sent a text
+  message (generation finished ok in ~64 ms), then used push-to-talk: held the
+  🎤, spoke, released — transcript landed as a user turn and the reply generated.
+  Both text chat and voice-in confirmed working end to end on the real machine
+  (real microphone, Tauri IPC, webview). No panic; the only log noise was the
+  benign "VRAM in use exceeds our reservations" warning (an external GPU process
+  held ~7 GB — the resource manager correctly trusts the live measurement).
 
 **Phase 18 complete** — all 7 gate items pass (18.A unit-verified, 18.B
 live-verified on the RTX 5080). Pointer → **Phase 19 (Voice: Chatterbox TTS ·

@@ -540,15 +540,11 @@ _None blocking._
   3-step mitigation ladder (`docs/verification/02_phase3_probes.md`) in reach for
   the longer generations Phase 17+ will produce.
 
-- **Manual UI click-through of the chat + voice slice** (recommended, owner). The
-  full stack is covered by automated live Rust tests + component tests; a hands-on
-  `tauri dev` pass is a good final confidence check:
-  - **chat**: Load model → type → Send → watch stream → Stop.
-  - **voice** (Phase 18): hold the 🎤 button → speak a phrase → release → the
-    transcript lands as a user bubble and (if a model is loaded) a reply
-    generates. Needs `.venv` (`node scripts/setup-venv.mjs`) + `models/stt/` +
-    `models/vad/`; the machine's `config.json` already points `workers.*` at the
-    repo.
+- **Manual UI click-through — DONE (owner, 2026-09-06).** `tauri dev`: loaded
+  Qwen, text chat replied (~64 ms), push-to-talk transcribed a spoken phrase into
+  a user turn + auto-reply. Both chat and voice-in confirmed on the real machine.
+  Prereqs for a repeat: `.venv` (`node scripts/setup-venv.mjs`) + `models/{stt,vad}/`;
+  the machine's `config.json` points `models`/`runtimes`/`workers.*` at the repo.
 - Phase 1's deferred tooling (formatter/linter/hooks/README) → **done in Phase 6.**
 
 ---
