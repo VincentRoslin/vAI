@@ -83,3 +83,12 @@ NF4 ships (proven, the owner already has a valid cache).
   mirrors `as_llm`).
 - The manual orchestrator is a known, contained piece of tech debt with a
   scheduled removal (Phase 23).
+- The sidecar runs from its own `.venv-image` (ADR-0018 two-venv amendment,
+  22.B) — `chatterbox-tts` and Krea 2 cannot share a resolve.
+- NF4-from-acquisition is `acquisition::acquire_image` (22.B): it verifies the
+  bf16 weights are in the HF cache (never pulls them), runs `quantize.py` once in
+  `.venv-image` if the quant cache is absent, and registers the model with a
+  marker `path` (the weights live in the shared HF cache, outside the model dir)
+  and `config = { model_id, hf_snapshot, quant_cache_dir }`. `Krea2Backend::load`
+  passes the repo id as `--model-path` for a marker dir so the sidecar resolves
+  the rest of the pipeline offline.

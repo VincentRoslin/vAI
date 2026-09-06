@@ -394,34 +394,53 @@ base64) rather than inline bytes; `Model::availability()` now checks
 
 ### 22.B — Real sidecar + venv + NF4 acquisition  *(unblocked 2026-09-06 — phase-entry questions resolved; assets staged)*
 
+**Status: `COMPLETE` 2026-09-06** (commits `471f7cf` sidecar+quantizer ·
+`32a0c84` two-venv decision · `<22.B.3>` venv build · `<22.B.4>` acquisition ·
+`<22.B.5>` docs). Code lands without a GPU; the venv install + `quantize.py` +
+the real load are all **22.C** (RTX 5080 + owner go-ahead).
+
 1. **`image_gen/requirements.txt`** — pinned image deps; `diffusers` at the exact
-   commit the quant-cache fingerprint names. **DONE** (`8…`, this session).
+   commit the quant-cache fingerprint names. **DONE** (`471f7cf`).
 2. **`image_gen/server.py`** (real Krea 2-only sidecar) + **`image_gen/quantize.py`**
-   (one-time NF4). **DONE** (same commit). Verified: `py_compile` + `--help` both;
+   (one-time NF4). **DONE** (`471f7cf`). Verified: `py_compile` + `--help` both;
    fake-contract smoke test green; `quant_kwargs_hash` matches the staged cache.
-3. **ADR-0018 amended → two dev venvs (owner chose B, 2026-09-06).**
+3. **ADR-0018 amended → two dev venvs (owner chose B, 2026-09-06). DONE.**
    `chatterbox-tts 0.1.7` hard-pins `torch==2.6.0` / `transformers==5.2.0` /
    `diffusers==0.29.0` / `safetensors==0.5.3`; Krea 2 needs `transformers 5.16.1`
    + `diffusers` @ commit — unresolvable in one venv. So: keep `.venv` (workers:
    STT/TTS) and add **`.venv-image`** (image only) from `image_gen/requirements.txt`
-   + `workers/overrides.txt` (the torch line). `scripts/setup-venv.mjs` builds
-   both. The shipped app bundles both frozen sets (ADR-0014). `SidecarArgs.python`
-   already per-process — point the image backend at `.venv-image`.
-   Verify: `uv pip install --python .venv-image …` resolves; `python -c "from
-   diffusers import Krea2Pipeline"` imports (CUDA check → 22.C).
-4. **`acquisition` — `FixedModel::Image`**: HF-cache presence check (reuse
-   `unsloth/Krea-2-Turbo`, never pull), `quantize.py` via `.venv-image` behind
-   the RAM pre-check *only when the staged cache is absent/stale*, registry
-   registration (`ModelKind::Image`, `backend "krea2-diffusers"`,
-   `estimated_vram_mb = 11_750`, `config = { quant_cache_dir, model_id }`),
-   `import_image_lora(src)` + `ImageRepo::seed`. Idempotent — the staged cache +
-   LoRAs make this a no-op on the owner's box.
-   Verify: `cargo test acquisition::` (mocked); quantize invocation `NOT EXECUTED`
-   here, covered by 22.C.
-5. **Docs**: ADR-0018 amendment note + `docs/decisions/0018*` body; ADR-0019 body
-   (two-venv rationale); `docs/spec/DEVELOPMENT.md` venv section; `ROADMAP.md`
-   transition log; `ARCHITECTURE.md` / `docs/contracts.md` if the registry
-   `config` shape is new.
+   + `workers/overrides.txt` (the cu128 `--extra-index-url` + torch line).
+   `scripts/setup-venv.mjs` builds both (`workers` / `image` arg builds one).
+   `image::image_venv_python` swaps the `.venv` path component → `.venv-image`;
+   `SidecarArgs.python` is already per-process. ADR-0018 Amendment section,
+   `image_gen/requirements.txt` header, `.gitignore`, `DEVELOPMENT.md`.
+   Verify: `cargo check` green. `uv pip install --python .venv-image …` +
+   `Krea2Pipeline` import → **22.C** (needs the box).
+4. **`acquisition::acquire_image` + `acquire_image_model` IPC. DONE.**
+   `acquisition/krea2.rs`: HF-cache presence check (locate the
+   `unsloth/Krea-2-Turbo` snapshot with `model_index.json` under
+   `$HF_HUB_CACHE` / `$HF_HOME/hub` / `~/.cache/huggingface/hub`; **never pull**
+   — `AppError::NotFound` if absent); `quantize.py` via `.venv-image` *only when
+   the quant-cache layout is absent/incomplete* (its own 26 GB RAM gate; a
+   present-but-fingerprint-stale cache is caught by the sidecar's 503 on load,
+   not re-checked here); registry registration (`ModelKind::Image`,
+   `backend "krea2-diffusers"`, `estimated_vram_mb = 11_750`, `path` = a
+   `<models.dir>/image/krea2` marker dir since the weights live in the shared HF
+   cache, `config = { model_id, hf_snapshot, quant_cache_dir }`). Idempotent —
+   skips a registered model; the staged cache makes it a no-op on the owner's
+   box. `Krea2Backend::load` passes the repo id as `--model-path` when the
+   registry path is a marker dir. **`import_image_lora` dropped** — the owner
+   staged the 3 LoRAs by hand and `ImageRepo::seed` (22.A, runs on startup)
+   already registers present `*.safetensors`; a download helper is dead weight
+   until a real "add a LoRA from a URL" feature (Article IV).
+   Verify: `cargo test acquisition::krea2` (3 tests — layout check, HF-cache
+   snapshot detection, weights-absent error); `cargo clippy` green. `quantize.py`
+   invocation + live registration `NOT EXECUTED` here — **22.C**.
+5. **Docs. DONE (this commit)**: ADR-0018 Amendment section + Status line;
+   `docs/spec/DEVELOPMENT.md` venv section; `src-tauri/README.md` index;
+   `docs/plan/22` stage boxes; `ROADMAP.md` transition log + §1 + §6. ADR-0019
+   stays `PROPOSED` (accepted at 22.C.3); no registry `config`-shape ADR needed
+   (the blob is backend-private, ADR-0017). No config schema change (v9 stands).
    Verify: `node scripts/check.mjs` green; counts recorded.
 
 ### 22.C — Live gate on the RTX 5080  *(blocked on 22.B + owner go-ahead)*
