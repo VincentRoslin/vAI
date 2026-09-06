@@ -622,12 +622,18 @@ Newest first. One line per state transition (§3 rule 6).
 ## 6. Open Blockers
 
 - **Phase 22.C — image live gate (owner).** 22.B code lands without a GPU; 22.C
-  needs the owner to run `node scripts/setup-venv.mjs` (now pulls
-  `image_gen/requirements.txt` — `diffusers` pinned SHA, `bitsandbytes`, `peft`)
-  on the RTX 5080 box and give the go-ahead. The 4 phase-entry questions are
-  resolved (2026-09-06): reuse the `unsloth/Krea-2-Turbo` HF cache; NF4 quant
-  cache + 3 LoRAs copied into `<models.dir>/image/`; venv deps approved
-  (`diffusers` pinned to a commit, not floating).
+  needs the owner to run `node scripts/setup-venv.mjs` (builds `.venv` +
+  `.venv-image`) on the RTX 5080 box and give the go-ahead. Phase-entry
+  questions resolved 2026-09-06: reuse the `unsloth/Krea-2-Turbo` HF cache; NF4
+  quant cache + 3 LoRAs staged into `<models.dir>/image/`.
+
+- **ADR-0018 amendment — two dev venvs (owner chose B, 2026-09-06; not yet
+  written).** `chatterbox-tts 0.1.7` hard-pins torch/transformers/diffusers/
+  safetensors against Krea 2's needs. Resolution: `.venv` (workers) +
+  `.venv-image` (image). Next session: amend ADR-0018 + ADR-0019 bodies, wire
+  `setup-venv.mjs`, point the image backend's interpreter at `.venv-image`, then
+  do 22.B.4 (`FixedModel::Image` acquisition) + 22.B.5 (docs). `image_gen/`
+  sidecar + quantizer + `requirements.txt` already landed.
 
 - **Phase 12 gate 5 — fixed STT/TTS models — `DONE` (2026-09-06).** Run on the
   owner's "Download fresh versions" go-ahead ahead of Phase 18.
