@@ -289,9 +289,10 @@ memory — lean on it instead of the conversation.
   file) while iterating; the full `node scripts/check.mjs` once near the end —
   not after every micro-edit.
 - **Batch tool calls** — independent reads/searches in one turn.
-- **`deploy-local.mjs` is a ~2–3 min release compile.** Run it only when the
-  owner needs to live-test a change, not to confirm correctness (`cargo check` +
-  tests do that). Don't poll a running background build — wait for the notice.
+- **`deploy-local.mjs` is a ~2–3 min release compile — don't run it yourself.**
+  After a change lands, tell the owner to run `node scripts/deploy-local.mjs`
+  when they want to live-test. It's never needed to confirm correctness
+  (`cargo check` + tests do that). Don't poll a running background build.
 
 ### Before acting on any prompt
 
