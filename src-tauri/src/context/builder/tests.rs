@@ -88,7 +88,9 @@ fn assembly_order_and_persona_fields_all_appear() {
     let t = &built.text;
 
     assert!(
-        t.starts_with("<|im_start|>system\nYou are a helpful assistant."),
+        t.starts_with(
+            "<|im_start|>system\nInstructions below are your Persona, strictly follow them:"
+        ),
         "{t}"
     );
     // Persona prose, every non-empty field.
@@ -180,7 +182,9 @@ fn huge_persona_is_truncated_base_system_kept() {
     let built = ContextBuilder.build(&input(Some(&p), &[msg(Role::User, "hi")], 300));
     assert_eq!(built.provenance.persona, PersonaInclusion::Truncated);
     assert!(
-        built.text.contains("You are a helpful assistant."),
+        built
+            .text
+            .contains("Instructions below are your Persona, strictly follow them:"),
         "base system survives"
     );
     assert!(built.provenance.total_tokens <= built.provenance.budget_tokens);
@@ -255,7 +259,7 @@ fn memory_dropped_before_persona_when_the_block_is_over_budget() {
         memitem("another one"),
     ];
     // Budget fits the persona but not persona + memory.
-    let built = ContextBuilder.build(&input_mem(Some(&p), &[], &mems, 40, 40));
+    let built = ContextBuilder.build(&input_mem(Some(&p), &[], &mems, 48, 48));
     assert_eq!(built.provenance.memory_items, 0);
     assert!(
         built.text.contains("You are Ada."),

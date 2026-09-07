@@ -14,7 +14,7 @@ use crate::context::tokens::estimate_tokens;
 use crate::contracts::conversation::{Message, MessageContent, Role};
 
 /// The base system instruction for a bare Persona chat (no persona set).
-pub const DEFAULT_SYSTEM: &str = "You are a helpful assistant.";
+pub const DEFAULT_SYSTEM: &str = "Instructions below are your Persona, strictly follow them:";
 
 /// Tokens held back from the context window for the model's own response.
 pub const RESPONSE_RESERVE: u32 = 1024;

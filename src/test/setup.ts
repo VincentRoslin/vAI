@@ -57,7 +57,7 @@ vi.mock('@tauri-apps/api/core', () => ({
     if (cmd === 'chat_prompt_preview') {
       return {
         prompt:
-          '<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>assistant\n',
+          '<|im_start|>system\nInstructions below are your Persona, strictly follow them:<|im_end|>\n<|im_start|>assistant\n',
         provenance: {
           total_tokens: 12,
           budget_tokens: 2816,

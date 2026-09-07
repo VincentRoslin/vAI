@@ -73,8 +73,10 @@ persona bound (`summary = "keeper of forgotten coastlines"`, `personality =
 "meticulous, wry, allergic to rounding errors"`), the recorded prompt contains
 both strings + `You are Mar* the Cartographer.`; `preview_prompt` returns the
 same assembly with `provenance.total_tokens > 0`. With no persona the prompt
-`starts_with("<|im_start|>system\nYou are a helpful assistant.")` and has no
-`Personality:` line.
+`starts_with("<|im_start|>system\n" + DEFAULT_SYSTEM)` and has no
+`Personality:` line. *(The `DEFAULT_SYSTEM` string was "You are a helpful
+assistant." at Phase 20; changed post-Phase-22 to "Instructions below are your
+Persona, strictly follow them:" — the assertion tracks the constant.)*
 
 ### 4. A persona / history string containing prompt delimiters cannot alter the assembled prompt's structure *(20.2, 20.3)*
 

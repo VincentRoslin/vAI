@@ -740,7 +740,9 @@ async fn no_persona_prompt_is_bare_system_plus_history() {
     wait_for_idle(&f.service).await;
 
     let prompt = f.prompts.lock().unwrap()[0].clone();
-    assert!(prompt.starts_with("<|im_start|>system\nYou are a helpful assistant."));
+    assert!(prompt.starts_with(
+        "<|im_start|>system\nInstructions below are your Persona, strictly follow them:"
+    ));
     assert!(prompt.contains("<|im_start|>user\nhello there<|im_end|>"));
     assert!(!prompt.contains("Personality:"));
 }

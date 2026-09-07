@@ -154,7 +154,11 @@ const EMPTY_DRAFT: PersonaDraft = {
  * structured behaviour data the context builder renders into the system block. */
 function Personas(): React.JSX.Element {
   const [list, setList] = useState<Persona[]>([]);
-  const [editing, setEditing] = useState<{ id: string | null; draft: PersonaDraft } | null>(null);
+  const [editing, setEditing] = useState<{
+    id: string | null;
+    draft: PersonaDraft;
+    guidanceText: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -174,9 +178,18 @@ function Personas(): React.JSX.Element {
     if (!editing) return;
     setBusy(true);
     setError(null);
+    // `guidance` is edited as free text (one rule per line) and only normalised
+    // here — trimming per keystroke made spaces and new lines impossible to type.
+    const draft: PersonaDraft = {
+      ...editing.draft,
+      guidance: editing.guidanceText
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    };
     try {
-      if (editing.id) await personaUpdate(editing.id, editing.draft);
-      else await personaCreate(editing.draft);
+      if (editing.id) await personaUpdate(editing.id, draft);
+      else await personaCreate(draft);
       log.info('ui', `persona ${editing.id ? 'updated' : 'created'}`);
       setEditing(null);
       await refresh();
@@ -213,7 +226,16 @@ function Personas(): React.JSX.Element {
               {p.summary ? <span className="settings__muted"> — {p.summary}</span> : null}
             </span>
             <span className="settings__row-actions">
-              <button type="button" onClick={() => setEditing({ id: p.id, draft: toDraft(p) })}>
+              <button
+                type="button"
+                onClick={() =>
+                  setEditing({
+                    id: p.id,
+                    draft: toDraft(p),
+                    guidanceText: p.guidance.join('\n'),
+                  })
+                }
+              >
                 Edit
               </button>
               <button type="button" onClick={() => void remove(p.id)}>
@@ -248,19 +270,8 @@ function Personas(): React.JSX.Element {
             guidance (one rule per line)
             <textarea
               rows={3}
-              value={editing.draft.guidance.join('\n')}
-              onChange={(e) =>
-                setEditing({
-                  ...editing,
-                  draft: {
-                    ...editing.draft,
-                    guidance: e.target.value
-                      .split('\n')
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                  },
-                })
-              }
+              value={editing.guidanceText}
+              onChange={(e) => setEditing({ ...editing, guidanceText: e.target.value })}
             />
           </label>
           <div className="settings__form-actions">
@@ -274,7 +285,10 @@ function Personas(): React.JSX.Element {
         </form>
       ) : (
         <div className="settings__form-actions">
-          <button type="button" onClick={() => setEditing({ id: null, draft: { ...EMPTY_DRAFT } })}>
+          <button
+            type="button"
+            onClick={() => setEditing({ id: null, draft: { ...EMPTY_DRAFT }, guidanceText: '' })}
+          >
             New persona
           </button>
         </div>
