@@ -728,6 +728,37 @@ Qwen 0.5B (~1.4 GB) is a stand-in.
 - **WDDM hang** on the first sustained `llama-server` generation (Hyper-V enabled
   on host) → Phase 15, 3-step mitigation ladder in
   `docs/verification/02_phase3_probes.md`.
+- **Local-deploy robustness (2026-09-07 debugging session).** A prod-binary
+  startup crash-loop on the owner's machine, run to ground. Root causes:
+  1. `%APPDATA%\com.localai.app\config.json` was **missing on the real disk** →
+     app fell back to defaults (empty appdata model tree). Recreated by hand.
+  2. Re-created via `Set-Content -Encoding utf8` (PS 5.1) → **UTF-8 BOM** → the
+     config loader saw it as corrupt, backed it up, used defaults. **Fixed** in
+     code: `config::ConfigManager::load` now strips a leading `U+FEFF`
+     (commit after 9d39704 range; test `load_tolerates_a_utf8_bom`).
+  3. `localai.db` **structurally malformed** ("database disk image is malformed",
+     FTS5 `memory_fts` vtable constructor failing) — corrupted by **stacked /
+     crash-looping instances** fighting over the SQLite WAL. Both `.bak` copies
+     equally dead. DB moved aside; app rebuilt a fresh v7 schema. Local
+     conversations / personas / memories / image-history rows lost (PNGs on disk
+     survive; models re-register from the tree on startup).
+  4. CSP `img-src` lacked `blob:` → generated-image `<img>` previews were blocked
+     (the original report). **Fixed** — commit 6231f92.
+
+  **Still open (real bugs, not yet fixed):**
+  - **No single-instance guard.** A second launch (double-click while one runs,
+    or deploy re-launch without killing the old process) corrupts the shared DB.
+    Needs a Tauri single-instance lock or a DB-level advisory lock. Candidate for
+    Phase 18.5 follow-up or Phase 37.
+  - **No FTS5 self-heal.** A torn `memory_fts` index panics startup with no
+    recovery path. `db::migrate` (or open) should detect the FTS5 error and
+    `DROP`/recreate + repopulate `memory_fts` from `memory` (it is pure derived
+    data). Small, belongs near the memory subsystem.
+  - **`app_config_dir()` unreliability** (the `LOCALAI_DATA_DIR` band-aid from
+    `4b1abff`) was **not** the fault this time — with the env var set the path
+    resolved correctly. Leave the band-aid; revisit only if it recurs.
+  - **`deploy-local.mjs` should refuse to launch if a `localai.exe` is already
+    running** (or kill it first), to stop cause (3) recurring.
 
 ### Closed (historical)
 
