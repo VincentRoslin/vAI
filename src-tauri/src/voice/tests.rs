@@ -245,6 +245,7 @@ async fn build(tokens: Option<&[&str]>, stt: impl Fn(&Path) -> Arc<WorkerSupervi
         tts_worker,
         tmp.path().join("tts-cache"),
         None,
+        None,
     ));
     let voice = VoiceInput::new(Arc::clone(&engine), stt, tts, cfg(tmp.path()));
 
@@ -548,7 +549,7 @@ async fn tts_speaks_clauses_then_cancel_stops() {
         WorkerLayout::for_test(python, tmp.path()),
         WorkerKind::Tts,
     ));
-    let out = Arc::new(TtsOutput::new(worker, tmp.path().join("cache"), None));
+    let out = Arc::new(TtsOutput::new(worker, tmp.path().join("cache"), None, None));
 
     let (tx, rx) = mpsc::channel::<String>(8);
     let cancel = CancellationToken::new();

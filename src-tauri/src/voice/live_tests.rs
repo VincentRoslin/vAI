@@ -89,6 +89,7 @@ async fn voice_live_capture_to_turn() {
         )),
         tmp.path().join("tts"),
         None,
+        None,
     ));
     let cfg = VoiceConfig {
         vad_model,
@@ -177,7 +178,12 @@ async fn voice_live_tts_speaks() {
             tts_model.display().to_string(),
         )]),
     );
-    let out = Arc::new(TtsOutput::new(worker, tmp.path().join("clauses"), None));
+    let out = Arc::new(TtsOutput::new(
+        worker,
+        tmp.path().join("clauses"),
+        None,
+        None,
+    ));
 
     let devices = super::playback::list_output_devices();
     eprintln!("[19.B] output devices: {devices:?}");

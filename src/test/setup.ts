@@ -8,6 +8,20 @@ class FakeChannel {
   onmessage: ((m: unknown) => void) | null = null;
 }
 
+// jsdom doesn't implement Blob/File.prototype.arrayBuffer; the app uses it to
+// read a picked file before an IPC upload. Shim it via FileReader (which jsdom
+// does implement) so component tests can exercise that path.
+if (typeof Blob !== 'undefined' && !Blob.prototype.arrayBuffer) {
+  Blob.prototype.arrayBuffer = function arrayBuffer(): Promise<ArrayBuffer> {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result as ArrayBuffer);
+      fr.onerror = () => reject(fr.error);
+      fr.readAsArrayBuffer(this as unknown as Blob);
+    });
+  };
+}
+
 const arrayCommands = new Set([
   'config_keys',
   'models_list',
@@ -19,6 +33,7 @@ const arrayCommands = new Set([
   'conversation_messages',
   'voice_input_devices',
   'voice_output_devices',
+  'voice_list',
   'persona_list',
   'memory_list',
 ]);
@@ -40,6 +55,8 @@ vi.mock('@tauri-apps/api/core', () => ({
       };
     }
     if (cmd === 'config_set') return undefined;
+    if (cmd === 'voice_import') return { id: 'v-new', name: 'x', active: false, created_at: 't' };
+    if (cmd === 'voice_delete' || cmd === 'voice_set_active') return undefined;
     if (cmd === 'conversation_create') {
       return {
         id: 'conv-test',

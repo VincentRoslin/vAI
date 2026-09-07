@@ -87,6 +87,10 @@ pub fn run() {
             ipc::commands::voice_start,
             ipc::commands::voice_stop,
             ipc::commands::voice_state,
+            ipc::commands::voice_list,
+            ipc::commands::voice_import,
+            ipc::commands::voice_delete,
+            ipc::commands::voice_set_active,
             ipc::commands::diag_snapshot,
             ipc::commands::diag_export,
             ipc::commands::image_generate,
@@ -235,8 +239,14 @@ fn setup(app: &mut tauri::App) -> Result<(), String> {
     app.manage(Arc::clone(&engine));
 
     // Voice (Phase 18 in + Phase 19 out): STT + TTS worker supervisors +
-    // capture / VAD / playback / barge-in service.
-    app.manage(start_voice(&engine, &effective, &data_root));
+    // capture / VAD / playback / barge-in service. `VoiceRepo` owns the
+    // imported cloned-voice references under `<models.dir>/tts/voices/`.
+    let voices = Arc::new(voice::voices::VoiceRepo::new(
+        Arc::clone(&database),
+        effective.models.dir.join("tts").join("voices"),
+    ));
+    app.manage(Arc::clone(&voices));
+    app.manage(start_voice(&engine, &voices, &effective, &data_root));
 
     // Image generation (Phase 22): the blob store + LoRA/preset registry + the
     // manual evict/restore orchestrator. The Krea 2 backend registers only when
@@ -338,6 +348,7 @@ fn start_image(
 /// ADR-0005 / 0013 / 0018). Nothing is spawned until the first `voice_start`.
 fn start_voice(
     engine: &Arc<conversation::ConversationEngine>,
+    voices: &Arc<voice::voices::VoiceRepo>,
     effective: &config::AppConfig,
     data_root: &std::path::Path,
 ) -> Arc<voice::VoiceInput> {
@@ -364,6 +375,7 @@ fn start_voice(
         tts_worker,
         temp_dir.clone(),
         effective.voice.output_device.clone(),
+        Some(Arc::clone(voices)),
     ));
     let cfg = voice::VoiceConfig {
         vad_model: effective.models.dir.join("vad").join("silero_vad.onnx"),

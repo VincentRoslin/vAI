@@ -15,6 +15,7 @@ pub mod resample;
 pub mod segment;
 pub mod tts;
 pub mod vad;
+pub mod voices;
 
 #[cfg(test)]
 mod tests;

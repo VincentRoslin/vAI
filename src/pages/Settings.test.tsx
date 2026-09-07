@@ -42,6 +42,10 @@ vi.mock('../lib/ipc', async (importOriginal) => {
       },
     ]),
     memoryDelete: vi.fn(async () => undefined),
+    voiceList: vi.fn(async () => [{ id: 'v1', name: 'Narrator', active: false, created_at: 't' }]),
+    voiceImport: vi.fn(async () => ({ id: 'v2', name: 'New', active: false, created_at: 't' })),
+    voiceDelete: vi.fn(async () => undefined),
+    voiceSetActive: vi.fn(async () => undefined),
   };
 });
 
@@ -94,6 +98,22 @@ describe('Settings', () => {
         guidance: ['be precise', 'cite sources'],
       }),
     );
+  });
+
+  it('imports a voice and switches the active voice', async () => {
+    render(<Settings />);
+
+    fireEvent.change(await screen.findByLabelText('voice name'), { target: { value: 'Bond' } });
+    const wav = new File([new Uint8Array([1, 2, 3, 4])], 'ref.wav', { type: 'audio/wav' });
+    fireEvent.change(screen.getByLabelText('reference WAV'), { target: { files: [wav] } });
+    fireEvent.click(screen.getByRole('button', { name: /add voice/i }));
+
+    await waitFor(() =>
+      expect(ipc.voiceImport).toHaveBeenCalledWith('Bond', expect.any(Uint8Array)),
+    );
+
+    fireEvent.click(await screen.findByLabelText('Narrator'));
+    await waitFor(() => expect(ipc.voiceSetActive).toHaveBeenCalledWith('v1'));
   });
 
   it('lists and deletes a persona memory', async () => {

@@ -33,6 +33,7 @@ import type { RegisteredModel } from '../bindings/RegisteredModel';
 import type { ResourceSnapshot } from '../bindings/ResourceSnapshot';
 import type { InputDevice } from '../bindings/InputDevice';
 import type { OutputDevice } from '../bindings/OutputDevice';
+import type { Voice } from '../bindings/Voice';
 import type { VoiceState } from '../bindings/VoiceState';
 import type { DiagSnapshot } from '../bindings/DiagSnapshot';
 import type { ImageRequest } from '../bindings/ImageRequest';
@@ -289,6 +290,22 @@ export const voiceStop = (): Promise<void> => call('voice_stop');
 
 /** Current voice state (poll fallback). */
 export const voiceState = (): Promise<VoiceState> => call('voice_state');
+
+// --- Cloned voices (Phase 19 follow-up) ---
+
+/** Every imported cloned voice, newest first. */
+export const voiceList = (): Promise<Voice[]> => call('voice_list');
+
+/** Import a reference WAV under `name`; validated + stored by the core. */
+export const voiceImport = (name: string, bytes: Uint8Array): Promise<Voice> =>
+  call('voice_import', { name, bytes });
+
+/** Delete a cloned voice (row + reference WAV). */
+export const voiceDelete = (id: string): Promise<void> => call('voice_delete', { id });
+
+/** Set the active voice (`null` = the built-in voice). Applies next session. */
+export const voiceSetActive = (id: string | null): Promise<void> =>
+  call('voice_set_active', { id });
 
 // --- Diagnostics (Phase 18.5) ---
 

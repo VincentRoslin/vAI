@@ -107,6 +107,8 @@ export type { ImagePresetParams } from '../bindings/ImagePresetParams';
 
 // --- Voice (Phase 18 in, Phase 19 out) ---
 export type { VoiceState } from '../bindings/VoiceState';
+export type { Voice } from '../bindings/Voice';
+export type { VoiceId } from '../bindings/VoiceId';
 export type { InputDevice } from '../bindings/InputDevice';
 export type { OutputDevice } from '../bindings/OutputDevice';
 

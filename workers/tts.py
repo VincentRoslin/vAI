@@ -5,8 +5,14 @@ Protocol: ADR-0013 stdio JSON-lines. First line is a WorkerHello; then one
 WorkerResponse per WorkerRequest.
 
 Request  payload: {"text": "one clause of assistant text.",
-                   "out_path": "<abs WAV path the Rust core dictates>"}
+                   "out_path": "<abs WAV path the Rust core dictates>",
+                   "voice_wav": "<abs reference-WAV path, or null for the builtin>"}
 Response Ok.data: {"sample_rate": 24000, "duration_s": 1.8}
+
+`voice_wav` clones a speaker from a reference clip (Chatterbox
+`prepare_conditionals`). It is an absolute path the Rust core dictates — the
+worker never chooses one. The prepared conditionals are cached, so switching
+voice costs one extra ~1-2 s prep on the first clause only.
 
 The model loads from a local directory only (ADR-0015, env LOCALAI_TTS_MODEL_DIR
 = <models.dir>/tts). Output is a mono 16-bit PCM WAV the Rust core reads, plays,
@@ -66,6 +72,23 @@ def main():
     sr = int(model.sr)
     log(f"tts: model loaded in {time.monotonic() - t0:.2f}s from {model_dir} (sr={sr})")
 
+    # `from_local` loaded the built-in voice (conds.pt) into `model.conds`. Keep
+    # a handle so we can switch back after speaking in a cloned voice.
+    builtin_conds = model.conds
+    current_voice = None  # None = built-in; otherwise the reference-WAV path
+
+    def select_voice(voice_wav):
+        nonlocal current_voice
+        if voice_wav == current_voice:
+            return
+        if voice_wav is None:
+            model.conds = builtin_conds
+        else:
+            t = time.monotonic()
+            model.prepare_conditionals(voice_wav)
+            log(f"tts: prepared cloned voice from {voice_wav} in {time.monotonic() - t:.2f}s")
+        current_voice = voice_wav
+
     emit({"protocol_version": PROTOCOL_VERSION, "worker": "Tts"})
 
     for line in sys.stdin:
@@ -82,12 +105,16 @@ def main():
         payload = req.get("payload") or {}
         text = (payload.get("text") or "").strip()
         out_path = payload.get("out_path")
+        voice_wav = payload.get("voice_wav") or None
 
         try:
             if not text:
                 raise ValueError("empty text")
             if not out_path:
                 raise ValueError("no out_path")
+            if voice_wav and not os.path.isfile(voice_wav):
+                raise ValueError(f"voice_wav not found: {voice_wav}")
+            select_voice(voice_wav)
             t0 = time.monotonic()
             wav = model.generate(text)
             audio = np.asarray(wav.squeeze().detach().cpu().numpy(), dtype=np.float32)

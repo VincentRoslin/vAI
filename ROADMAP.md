@@ -678,6 +678,15 @@ Newest first. One line per state transition (§3 rule 6).
 - **Phase 18** split into **18.A / 18.B**. Done.
 - **Phase 19** split into **19.A / 19.B**. Done. venv gained PyTorch
   (`torch 2.11.0+cu128`, overriding the `chatterbox-tts` pin) — ADR-0018 amended.
+- **Voice cloning UI** (2026-09-07, owner-requested). Lifts the Phase 19
+  deferral (`docs/plan/19_voice-out.md`). Additive, no ADR — every Article I
+  boundary holds (Rust owns the `voice` table `V0008` + the reference WAVs under
+  `<models.dir>/tts/voices/`; frontend is typed IPC only; the worker gets an
+  absolute `voice_wav` path it never chooses). New: `voice::voices::VoiceRepo`,
+  `voice_import`/`voice_list`/`voice_delete`/`voice_set_active` IPC, a Settings →
+  Voices section, `prepare_conditionals` in `workers/tts.py`. **v1 scope:** one
+  global active voice (or the built-in), applied at the next voice session.
+  Per-persona / per-character voice binding stays Phase 26.
 - **Phase 18.5 — Deploy & Diagnostics** (2026-09-06, owner-requested). A
   repeatable real-build launch + **local** probes (rotating file log, a
   `diag_export` JSON snapshot, UI breadcrumbs) so the owner can live-test on their

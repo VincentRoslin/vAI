@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import type { AppConfig, Memory, Persona, PersonaDraft } from '../lib/contracts';
+import type { AppConfig, Memory, Persona, PersonaDraft, Voice } from '../lib/contracts';
 import {
   configGet,
   configSet,
@@ -12,6 +12,10 @@ import {
   personaList,
   personaUpdate,
   toAppError,
+  voiceDelete,
+  voiceImport,
+  voiceList,
+  voiceSetActive,
 } from '../lib/ipc';
 import { log } from '../lib/log';
 import './Settings.css';
@@ -68,6 +72,8 @@ export function Settings(): React.JSX.Element {
       </div>
 
       <Voice config={config} />
+
+      <Voices />
 
       <Personas />
 
@@ -137,6 +143,139 @@ function Voice({ config }: { config: AppConfig | null }): React.JSX.Element {
         </button>
       </div>
       {status && <p className="settings__saved">{status}</p>}
+    </div>
+  );
+}
+
+/** Cloned voices (Phase 19 follow-up). Import a reference WAV, pick which voice
+ * the assistant speaks in. One global active voice; applied at the next voice
+ * session. */
+function Voices(): React.JSX.Element {
+  const [list, setList] = useState<Voice[]>([]);
+  const [name, setName] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = (): Promise<void> =>
+    voiceList()
+      .then(setList)
+      .catch((e) => setError(`Could not load voices: ${toAppError(e).kind}`));
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  function fail(prefix: string, e: unknown): void {
+    const a = toAppError(e);
+    setError(`${prefix}: ${'message' in a ? a.message : a.kind}`);
+  }
+
+  async function add(e: React.FormEvent): Promise<void> {
+    e.preventDefault();
+    if (!name.trim() || !file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const buf = await file.arrayBuffer();
+      await voiceImport(name.trim(), new Uint8Array(buf));
+      setName('');
+      setFile(null);
+      await refresh();
+    } catch (err) {
+      fail('Import failed', err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pick(id: string | null): Promise<void> {
+    setError(null);
+    try {
+      await voiceSetActive(id);
+      await refresh();
+    } catch (err) {
+      fail('Could not switch voice', err);
+    }
+  }
+
+  async function remove(id: string): Promise<void> {
+    setError(null);
+    try {
+      await voiceDelete(id);
+      await refresh();
+    } catch (err) {
+      fail('Delete failed', err);
+    }
+  }
+
+  const anyActive = list.some((v) => v.active);
+
+  return (
+    <div className="settings__section">
+      <h2>Voices</h2>
+      <p className="settings__hint">
+        Clone a speaker for the assistant&apos;s voice from a reference recording — at least
+        6&nbsp;seconds of clean speech, as a WAV file. The choice applies at the next voice session.
+      </p>
+
+      <ul className="settings__list">
+        <li className="settings__row">
+          <label className="settings__row-main">
+            <input
+              type="radio"
+              name="active-voice"
+              checked={!anyActive}
+              onChange={() => void pick(null)}
+            />{' '}
+            Default (built-in)
+          </label>
+        </li>
+        {list.map((v) => (
+          <li key={v.id} className="settings__row">
+            <label className="settings__row-main">
+              <input
+                type="radio"
+                name="active-voice"
+                checked={v.active}
+                onChange={() => void pick(v.id)}
+              />{' '}
+              {v.name}
+            </label>
+            <span className="settings__row-actions">
+              <button type="button" onClick={() => void remove(v.id)}>
+                Delete
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <form className="settings__form" onSubmit={add}>
+        <label className="settings__field">
+          voice name
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Narrator"
+          />
+        </label>
+        <label className="settings__field">
+          reference WAV
+          <input
+            type="file"
+            accept=".wav,audio/wav,audio/x-wav"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
+        <div className="settings__form-actions">
+          <button type="submit" disabled={busy || !name.trim() || !file}>
+            {busy ? 'Importing…' : 'Add voice'}
+          </button>
+        </div>
+      </form>
+
+      {error && <p className="settings__error">{error}</p>}
     </div>
   );
 }

@@ -33,6 +33,10 @@ managed subprocess — `worker::WorkerSupervisor`), Phase 12 gate 5 (model prese
 
 ## Not in this phase
 - **Multi-voice / voice cloning UI** — one default voice (`conds.pt`).
+  *(Lifted post-Phase-22 as an owner-requested course insert: `voice` table
+  `V0008`, `voice::voices::VoiceRepo`, `voice_import`/`list`/`delete`/`set_active`
+  IPC, Settings → Voices, `voice_wav` in the TTS worker payload. One global
+  active voice; per-persona binding still Phase 26. See `ROADMAP.md` §7.)*
 - **Emotion / style controls** beyond Chatterbox defaults.
 - **Acoustic echo cancellation** — v1 assumes headphones or push-to-talk; during
   playback the VAD onset threshold is *ducked* (raised) to cut echo

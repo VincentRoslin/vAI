@@ -642,6 +642,48 @@ pub async fn voice_stop(voice: State<'_, Arc<VoiceInput>>) -> AppResult<()> {
     Ok(())
 }
 
+// ------------------------------------------------ cloned voices (Phase 19 follow-up)
+
+use crate::contracts::ids::VoiceId;
+use crate::voice::voices::{Voice, VoiceRepo};
+
+/// Every imported cloned voice, newest first.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn voice_list(voices: State<'_, Arc<VoiceRepo>>) -> AppResult<Vec<Voice>> {
+    voices.list().await
+}
+
+/// Import a reference WAV (`bytes`) under `name`. Validated + copied into the
+/// confined voices directory in Rust; not activated.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn voice_import(
+    voices: State<'_, Arc<VoiceRepo>>,
+    name: String,
+    bytes: Vec<u8>,
+) -> AppResult<Voice> {
+    voices.import(&name, &bytes).await
+}
+
+/// Delete a cloned voice (row + reference WAV).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn voice_delete(voices: State<'_, Arc<VoiceRepo>>, id: VoiceId) -> AppResult<()> {
+    voices.delete(&id).await
+}
+
+/// Set the active voice (`null` = the model's built-in voice). Applied on the
+/// next voice session.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub async fn voice_set_active(
+    voices: State<'_, Arc<VoiceRepo>>,
+    id: Option<VoiceId>,
+) -> AppResult<()> {
+    voices.set_active(id).await
+}
+
 /// The current voice state (poll fallback for the channel).
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]

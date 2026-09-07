@@ -152,3 +152,7 @@ id_newtype!(
     /// Identifies one generated image and its provenance row (Phase 22).
     GeneratedImageId
 );
+id_newtype!(
+    /// Identifies an imported cloned TTS voice (Phase 19 follow-up).
+    VoiceId
+);

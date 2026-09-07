@@ -18,6 +18,7 @@ use tokio_util::sync::CancellationToken;
 use crate::ipc::{AppError, AppResult};
 use crate::voice::playback::{Playback, TTS_RATE};
 use crate::voice::resample::Resampler16;
+use crate::voice::voices::VoiceRepo;
 use crate::worker::WorkerSupervisor;
 
 /// The TTS worker's `Ok.data` shape (this phase owns it — `docs/contracts.md`).
@@ -45,22 +46,28 @@ pub struct TtsOutput {
     playback: Mutex<Option<Playback>>,
     temp_dir: PathBuf,
     output_device: Option<String>,
+    /// Resolves the active cloned voice at each session start. `None` in tests
+    /// that don't exercise voice selection.
+    voices: Option<Arc<VoiceRepo>>,
     cancel: Mutex<Option<CancellationToken>>,
 }
 
 impl TtsOutput {
     /// Build from a `WorkerKind::Tts` supervisor + where to write clause WAVs.
+    /// `voices` resolves the active cloned voice at each session start.
     #[must_use]
     pub fn new(
         worker: Arc<WorkerSupervisor>,
         temp_dir: PathBuf,
         output_device: Option<String>,
+        voices: Option<Arc<VoiceRepo>>,
     ) -> Self {
         Self {
             worker,
             playback: Mutex::new(None),
             temp_dir,
             output_device,
+            voices,
             cancel: Mutex::new(None),
         }
     }
@@ -80,6 +87,16 @@ impl TtsOutput {
         *self.cancel.lock().await = Some(cancel.clone());
         self.ensure_playback().await?;
 
+        // Resolve the active cloned voice once per session — a Settings change
+        // takes effect on the next voice session (matches `config` v8 voice keys).
+        let voice_wav = match &self.voices {
+            Some(v) => v.active_path().await.unwrap_or(None),
+            None => None,
+        };
+        if let Some(p) = &voice_wav {
+            tracing::info!(voice = %p.display(), "tts: using cloned voice");
+        }
+
         let mut summary = SpokenSummary::default();
         let result = loop {
             let clause = tokio::select! {
@@ -89,7 +106,7 @@ impl TtsOutput {
                     None => break Ok(()),
                 },
             };
-            match self.speak_one(&clause, &cancel).await {
+            match self.speak_one(&clause, voice_wav.as_deref(), &cancel).await {
                 Ok(()) => {
                     summary.clauses += 1;
                     summary.chars += u32::try_from(clause.chars().count()).unwrap_or(0);
@@ -145,11 +162,20 @@ impl TtsOutput {
         Ok(())
     }
 
-    async fn speak_one(&self, clause: &str, cancel: &CancellationToken) -> AppResult<()> {
+    async fn speak_one(
+        &self,
+        clause: &str,
+        voice_wav: Option<&std::path::Path>,
+        cancel: &CancellationToken,
+    ) -> AppResult<()> {
         let _ = std::fs::create_dir_all(&self.temp_dir);
         let name = uuid::Uuid::new_v4().simple().to_string();
         let wav = self.temp_dir.join(format!("tts-{name}.wav"));
-        let payload = serde_json::json!({ "text": clause, "out_path": wav });
+        let payload = serde_json::json!({
+            "text": clause,
+            "out_path": wav,
+            "voice_wav": voice_wav,
+        });
 
         let data = self.worker.request(payload, cancel, None).await?;
         let meta: TtsResult =
