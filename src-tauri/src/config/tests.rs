@@ -297,6 +297,18 @@ fn load_with_corrupt_file_recovers_and_backs_up() {
 }
 
 #[test]
+fn load_tolerates_a_utf8_bom() {
+    let dir = tempdir().unwrap();
+    let mut bytes = vec![0xEF, 0xBB, 0xBF];
+    bytes.extend_from_slice(br#"{"version":1}"#);
+    fs::write(dir.path().join("config.json"), bytes).unwrap();
+
+    let mgr = ConfigManager::load(dir.path(), dir.path()).expect("loads through the BOM");
+    assert!(!mgr.recovered());
+    assert_eq!(mgr.effective(), AppConfig::defaults(dir.path()));
+}
+
+#[test]
 fn load_with_an_invalid_value_fails_fast() {
     let dir = tempdir().unwrap();
     fs::write(

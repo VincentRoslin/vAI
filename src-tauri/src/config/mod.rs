@@ -621,7 +621,10 @@ impl ConfigManager {
                 (AppConfig::defaults(app_data_root), false)
             }
             Err(err) => return Err(AppError::internal("read config file", err)),
-            Ok(text) => match serde_json::from_str::<Value>(&text) {
+            // Tolerate a leading UTF-8 BOM — some editors and
+            // `Set-Content -Encoding utf8` (Windows PowerShell 5.1) prepend one,
+            // and `serde_json` rejects it as "expected value at line 1 column 1".
+            Ok(text) => match serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}')) {
                 Ok(raw) => {
                     let migrated = migrate(raw, app_data_root)?;
                     let cfg: AppConfig = serde_json::from_value(migrated).map_err(|err| {
