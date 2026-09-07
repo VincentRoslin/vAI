@@ -1,59 +1,68 @@
 .settings {
-  padding: var(--space-6);
+  padding: var(--space-5) var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: var(--space-8);
-  max-width: 760px;
+  gap: var(--space-6);
+  max-width: 740px;
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--text);
 }
 
 .settings h1 {
   margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+  font-weight: 650;
 }
 
 .settings__section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 10px;
 }
 
 .settings__section h2 {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: var(--label-size);
+  font-weight: 600;
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
   color: var(--text-muted);
 }
 
 .settings__hint {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--text-muted);
   max-width: 60ch;
+  line-height: 1.45;
 }
 
 .settings__error {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--danger);
 }
 
 .settings__saved {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
   word-break: break-all;
 }
 
 .settings__config {
   margin: 0;
-  font-size: 0.78rem;
-  line-height: 1.55;
+  font-size: 0.74rem;
+  font-family: var(--font-mono);
+  line-height: 1.5;
   overflow-x: auto;
-  padding: var(--space-3);
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   background: var(--bg-sunken);
 }
-
-/* --- row lists (personas, memories) --- */
 
 .settings__list {
   list-style: none;
@@ -61,7 +70,7 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 6px;
 }
 
 .settings__row {
@@ -69,22 +78,30 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-card);
   background: var(--surface);
+  box-shadow: var(--shadow-lift);
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.settings__row:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
 }
 
 .settings__row-main {
   min-width: 0;
-  font-size: 0.88rem;
+  font-size: 0.86rem;
 }
 
 .settings__row-main strong {
   font-weight: 600;
 }
 
-/* Radio row (voice selection) */
 .settings__row-main:has(input[type='radio']) {
   display: flex;
   align-items: center;
@@ -94,13 +111,14 @@
 
 .settings__row-actions {
   display: flex;
-  gap: var(--space-2);
+  gap: 6px;
   flex-shrink: 0;
+  align-items: center;
 }
 
 .settings__row-actions button {
-  font-size: 0.82rem;
-  padding: var(--space-1) var(--space-2);
+  font-size: 0.78rem;
+  padding: 4px 8px;
 }
 
 .settings__muted {
@@ -108,53 +126,64 @@
 }
 
 .settings__empty {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  padding: var(--space-1) 0;
+  color: var(--text-faint);
+  font-size: 0.82rem;
+  padding: 2px 0;
 }
-
-/* --- forms --- */
 
 .settings__form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  max-width: 440px;
-  padding: var(--space-3);
+  gap: 10px;
+  max-width: 420px;
+  width: 100%;
+  padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  box-sizing: border-box;
 }
 
 .settings__field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  text-transform: capitalize;
+  gap: 4px;
+  font-size: var(--label-size);
+  letter-spacing: var(--label-tracking);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  font-weight: 600;
+  min-width: 0;
 }
 
 .settings__field input,
 .settings__field textarea {
-  font-size: 0.9rem;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font-size: 0.875rem;
+  letter-spacing: 0.005em;
+  text-transform: none;
+  font-weight: 400;
   color: var(--text);
 }
 
 .settings__field textarea {
   resize: vertical;
-  min-height: 4.5em;
+  min-height: 4.25em;
 }
 
 .settings__form-actions {
   display: flex;
-  gap: var(--space-2);
+  gap: 6px;
+  align-items: center;
 }
 
 .settings__picker {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--text-muted);
 }

@@ -1,9 +1,11 @@
-/* App shell — docs/design/visual-language.md §1. Flat, geometry-driven. */
+/* App shell — Grok-like calm chrome: soft surfaces, tight nav, restrained active. */
 
 .shell {
   display: flex;
   height: 100%;
+  min-height: 0;
   background: var(--bg);
+  color: var(--text);
 }
 
 /* ── Left nav ───────────────────────────────────────────── */
@@ -14,38 +16,56 @@
   flex-shrink: 0;
   border-right: 1px solid var(--border);
   background: var(--bg-elevated);
+  box-shadow: 1px 0 0 rgb(255 255 255 / 0.02);
   transition: width 0.12s ease;
 }
+
 .nav[data-collapsed='true'] {
-  width: 60px;
+  width: 54px;
 }
 
 .nav__head {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-3);
-  min-height: 52px;
+  padding: 0 var(--space-3);
+  height: 48px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  border-bottom: 1px solid transparent;
 }
+
 .nav__brand {
-  font-weight: 600;
+  font-weight: 650;
+  font-size: 0.92rem;
+  letter-spacing: -0.015em;
   white-space: nowrap;
   overflow: hidden;
 }
+
 .nav[data-collapsed='true'] .nav__brand {
   display: none;
 }
+
 .nav__collapse {
   margin-left: auto;
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border-radius: var(--radius-control);
   background: transparent;
   border: 1px solid var(--border);
+  color: var(--text-muted);
 }
+
+.nav__collapse:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
 .nav[data-collapsed='true'] .nav__collapse {
   transform: rotate(180deg);
 }
@@ -53,42 +73,63 @@
 .nav__group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: var(--space-2);
+  gap: 1px;
+  padding: 6px var(--space-2) 2px;
 }
+
 .nav__section-label {
-  padding: var(--space-3) var(--space-3) var(--space-1);
-  font-size: 11px;
-  letter-spacing: 0.04em;
+  padding: 10px var(--space-3) 2px;
+  font-size: var(--label-size);
+  letter-spacing: var(--label-tracking);
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-faint);
+  font-weight: 600;
 }
+
 .nav[data-collapsed='true'] .nav__section-label {
-  visibility: hidden;
+  padding: 10px var(--space-3) 2px;
+  font-size: var(--label-size);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  color: var(--text-faint);
+  font-weight: 600;
 }
 
 .nav__item {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  gap: 10px;
+  padding: 7px 10px;
   border-radius: var(--radius-control);
-  color: var(--text);
+  color: var(--text-muted);
   text-decoration: none;
   white-space: nowrap;
   overflow: hidden;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid transparent;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
 }
+
 .nav__item:hover {
-  background: var(--bg-sunken);
+  background: var(--surface-hover);
+  color: var(--text);
 }
+
 .nav__item[aria-current='page'] {
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--accent-muted);
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
 }
+
 .nav__item-label {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .nav[data-collapsed='true'] .nav__item-label {
   display: none;
 }
@@ -97,34 +138,76 @@
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+  padding: 0 var(--space-2) var(--space-2);
+  margin-top: 0;
 }
+
 .nav__recent-item {
   display: block;
-  padding: var(--space-2) var(--space-3);
+  padding: 6px 10px;
   border-radius: var(--radius-control);
   color: var(--text-muted);
   text-decoration: none;
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.nav__recent-item:hover {
-  background: var(--bg-sunken);
-  color: var(--text);
-}
-.nav[data-collapsed='true'] .nav__recent {
-  visibility: hidden;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
 }
 
+.nav__recent-item:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.nav[data-collapsed='true'] .nav__recent {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0 var(--space-2) var(--space-2);
+  margin-top: 0;
+}
+
+/* Models / Settings — same rail surface as primary nav (no sunken footer well).
+   Height locked to --chrome-foot-height so the top border lines up with the
+   chat composer and both bottom edges stay flush. */
 .nav__foot {
+  box-sizing: border-box;
   border-top: 1px solid var(--border);
-  padding: var(--space-2);
+  height: var(--chrome-foot-height);
+  min-height: var(--chrome-foot-height);
+  padding: 5px var(--space-2);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.nav__foot .nav__item {
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
 
 /* ── Center workspace ───────────────────────────────────── */
 .workspace {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow: auto;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Full-height pages (chat / image) fill the workspace cleanly */
+.workspace > .chat,
+.workspace > .imagegen {
+  flex: 1;
+  min-height: 0;
+  height: auto;
 }
