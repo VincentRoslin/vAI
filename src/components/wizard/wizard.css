@@ -1,0 +1,421 @@
+.wiz {
+  width: min(36rem, calc(100vw - 32px));
+  height: min(38rem, calc(100vh - 48px));
+  max-width: 100%;
+  max-height: calc(100vh - 24px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-window);
+  background: var(--bg-elevated);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wiz::backdrop {
+  background: rgb(6 6 8 / 0.62);
+}
+
+.wiz-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5) 0;
+  flex-shrink: 0;
+}
+
+.wiz-title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.wiz-sub {
+  margin: 2px 0 0;
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+.wiz-progress {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin: 12px var(--space-5) 0;
+  flex-shrink: 0;
+}
+
+.wiz-progress button {
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+}
+
+.wiz-progress button::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  transform: translateY(-50%);
+}
+
+.wiz-progress button.is-on::after {
+  background: var(--text);
+}
+
+.wiz-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5);
+}
+
+.wiz-foot {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  padding: var(--space-3) var(--space-5);
+  background: var(--bg-elevated);
+}
+
+.wiz-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.wiz-preview p {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.wiz-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wiz-spacer {
+  flex: 1;
+}
+
+.wiz-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.wiz-h {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.wiz-lead {
+  margin: 6px 0 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.wiz-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wiz-label {
+  font-size: var(--label-size);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--text-faint);
+}
+
+.wiz-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.wiz-choice-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.wiz-choice,
+.wiz-chip,
+.wiz-btn,
+.wiz-preset {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-control);
+}
+
+.wiz-choice {
+  height: 44px;
+  padding: 0 12px;
+  text-align: left;
+  font-size: 0.875rem;
+}
+
+.wiz-choice.is-on,
+.wiz-chip.is-on {
+  border-color: var(--accent);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.wiz-choice:hover,
+.wiz-chip:hover,
+.wiz-btn:hover,
+.wiz-preset:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.wiz-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.wiz-chip {
+  height: 36px;
+  padding: 0 10px;
+  font-size: 0.8125rem;
+}
+
+.wiz-select {
+  height: 40px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  color: var(--text);
+  padding: 0 12px;
+  font-size: 0.875rem;
+}
+
+.wiz-presets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.wiz-preset {
+  padding: 12px 14px;
+  text-align: left;
+  background: var(--bg-sunken);
+}
+
+.wiz-preset-name {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wiz-preset-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.wiz-adult {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.wiz-adult-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.84rem;
+}
+
+.wiz-adult-toggle.is-on {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  color: var(--text);
+}
+
+.wiz-adult-toggle.is-on span:last-child {
+  color: var(--danger);
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.wiz-note {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.wiz-clothes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wiz-garment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wiz-slot {
+  width: 4.2rem;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  text-transform: capitalize;
+  color: var(--text-muted);
+}
+
+.wiz-select-grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.wiz-select-color {
+  width: 7.5rem;
+  flex-shrink: 0;
+}
+
+.wiz-select-dashed {
+  border-style: dashed;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.wiz-icon-btn {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-control);
+  flex-shrink: 0;
+}
+
+.wiz-icon-btn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.wiz-icon-btn-danger:hover {
+  color: var(--danger);
+}
+
+.wiz-btn {
+  height: 40px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+}
+
+.wiz-btn-icon {
+  width: 40px;
+  padding: 0;
+}
+
+.wiz-btn-ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.wiz-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 650;
+}
+
+.wiz-btn-primary:hover {
+  filter: brightness(1.08);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.wiz-more summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+}
+
+.wiz-more summary::-webkit-details-marker {
+  display: none;
+}
+
+.wiz-more-body {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .wiz {
+    width: calc(100vw - 16px);
+    height: calc(100vh - 16px);
+    border-radius: var(--radius-card);
+  }
+
+  .wiz-presets,
+  .wiz-grid-2,
+  .wiz-choice-grid {
+    grid-template-columns: 1fr;
+  }
+}

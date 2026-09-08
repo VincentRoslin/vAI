@@ -2,7 +2,21 @@
  * Minimal inline icon set (no dependency). 24×24, `currentColor` stroke.
  * A real icon library can replace this in the Phase 30 UI pass.
  */
-type Name = 'chat' | 'image' | 'compass' | 'cube' | 'settings' | 'chevron-left';
+type Name =
+  | 'chat'
+  | 'image'
+  | 'compass'
+  | 'cube'
+  | 'settings'
+  | 'chevron-left'
+  | 'chevron-down'
+  | 'wand'
+  | 'x'
+  | 'dice'
+  | 'copy'
+  | 'check'
+  | 'plus'
+  | 'trash';
 
 const paths: Record<Name, React.ReactNode> = {
   chat: <path d="M4 5h16v11H8l-4 4V5Z" />,
@@ -32,6 +46,37 @@ const paths: Record<Name, React.ReactNode> = {
     </>
   ),
   'chevron-left': <path d="m14 7-5 5 5 5" />,
+  'chevron-down': <path d="m7 10 5 5 5-5" />,
+  wand: (
+    <>
+      <path d="m15 4-1 3-3 1 3 1 1 3 1-3 3-1-3-1-1-3Z" />
+      <path d="M4 20 14 10" />
+    </>
+  ),
+  x: <path d="M6 6l12 12M18 6 6 18" />,
+  dice: (
+    <>
+      <rect x="4" y="4" width="16" height="16" rx="3" />
+      <circle cx="9" cy="9" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="15" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="9" r="1.1" fill="currentColor" stroke="none" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="8" y="8" width="11" height="11" rx="2" />
+      <path d="M5 16V6a2 2 0 0 1 2-2h10" />
+    </>
+  ),
+  check: <path d="m5 12 5 5 9-10" />,
+  plus: <path d="M12 5v14M5 12h14" />,
+  trash: (
+    <>
+      <path d="M5 7h14" />
+      <path d="M10 7V5h4v2" />
+      <path d="M8 7v12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V7" />
+    </>
+  ),
 };
 
 interface Props {

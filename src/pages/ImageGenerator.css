@@ -28,6 +28,33 @@
   font-weight: 650;
 }
 
+.imagegen__hint {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.imagegen__wizard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.imagegen__wizard:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
 .imagegen__field {
   display: flex;
   flex-direction: column;

@@ -19,6 +19,8 @@ import type {
   ImageRequest,
 } from '../lib/contracts';
 import { log } from '../lib/log';
+import { PromptWizard } from '../components/wizard/prompt-wizard';
+import { Icon } from '../components/Icon';
 import './ImageGenerator.css';
 
 type Size = { label: string; width: number; height: number };
@@ -108,6 +110,7 @@ export function ImageGenerator(): React.JSX.Element {
   const [loraWeight, setLoraWeight] = useState(0.9);
   const [presets, setPresets] = useState<ImagePreset[]>([]);
   const [outDir, setOutDir] = useState('');
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const [run, setRun] = useState<RunState>({ kind: 'idle' });
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -215,228 +218,238 @@ export function ImageGenerator(): React.JSX.Element {
   const filmstrip = batchResults.length > 1 ? batchResults : [];
 
   return (
-    <div className="imagegen">
-      <form className="imagegen__panel" onSubmit={generate}>
-        <h1>Image</h1>
+    <>
+      <div className="imagegen">
+        <form className="imagegen__panel" onSubmit={generate}>
+          <h1>Image</h1>
+          <p className="imagegen__hint">Write a prompt, or build one with the wizard.</p>
+          <button type="button" className="imagegen__wizard" onClick={() => setWizardOpen(true)}>
+            <Icon name="wand" size={16} />
+            Prompt wizard
+          </button>
 
-        <label className="imagegen__field">
-          <span>Prompt</span>
-          <textarea
-            rows={5}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="a weathered lighthouse at dawn, soft fog, photographic"
-          />
-        </label>
+          <label className="imagegen__field">
+            <span>Prompt</span>
+            <textarea
+              rows={5}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="a weathered lighthouse at dawn, soft fog, photographic"
+            />
+          </label>
 
-        <div className="imagegen__chips" aria-label="Style">
-          {STYLES.map((s) => (
-            <button key={s.label} type="button" onClick={() => addStyle(s.phrase)}>
-              {s.label}
-            </button>
-          ))}
-        </div>
-
-        <label className="imagegen__field">
-          <span>Negative prompt</span>
-          <input
-            type="text"
-            value={negative}
-            onChange={(e) => setNegative(e.target.value)}
-            placeholder="blurry, low quality"
-          />
-        </label>
-
-        {presets.length > 0 && (
-          <div className="imagegen__section">
-            <span className="imagegen__label">Presets</span>
-            <div className="imagegen__chips">
-              {presets.map((p) => (
-                <button key={p.id} type="button" onClick={() => applyPreset(p)}>
-                  {p.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="imagegen__section">
-          <span className="imagegen__label">Size</span>
-          <div className="imagegen__seg" role="group" aria-label="Image size">
-            {SIZES.map((s) => (
-              <button
-                key={s.label}
-                type="button"
-                className={s.label === size.label ? 'is-active' : ''}
-                onClick={() => setSize(s)}
-              >
+          <div className="imagegen__chips" aria-label="Style">
+            {STYLES.map((s) => (
+              <button key={s.label} type="button" onClick={() => addStyle(s.phrase)}>
                 {s.label}
-                <em>
-                  {s.width}×{s.height}
-                </em>
               </button>
             ))}
           </div>
-        </div>
 
-        <div className="imagegen__row">
-          <label className="imagegen__inline">
-            <span>Images</span>
-            <input
-              type="number"
-              min={1}
-              max={8}
-              value={batch}
-              onChange={(e) => setBatch(Math.min(8, Math.max(1, Number(e.target.value) || 1)))}
-            />
-          </label>
-          <label className="imagegen__inline">
-            <span>Seed</span>
+          <label className="imagegen__field">
+            <span>Negative prompt</span>
             <input
               type="text"
-              inputMode="numeric"
-              value={seed}
-              placeholder="random"
-              onChange={(e) => setSeed(e.target.value.replace(/[^0-9]/g, ''))}
+              value={negative}
+              onChange={(e) => setNegative(e.target.value)}
+              placeholder="blurry, low quality"
             />
           </label>
-        </div>
 
-        {loras.length > 0 && (
-          <div className="imagegen__row">
-            <label className="imagegen__inline">
-              <span>LoRA</span>
-              <select value={loraId} onChange={(e) => setLoraId(e.target.value)}>
-                <option value="">None (base model)</option>
-                {loras.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.display_name}
-                  </option>
+          {presets.length > 0 && (
+            <div className="imagegen__section">
+              <span className="imagegen__label">Presets</span>
+              <div className="imagegen__chips">
+                {presets.map((p) => (
+                  <button key={p.id} type="button" onClick={() => applyPreset(p)}>
+                    {p.name}
+                  </button>
                 ))}
-              </select>
-            </label>
-            {loraId && (
-              <label className="imagegen__inline imagegen__weight">
-                <span>Weight {loraWeight.toFixed(2)}</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={loraWeight}
-                  onChange={(e) => setLoraWeight(Number(e.target.value))}
-                />
-              </label>
-            )}
-          </div>
-        )}
-
-        <div className="imagegen__actions">
-          {busy ? (
-            <button
-              type="button"
-              className="imagegen__cancel"
-              onClick={() => taskId && imageCancel(taskId).catch(() => {})}
-            >
-              Cancel
-            </button>
-          ) : (
-            <button type="submit" className="imagegen__go" disabled={!prompt.trim()}>
-              Generate
-            </button>
-          )}
-        </div>
-
-        {run.kind === 'running' && (
-          <div className="imagegen__status">
-            <p>
-              {PHASE_TEXT[run.phase]}
-              {run.phase === 'Generating' && run.batch > 1
-                ? ` (image ${run.index + 1}/${run.batch})`
-                : ''}
-            </p>
-            <div className="imagegen__bar">
-              <div
-                className="imagegen__bar-fill"
-                style={{ width: pct === null ? '35%' : `${pct}%` }}
-                data-indeterminate={pct === null}
-              />
-            </div>
-          </div>
-        )}
-        {run.kind === 'error' && <p className="imagegen__error">{run.message}</p>}
-      </form>
-
-      <main className="imagegen__main">
-        <section className="imagegen__viewer">
-          {selected && urls[selected.asset] ? (
-            <>
-              <div className="imagegen__canvas">
-                <img src={urls[selected.asset]} alt={selected.prompt} />
               </div>
-              <div className="imagegen__meta">
-                <p className="imagegen__meta-prompt">{selected.prompt}</p>
-                <p className="imagegen__meta-sub">
-                  {selected.width}×{selected.height} · seed {String(selected.seed)}
-                  {selected.lora ? ` · ${selected.lora}` : ''}
-                </p>
-              </div>
-              {filmstrip.length > 0 && (
-                <div className="imagegen__filmstrip">
-                  {filmstrip.map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      className={selected.id === r.id ? 'is-active' : ''}
-                      onClick={() => setSelected(r)}
-                    >
-                      {urls[r.asset] ? <img src={urls[r.asset]} alt="" /> : <span />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="imagegen__empty">
-              <p>
-                {busy
-                  ? PHASE_TEXT[run.kind === 'running' ? run.phase : 'Generating']
-                  : 'No image yet'}
-              </p>
-              <span>Write a prompt and hit Generate. Results also land in the images folder.</span>
             </div>
           )}
-        </section>
 
-        <section className="imagegen__library">
-          <header>
-            <h2>Library</h2>
-            <div className="imagegen__lib-actions">
-              {outDir && <span title={outDir}>{outDir}</span>}
-              <button type="button" onClick={() => imageOpenOutputDir().catch(() => {})}>
-                Open folder
-              </button>
-            </div>
-          </header>
-          {history.length === 0 ? (
-            <p className="imagegen__lib-empty">Generated images show up here.</p>
-          ) : (
-            <div className="imagegen__lib-grid">
-              {history.map((h) => (
+          <div className="imagegen__section">
+            <span className="imagegen__label">Size</span>
+            <div className="imagegen__seg" role="group" aria-label="Image size">
+              {SIZES.map((s) => (
                 <button
-                  key={h.id}
+                  key={s.label}
                   type="button"
-                  className={selected?.id === h.id ? 'is-active' : ''}
-                  onClick={() => setSelected(h)}
-                  title={`${h.prompt}\n${h.width}×${h.height} · seed ${String(h.seed)}`}
+                  className={s.label === size.label ? 'is-active' : ''}
+                  onClick={() => setSize(s)}
                 >
-                  {urls[h.asset] ? <img src={urls[h.asset]} alt={h.prompt} /> : <span />}
+                  {s.label}
+                  <em>
+                    {s.width}×{s.height}
+                  </em>
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="imagegen__row">
+            <label className="imagegen__inline">
+              <span>Images</span>
+              <input
+                type="number"
+                min={1}
+                max={8}
+                value={batch}
+                onChange={(e) => setBatch(Math.min(8, Math.max(1, Number(e.target.value) || 1)))}
+              />
+            </label>
+            <label className="imagegen__inline">
+              <span>Seed</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={seed}
+                placeholder="random"
+                onChange={(e) => setSeed(e.target.value.replace(/[^0-9]/g, ''))}
+              />
+            </label>
+          </div>
+
+          {loras.length > 0 && (
+            <div className="imagegen__row">
+              <label className="imagegen__inline">
+                <span>LoRA</span>
+                <select value={loraId} onChange={(e) => setLoraId(e.target.value)}>
+                  <option value="">None (base model)</option>
+                  {loras.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.display_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {loraId && (
+                <label className="imagegen__inline imagegen__weight">
+                  <span>Weight {loraWeight.toFixed(2)}</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={loraWeight}
+                    onChange={(e) => setLoraWeight(Number(e.target.value))}
+                  />
+                </label>
+              )}
+            </div>
           )}
-        </section>
-      </main>
-    </div>
+
+          <div className="imagegen__actions">
+            {busy ? (
+              <button
+                type="button"
+                className="imagegen__cancel"
+                onClick={() => taskId && imageCancel(taskId).catch(() => {})}
+              >
+                Cancel
+              </button>
+            ) : (
+              <button type="submit" className="imagegen__go" disabled={!prompt.trim()}>
+                Generate
+              </button>
+            )}
+          </div>
+
+          {run.kind === 'running' && (
+            <div className="imagegen__status">
+              <p>
+                {PHASE_TEXT[run.phase]}
+                {run.phase === 'Generating' && run.batch > 1
+                  ? ` (image ${run.index + 1}/${run.batch})`
+                  : ''}
+              </p>
+              <div className="imagegen__bar">
+                <div
+                  className="imagegen__bar-fill"
+                  style={{ width: pct === null ? '35%' : `${pct}%` }}
+                  data-indeterminate={pct === null}
+                />
+              </div>
+            </div>
+          )}
+          {run.kind === 'error' && <p className="imagegen__error">{run.message}</p>}
+        </form>
+
+        <main className="imagegen__main">
+          <section className="imagegen__viewer">
+            {selected && urls[selected.asset] ? (
+              <>
+                <div className="imagegen__canvas">
+                  <img src={urls[selected.asset]} alt={selected.prompt} />
+                </div>
+                <div className="imagegen__meta">
+                  <p className="imagegen__meta-prompt">{selected.prompt}</p>
+                  <p className="imagegen__meta-sub">
+                    {selected.width}×{selected.height} · seed {String(selected.seed)}
+                    {selected.lora ? ` · ${selected.lora}` : ''}
+                  </p>
+                </div>
+                {filmstrip.length > 0 && (
+                  <div className="imagegen__filmstrip">
+                    {filmstrip.map((r) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        className={selected.id === r.id ? 'is-active' : ''}
+                        onClick={() => setSelected(r)}
+                      >
+                        {urls[r.asset] ? <img src={urls[r.asset]} alt="" /> : <span />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="imagegen__empty">
+                <p>
+                  {busy
+                    ? PHASE_TEXT[run.kind === 'running' ? run.phase : 'Generating']
+                    : 'No image yet'}
+                </p>
+                <span>
+                  Write a prompt and hit Generate. Results also land in the images folder.
+                </span>
+              </div>
+            )}
+          </section>
+
+          <section className="imagegen__library">
+            <header>
+              <h2>Library</h2>
+              <div className="imagegen__lib-actions">
+                {outDir && <span title={outDir}>{outDir}</span>}
+                <button type="button" onClick={() => imageOpenOutputDir().catch(() => {})}>
+                  Open folder
+                </button>
+              </div>
+            </header>
+            {history.length === 0 ? (
+              <p className="imagegen__lib-empty">Generated images show up here.</p>
+            ) : (
+              <div className="imagegen__lib-grid">
+                {history.map((h) => (
+                  <button
+                    key={h.id}
+                    type="button"
+                    className={selected?.id === h.id ? 'is-active' : ''}
+                    onClick={() => setSelected(h)}
+                    title={`${h.prompt}\n${h.width}×${h.height} · seed ${String(h.seed)}`}
+                  >
+                    {urls[h.asset] ? <img src={urls[h.asset]} alt={h.prompt} /> : <span />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        </main>
+      </div>
+      <PromptWizard open={wizardOpen} onOpenChange={setWizardOpen} onUse={setPrompt} />
+    </>
   );
 }
