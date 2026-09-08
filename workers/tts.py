@@ -109,7 +109,7 @@ def main():
         text = (payload.get("text") or "").strip()
         out_path = payload.get("out_path")
         voice_wav = payload.get("voice_wav") or None
-        exaggeration = float(payload.get("exaggeration") or 0.65)
+        exaggeration = float(payload.get("exaggeration") or 0.7)
         cfg_weight = float(payload.get("cfg_weight") or 0.3)
 
         try:

@@ -52,7 +52,11 @@ fn input_mem<'a>(
     mem_budget: u32,
 ) -> BuildInput<'a> {
     BuildInput {
-        system: DEFAULT_SYSTEM,
+        system: if persona.is_some() {
+            crate::context::builder::PERSONA_SYSTEM
+        } else {
+            DEFAULT_SYSTEM
+        },
         persona,
         character: None,
         memory,
@@ -103,12 +107,12 @@ fn assembly_order_and_persona_fields_all_appear() {
 
     assert!(
         t.starts_with(
-            "<|im_start|>system\nInstructions below are your Persona, strictly follow them:"
+            "<|im_start|>system\nYou are the persona described below."
         ),
         "{t}"
     );
     // Persona prose, every non-empty field.
-    assert!(t.contains("You are Ada. a careful analyst"), "{t}");
+    assert!(t.contains("You are Ada. Stay in character. a careful analyst"), "{t}");
     assert!(t.contains("Personality: dry, exacting"), "{t}");
     assert!(t.contains("Tone: warm"), "{t}");
     assert!(t.contains("Style: concise"), "{t}");
@@ -198,7 +202,7 @@ fn huge_persona_is_truncated_base_system_kept() {
     assert!(
         built
             .text
-            .contains("Instructions below are your Persona, strictly follow them:"),
+            .contains("You are the persona described below."),
         "base system survives"
     );
     assert!(built.provenance.total_tokens <= built.provenance.budget_tokens);
@@ -211,7 +215,7 @@ fn switching_persona_changes_the_prompt() {
     let ta = ContextBuilder.build(&input(Some(&a), &[], 2816)).text;
     let tb = ContextBuilder.build(&input(Some(&b), &[], 2816)).text;
     assert_ne!(ta, tb);
-    assert!(ta.contains("You are Ada. an analyst"));
+    assert!(ta.contains("You are Ada. Stay in character. an analyst"));
     assert!(tb.contains("You are Bo. a poet"));
 }
 

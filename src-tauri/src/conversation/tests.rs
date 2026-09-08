@@ -709,7 +709,7 @@ async fn the_prompt_the_adapter_receives_carries_the_active_persona() {
         "{prompt}"
     );
     assert!(
-        prompt.contains("You are Mar* the Cartographer."),
+        prompt.contains("You are Mar* the Cartographer. Stay in character."),
         "{prompt}"
     );
 
@@ -741,7 +741,7 @@ async fn no_persona_prompt_is_bare_system_plus_history() {
 
     let prompt = f.prompts.lock().unwrap()[0].clone();
     assert!(prompt.starts_with(
-        "<|im_start|>system\nInstructions below are your Persona, strictly follow them:"
+        "<|im_start|>system\nYou are a helpful, concise assistant."
     ));
     assert!(prompt.contains("<|im_start|>user\nhello there<|im_end|>"));
     assert!(!prompt.contains("Personality:"));

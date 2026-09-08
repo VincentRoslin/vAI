@@ -91,13 +91,24 @@ def main():
         payload = req.get("payload") or {}
         audio_path = payload.get("audio_path")
         language = payload.get("language") or "en"
+        if language in ("", "auto", "null", "None"):
+            language = None
+        initial_prompt = payload.get("initial_prompt") or None
 
         try:
             if not audio_path or not os.path.isfile(audio_path):
                 raise FileNotFoundError(f"audio_path not found: {audio_path!r}")
             t0 = _now()
+            # Pin language, drop previous-text conditioning (stops English
+            # drifting into Swedish across turns), skip timestamps for RTF.
             segments, info = model.transcribe(
-                audio_path, language=language, vad_filter=False, beam_size=1
+                audio_path,
+                language=language,
+                vad_filter=False,
+                beam_size=1,
+                condition_on_previous_text=False,
+                without_timestamps=True,
+                initial_prompt=initial_prompt,
             )
             seg_list = list(segments)
             text = "".join(s.text for s in seg_list).strip()

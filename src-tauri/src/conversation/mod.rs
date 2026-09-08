@@ -454,7 +454,11 @@ impl ConversationEngine {
         };
 
         Ok(self.builder.build(&BuildInput {
-            system: crate::context::builder::DEFAULT_SYSTEM,
+            system: if persona.is_some() {
+                crate::context::builder::PERSONA_SYSTEM
+            } else {
+                crate::context::builder::DEFAULT_SYSTEM
+            },
             persona: persona.as_ref(),
             character: None,
             memory: &memory,

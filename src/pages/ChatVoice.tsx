@@ -28,6 +28,7 @@ import {
   voiceStop,
 } from '../lib/ipc';
 import { log } from '../lib/log';
+import { publishSession, useSession } from '../lib/session';
 import './ChatVoice.css';
 
 type Streaming = { text: string; error: string | null };
@@ -47,6 +48,7 @@ export function ChatVoice(): React.JSX.Element {
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [preview, setPreview] = useState<PromptPreview | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const requested = useSession().currentId;
 
   const personaLocked = messages.length > 0 || !!streaming;
 
@@ -81,6 +83,7 @@ export function ChatVoice(): React.JSX.Element {
         const c = list[0] ?? (await conversationCreate());
         setConvo(c);
         setMessages(await conversationMessages(c.id));
+        publishSession(list.length ? list : [c], c.id);
       } catch (e) {
         setNotice(`Could not open a conversation: ${toAppError(e).kind}`);
       }
@@ -88,6 +91,24 @@ export function ChatVoice(): React.JSX.Element {
       await loadPersonas();
     })();
   }, [refreshModels, loadPersonas]);
+
+  useEffect(() => {
+    if (!requested || requested === convo?.id) return;
+    void (async () => {
+      try {
+        const list = await conversationList();
+        const c = list.find((x) => x.id === requested);
+        if (!c) return;
+        setConvo(c);
+        setMessages(await conversationMessages(c.id));
+        setPreview(null);
+        setNotice(null);
+        publishSession(list, c.id);
+      } catch (e) {
+        log.warn('chat', `open: ${toAppError(e).kind}`);
+      }
+    })();
+  }, [requested, convo?.id]);
 
   useEffect(() => {
     const t = setInterval(() => void refreshModels(), 2000);
@@ -215,11 +236,13 @@ export function ChatVoice(): React.JSX.Element {
     setNotice(null);
     setPreview(null);
     try {
-      const c = await conversationCreate();
+      const c = await conversationCreate(convo?.persona_id ?? null);
       setConvo(c);
       setMessages([]);
       setDraft('');
       await loadPersonas();
+      const list = await conversationList().catch(() => [c]);
+      publishSession(list, c.id);
       log.info('ui', 'new conversation');
     } catch (e) {
       setNotice(`Could not start a chat: ${toAppError(e).kind}`);
@@ -336,7 +359,13 @@ export function ChatVoice(): React.JSX.Element {
 
       <div className="chat__transcript" ref={scrollRef}>
         {messages.length === 0 && !streaming && (
-          <p className="chat__empty">Send a message to start.</p>
+          <div className="chat__empty">
+            <p>
+              {convo?.persona_id
+                ? 'Send a message — this persona is written into the prompt.'
+                : 'Pick a persona before you send. It locks after the first message.'}
+            </p>
+          </div>
         )}
         {messages.map((m) => (
           <Bubble key={m.id} role={m.role} text={textOf(m)} meta={metaLine(m)} />
@@ -385,7 +414,7 @@ export function ChatVoice(): React.JSX.Element {
               : `Voice: ${voice} — click to hang up`
           }
         >
-          {voice === 'Idle' ? '🎤' : voiceLabel(voice)}
+          {voice === 'Idle' ? 'Call' : voiceLabel(voice)}
         </button>
         {streaming && !streaming.error ? (
           <button type="button" onClick={() => void stop()}>
@@ -424,23 +453,23 @@ function Bubble({
 function voiceLabel(v: VoiceState['kind']): string {
   switch (v) {
     case 'Warming':
-      return '…';
+      return 'Warm';
     case 'Listening':
-      return '👂';
+      return 'Listen';
     case 'Speech':
-      return '🗣';
+      return 'Hear';
     case 'Transcribing':
-      return '✍️';
+      return 'Read';
     case 'Thinking':
-      return '💭';
+      return 'Think';
     case 'Speaking':
-      return '🔊';
+      return 'Speak';
     case 'Interrupting':
-      return '✋';
+      return 'Cut';
     case 'Error':
-      return '⚠️';
+      return 'Err';
     default:
-      return '🎤';
+      return 'Call';
   }
 }
 

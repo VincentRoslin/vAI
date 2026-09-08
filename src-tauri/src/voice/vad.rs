@@ -28,6 +28,10 @@ pub const WINDOW: usize = 512;
 pub struct VadConfig {
     /// Speech-probability threshold for "this window is speech" (0.5).
     pub onset_threshold: f32,
+    /// Drop below this while already in speech before counting silence.
+    /// Lower than onset so quiet mid-sentence speech is not treated as a pause
+    /// (classic Silero hysteresis — the main cut-off cause).
+    pub offset_threshold: f32,
     /// Silence after speech before the utterance ends.
     pub min_silence_ms: u32,
     /// Shortest run of speech that counts as an utterance (rejects blips).
@@ -40,6 +44,7 @@ impl Default for VadConfig {
     fn default() -> Self {
         Self {
             onset_threshold: 0.5,
+            offset_threshold: 0.35,
             min_silence_ms: 700,
             min_utterance_ms: 250,
             max_utterance_ms: 30_000,
@@ -168,7 +173,13 @@ impl SileroVad {
     }
 
     fn advance(&mut self, prob: f32) -> Option<VadEvent> {
-        let is_speech = prob >= self.cfg.onset_threshold;
+        // Hysteresis: harder to start than to stay in speech, so a breath or a
+        // quiet syllable (prob ~0.4) does not look like end-of-turn.
+        let threshold = match self.fsm {
+            State::Silence => self.cfg.onset_threshold,
+            State::Speech => self.cfg.offset_threshold,
+        };
+        let is_speech = prob >= threshold;
         self.total_windows += 1;
         match self.fsm {
             State::Silence => {

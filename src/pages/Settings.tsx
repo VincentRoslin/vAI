@@ -197,8 +197,9 @@ function Voice({ config }: { config: AppConfig | null }): React.JSX.Element {
       </div>
       <p className="settings__hint">
         End-of-speech pause — how long to wait after you stop talking before the turn
-        is sent. Raise it if you get cut off; lower it for snappier replies. Default
-        1500&nbsp;ms.
+        is sent. The VAD now uses hysteresis so a quiet breath does not count as the
+        end. Raise this if you still get cut off. Speech-to-text is pinned to English
+        unless you change it in config. Default 1500&nbsp;ms.
       </p>
       {status && <p className="settings__saved">{status}</p>}
     </div>
@@ -471,6 +472,10 @@ function Personas(): React.JSX.Element {
               onChange={(e) => setEditing({ ...editing, guidanceText: e.target.value })}
             />
           </label>
+          <p className="settings__hint">What the model receives</p>
+          <pre className="settings__config">
+            {previewPersona(editing.draft, editing.guidanceText)}
+          </pre>
           <div className="settings__form-actions">
             <button type="submit" disabled={busy || !editing.draft.name.trim()}>
               {busy ? 'Saving…' : 'Save'}
@@ -591,4 +596,26 @@ function toDraft(p: Persona): PersonaDraft {
     style: p.style,
     guidance: p.guidance,
   };
+}
+
+function previewPersona(draft: PersonaDraft, guidanceText: string): string {
+  const guidance = guidanceText
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const lines: string[] = [
+    'You are the persona described below. Stay in character for the entire conversation.',
+    '',
+  ];
+  if (draft.name.trim()) lines.push(`You are ${draft.name.trim()}. Stay in character.`);
+  if (draft.summary.trim()) lines.push(draft.summary.trim());
+  if (draft.personality.trim()) lines.push(`Personality: ${draft.personality.trim()}`);
+  if (draft.tone.trim()) lines.push(`Tone: ${draft.tone.trim()}`);
+  if (draft.style.trim()) lines.push(`Style: ${draft.style.trim()}`);
+  if (guidance.length) lines.push(`Always: ${guidance.join('; ')}`);
+  lines.push('');
+  lines.push(
+    'Match the language of the user\'s latest message. If they wrote or spoke English, reply in English.',
+  );
+  return lines.join('\n');
 }

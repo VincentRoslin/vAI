@@ -576,7 +576,11 @@ impl VoiceInput {
             }
         };
         let cancel = CancellationToken::new();
-        let payload = serde_json::json!({ "audio_path": wav, "language": "en" });
+        let payload = serde_json::json!({
+            "audio_path": wav,
+            "language": "en",
+            "initial_prompt": "The following is an English conversation.",
+        });
         let result = self.stt.request(payload, &cancel, None).await;
         segment::cleanup(&wav);
 

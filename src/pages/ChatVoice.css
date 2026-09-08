@@ -103,6 +103,10 @@
   line-height: 1.5;
 }
 
+.chat__empty p {
+  margin: 0;
+}
+
 .chat__row {
   display: flex;
   flex-direction: column;

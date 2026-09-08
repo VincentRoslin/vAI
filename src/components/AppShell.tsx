@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 import { appReady, toAppError } from '../lib/ipc';
 import { log } from '../lib/log';
+import { requestOpen, useSession } from '../lib/session';
 import { Icon } from './Icon';
 import './AppShell.css';
 
@@ -21,9 +22,6 @@ const utility = [
   { to: '/settings', label: 'Settings', icon: 'settings' as const },
 ];
 
-// Placeholder until conversation history exists (Phase 17/24).
-const recent = ['Welcome Assistant', 'Ideas for UI', 'Explain React useEffect'];
-
 const COLLAPSE_KEY = 'localai.nav.collapsed';
 
 function readCollapsed(): boolean {
@@ -40,6 +38,8 @@ function readCollapsed(): boolean {
  */
 export function AppShell(): React.JSX.Element {
   const [collapsed, setCollapsed] = useState(readCollapsed);
+  const { list, currentId } = useSession();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (handshakeDone) return;
@@ -93,10 +93,24 @@ export function AppShell(): React.JSX.Element {
 
         <div className="nav__section-label">Recent</div>
         <div className="nav__recent">
-          {recent.map((title) => (
-            <a key={title} className="nav__recent-item" href="#" aria-disabled="true">
-              {title}
-            </a>
+          {list.length === 0 && (
+            <span className="nav__recent-item" aria-disabled="true">
+              No chats yet
+            </span>
+          )}
+          {list.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className="nav__recent-item"
+              data-active={c.id === currentId ? 'true' : undefined}
+              onClick={() => {
+                requestOpen(c.id);
+                void navigate('/chat');
+              }}
+            >
+              {c.title?.trim() || 'Untitled chat'}
+            </button>
           ))}
         </div>
 

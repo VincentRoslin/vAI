@@ -144,6 +144,8 @@
 
 .nav__recent-item {
   display: block;
+  width: 100%;
+  text-align: left;
   padding: 6px 10px;
   border-radius: var(--radius-control);
   color: var(--text-muted);
@@ -153,6 +155,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  background: transparent;
+  border: 1px solid transparent;
   transition:
     background 0.1s ease,
     color 0.1s ease;
@@ -160,6 +164,11 @@
 
 .nav__recent-item:hover {
   background: var(--surface-hover);
+  color: var(--text);
+}
+
+.nav__recent-item[data-active='true'] {
+  background: var(--surface);
   color: var(--text);
 }
 

@@ -209,7 +209,7 @@ impl TtsOutput {
             "text": text,
             "out_path": wav,
             "voice_wav": voice_wav,
-            "exaggeration": 0.65,
+            "exaggeration": 0.7,
             "cfg_weight": 0.3,
         });
 
