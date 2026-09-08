@@ -617,10 +617,19 @@ pub fn voice_output_devices() -> Vec<crate::voice::playback::OutputDevice> {
 #[tauri::command]
 pub async fn voice_start(
     voice: State<'_, Arc<VoiceInput>>,
+    config: State<'_, Arc<ConfigManager>>,
     conversation_id: ConversationId,
     model_id: Option<ModelId>,
     events: Channel<VoiceState>,
 ) -> AppResult<()> {
+    let cfg = config.effective();
+    voice
+        .apply_runtime_config(
+            cfg.voice.input_device.clone(),
+            cfg.voice.output_device.clone(),
+            cfg.voice.end_of_speech_ms,
+        )
+        .await;
     let mut rx = voice.subscribe();
     let _ = events.send(*rx.borrow_and_update());
     tokio::spawn(async move {
@@ -633,8 +642,8 @@ pub async fn voice_start(
     voice.start_listening(conversation_id, model_id).await
 }
 
-/// Release push-to-talk / stop the session — transcribe an utterance in
-/// progress, or barge-in on the assistant, then stop.
+/// Hang up — transcribe an utterance in progress, or barge-in on the
+/// assistant, then stop.
 #[allow(clippy::needless_pass_by_value)]
 #[tauri::command]
 pub async fn voice_stop(voice: State<'_, Arc<VoiceInput>>) -> AppResult<()> {

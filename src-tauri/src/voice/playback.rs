@@ -15,8 +15,10 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{Device, Host, SupportedStreamConfig};
 
 use crate::ipc::{AppError, AppResult};
+use crate::voice::devices::names_match;
 use crate::voice::resample::Resampler16;
 
 /// The rate Chatterbox synthesises at.
@@ -43,13 +45,21 @@ pub fn list_output_devices() -> Vec<OutputDevice> {
     let Ok(devices) = host.output_devices() else {
         return Vec::new();
     };
-    devices
+    let mut list: Vec<OutputDevice> = devices
         .filter_map(|d| d.name().ok())
         .map(|name| OutputDevice {
             is_default: name == default_name,
             name,
         })
-        .collect()
+        .collect();
+    list.sort_by_key(|d| {
+        (
+            u8::from(!d.is_default),
+            super::devices::communications_rank(&d.name),
+            d.name.to_lowercase(),
+        )
+    });
+    list
 }
 
 type Queue = Arc<Mutex<VecDeque<f32>>>;
@@ -72,23 +82,8 @@ impl Playback {
     /// or the stream cannot be built.
     pub fn open(device_name: Option<&str>) -> AppResult<Self> {
         let host = cpal::default_host();
-        let device = match device_name {
-            Some(name) => host
-                .output_devices()
-                .map_err(|e| {
-                    AppError::BackendUnavailable(format!("enumerate output devices: {e}"))
-                })?
-                .find(|d| d.name().is_ok_and(|n| n == name))
-                .ok_or_else(|| {
-                    AppError::BackendUnavailable(format!("output device {name:?} not found"))
-                })?,
-            None => host.default_output_device().ok_or_else(|| {
-                AppError::BackendUnavailable("no default output device".to_owned())
-            })?,
-        };
-        let config = device
-            .default_output_config()
-            .map_err(|e| AppError::BackendUnavailable(format!("output config: {e}")))?;
+        let device = resolve_output(&host, device_name)?;
+        let config = output_config(&device)?;
         let device_rate = config.sample_rate().0;
         let channels = config.channels() as usize;
 
@@ -242,6 +237,47 @@ fn build_stream(
     }
     .map_err(|e| AppError::BackendUnavailable(format!("build output stream: {e}")))?;
     Ok(stream)
+}
+
+fn resolve_output(host: &Host, want: Option<&str>) -> AppResult<Device> {
+    let mut devices: Vec<Device> = host
+        .output_devices()
+        .map_err(|e| AppError::BackendUnavailable(format!("enumerate output devices: {e}")))?
+        .collect();
+    if let Some(name) = want {
+        if let Some(i) = devices
+            .iter()
+            .position(|d| d.name().is_ok_and(|n| n == name))
+        {
+            return Ok(devices.swap_remove(i));
+        }
+        if let Some(i) = devices
+            .iter()
+            .position(|d| d.name().is_ok_and(|n| names_match(name, &n)))
+        {
+            tracing::info!(want = name, "voice: fuzzy-matched output device");
+            return Ok(devices.swap_remove(i));
+        }
+        return Err(AppError::BackendUnavailable(format!(
+            "output device {name:?} not found — pick it in Settings → Voice"
+        )));
+    }
+    host.default_output_device()
+        .ok_or_else(|| AppError::BackendUnavailable("no default output device".to_owned()))
+}
+
+fn output_config(device: &Device) -> AppResult<SupportedStreamConfig> {
+    if let Ok(c) = device.default_output_config() {
+        return Ok(c);
+    }
+    device
+        .supported_output_configs()
+        .map_err(|e| AppError::BackendUnavailable(format!("output config: {e}")))?
+        .max_by_key(|c| c.max_sample_rate().0)
+        .map(cpal::SupportedStreamConfigRange::with_max_sample_rate)
+        .ok_or_else(|| {
+            AppError::BackendUnavailable("output device has no usable config".to_owned())
+        })
 }
 
 #[cfg(test)]

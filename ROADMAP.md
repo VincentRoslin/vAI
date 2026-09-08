@@ -687,6 +687,16 @@ Newest first. One line per state transition (§3 rule 6).
   Voices section, `prepare_conditionals` in `workers/tts.py`. **v1 scope:** one
   global active voice (or the built-in), applied at the next voice session.
   Per-persona / per-character voice binding stays Phase 26.
+- **Voice-call feel, Chatterbox path** (2026-09-08, owner-requested). Keep
+  Chatterbox Turbo — no Parakeet / Smart Turn / CSM-1B / WebRTC. Pin STT
+  `language=en`, hang default **1500 ms** (schema **v10**; migrate 900→1500 iff
+  still the v8 default), preload STT+TTS (and cloned-voice
+  `prepare_conditionals`) as the call goes off-hook so first-audio overlaps
+  the user's first utterance, larger clauses, strip `*stage directions*`,
+  spoken-register prompt + `[chuckle]|[whisper]|[pause]`, Chatterbox
+  `exaggeration=0.65` / `cfg_weight=0.3`, click-to-call UX, Settings device
+  picker with fuzzy WASAPI match (Chat vs Game). Architecture frozen; pointer
+  stays Phase 23.
 - **Phase 18.5 — Deploy & Diagnostics** (2026-09-06, owner-requested). A
   repeatable real-build launch + **local** probes (rotating file log, a
   `diag_export` JSON snapshot, UI breadcrumbs) so the owner can live-test on their
@@ -729,11 +739,11 @@ Qwen 0.5B (~1.4 GB) is a stand-in.
 
 ### Watch items
 
-- **TTS first-audio is model-load-dominated (Phase 19).** Chatterbox
-  `from_local` ≈ 5–6 s on the first request; warm synth RTF ≈ 0.45. Preloading
-  the TTS worker when a voice session starts (overlapping the ~6 s load with the
-  user's first utterance) would cut perceived first-audio to the warm figure.
-  Small optimisation — do it in Phase 31 (perf audit) or opportunistically.
+- **TTS first-audio is model-load-dominated (Phase 19).** **Done opportunistically
+  (2026-09-08 voice-call insert):** `VoiceInput` spawns `stt.warm()` + `tts.warm()`
+  (incl. cloned-voice `prepare_conditionals`) as the call goes off-hook so
+  Chatterbox's ~5–6 s `from_local` overlaps the user's first utterance. Warm
+  synth RTF ≈ 0.45 still applies to every later clause.
 - **WDDM hang** on the first sustained `llama-server` generation (Hyper-V enabled
   on host) → Phase 15, 3-step mitigation ladder in
   `docs/verification/02_phase3_probes.md`.

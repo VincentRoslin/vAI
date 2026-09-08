@@ -187,3 +187,7 @@
   font-size: 0.82rem;
   color: var(--text-muted);
 }
+
+.settings__picker select {
+  max-width: 32ch;
+}

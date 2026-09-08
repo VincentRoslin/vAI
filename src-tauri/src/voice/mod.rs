@@ -2,7 +2,7 @@
 //! worker → a **user turn on the shared conversation engine**; then (when a
 //! model is set) generate → clause-chunk → Chatterbox TTS → `cpal` playback,
 //! with **barge-in** (VAD onset or stop halts the LLM + TTS + playback and
-//! returns to listening). Push-to-talk starts it (ADR-0005).
+//! returns to listening). Click-to-call starts it (off-hook until hang-up).
 //!
 //! Ownership (Article I): Rust owns capture + playback, device selection, VAD,
 //! the STT/TTS worker lifecycles, the clause chunker, and the interruption
@@ -10,6 +10,7 @@
 
 pub mod capture;
 pub mod chunker;
+pub mod devices;
 pub mod playback;
 pub mod resample;
 pub mod segment;
@@ -124,14 +125,14 @@ impl SttResult {
     }
 }
 
-/// Voice service — one session at a time. A session is push-to-talk-started:
+/// Voice service — one session at a time. A session is click-to-call:
 /// with a model it runs `listen → transcribe → think → speak → listen` and
 /// supports barge-in; without a model it transcribes one utterance and ends.
 pub struct VoiceInput {
     engine: Arc<ConversationEngine>,
     stt: Arc<WorkerSupervisor>,
     tts: Arc<TtsOutput>,
-    cfg: VoiceConfig,
+    cfg: Mutex<VoiceConfig>,
     state_tx: watch::Sender<VoiceState>,
     session: Mutex<Option<SessionHandle>>,
 }
@@ -188,7 +189,7 @@ impl VoiceInput {
             engine,
             stt,
             tts,
-            cfg,
+            cfg: Mutex::new(cfg),
             state_tx,
             session: Mutex::new(None),
         })
@@ -215,6 +216,23 @@ impl VoiceInput {
         self.session.lock().await.is_some()
     }
 
+    /// Refresh device + hang tunables from the live config (Settings apply
+    /// without an app restart; they take effect on the next session).
+    pub async fn apply_runtime_config(
+        &self,
+        input_device: Option<String>,
+        output_device: Option<String>,
+        end_of_speech_ms: u32,
+    ) {
+        {
+            let mut cfg = self.cfg.lock().await;
+            cfg.input_device = input_device;
+            cfg.output_device = output_device.clone();
+            cfg.vad.min_silence_ms = end_of_speech_ms;
+        }
+        self.tts.set_output_device(output_device).await;
+    }
+
     /// Start a voice session on `conversation_id`. `model_id = Some` runs the
     /// full listen→think→speak loop (with barge-in) until `stop_listening`;
     /// `None` transcribes one utterance and ends.
@@ -232,7 +250,8 @@ impl VoiceInput {
             return Err(AppError::Conflict("already listening".to_owned()));
         }
         let (frames_tx, frames_rx) = mpsc::unbounded_channel::<Vec<f32>>();
-        let capture = capture::CaptureStream::open(self.cfg.input_device.as_deref(), frames_tx)?;
+        let input = self.cfg.lock().await.input_device.clone();
+        let capture = capture::CaptureStream::open(input.as_deref(), frames_tx)?;
         let (rate, ch) = (capture.sample_rate(), capture.channels());
         *slot = Some(self.spawn_session(
             conversation_id,
@@ -336,7 +355,28 @@ impl VoiceInput {
 
     #[allow(clippy::too_many_lines)]
     async fn run_session(self: Arc<Self>, mut s: Session) {
-        let mut vad = match SileroVad::new(&self.cfg.vad_model, self.cfg.vad) {
+        self.set_state(VoiceState::Warming);
+        // Overlap Chatterbox / faster-whisper load with the user's first
+        // utterance: listen immediately; `request` waits on the supervisor
+        // lock if the hello handshake is still in flight.
+        {
+            let this = Arc::clone(&self);
+            tokio::spawn(async move {
+                let (stt_w, tts_w) = tokio::join!(this.stt.warm(), this.tts.warm());
+                if let Err(e) = stt_w {
+                    e.log("voice: warm STT");
+                }
+                if let Err(e) = tts_w {
+                    e.log("voice: warm TTS");
+                }
+                if this.state() == VoiceState::Warming {
+                    this.set_state(VoiceState::Listening);
+                }
+            });
+        }
+
+        let cfg = self.cfg.lock().await.clone();
+        let mut vad = match SileroVad::new(&cfg.vad_model, cfg.vad) {
             Ok(v) => v,
             Err(e) => {
                 e.log("voice: load VAD");
@@ -346,7 +386,7 @@ impl VoiceInput {
         };
         let base_onset = vad.onset_threshold();
         let mut conv = resample::ToMono16k::new(s.in_rate, s.in_channels);
-        let pre_roll_cap = (self.cfg.pre_roll_ms as usize * SAMPLE_RATE as usize / 1000)
+        let pre_roll_cap = (cfg.pre_roll_ms as usize * SAMPLE_RATE as usize / 1000)
             .max(SAMPLE_RATE as usize / 8);
         let mut pre_roll: VecDeque<f32> = VecDeque::with_capacity(pre_roll_cap + 1);
         let mut utterance: Vec<f32> = Vec::new();
@@ -513,7 +553,7 @@ impl VoiceInput {
             Ok(t) => {
                 *turn = Some(t);
                 *phase = Phase::Answering;
-                vad.set_onset_threshold(base_onset + self.cfg.playback_duck);
+                vad.set_onset_threshold(base_onset + self.cfg.lock().await.playback_duck);
                 vad.reset();
                 self.set_state(VoiceState::Thinking);
             }
@@ -527,7 +567,8 @@ impl VoiceInput {
     /// STT one endpointed utterance → the confident transcript (or `None`).
     async fn transcribe(&self, utterance: &[f32]) -> Option<String> {
         let name = uuid::Uuid::new_v4().simple().to_string();
-        let wav = match segment::write_wav(&self.cfg.temp_dir, &name, utterance) {
+        let temp_dir = self.cfg.lock().await.temp_dir.clone();
+        let wav = match segment::write_wav(&temp_dir, &name, utterance) {
             Ok(p) => p,
             Err(e) => {
                 e.log("voice: write segment");
@@ -535,7 +576,7 @@ impl VoiceInput {
             }
         };
         let cancel = CancellationToken::new();
-        let payload = serde_json::json!({ "audio_path": wav, "language": null });
+        let payload = serde_json::json!({ "audio_path": wav, "language": "en" });
         let result = self.stt.request(payload, &cancel, None).await;
         segment::cleanup(&wav);
 
@@ -587,7 +628,7 @@ impl VoiceInput {
         let sink_tx = raw_tx.clone();
         let task_id = self
             .engine
-            .generate(
+            .generate_spoken(
                 conversation_id.clone(),
                 model_id,
                 move |ev: GenerationEvent| match ev {

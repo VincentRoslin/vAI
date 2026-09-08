@@ -43,16 +43,19 @@ pub struct CharacterContext {
 pub struct RuntimeContext {
     /// RFC-3339 date, rendered as "Current date: YYYY-MM-DD.".
     pub now: String,
+    /// Voice-call register: short spoken replies, no markdown.
+    pub spoken: bool,
 }
 
 impl RuntimeContext {
-    /// Now, UTC.
+    /// Now, UTC. Text-chat default (`spoken = false`).
     #[must_use]
     pub fn now() -> Self {
         Self {
             now: time::OffsetDateTime::now_utc()
                 .format(&time::format_description::well_known::Rfc3339)
                 .unwrap_or_default(),
+            spoken: false,
         }
     }
 }
@@ -237,10 +240,20 @@ impl ContextBuilder {
         mem_budget: u32,
     ) -> (String, PersonaInclusion, u32, u32) {
         let base = strip_control(input.system);
-        let runtime = format!(
-            "Current date: {}.",
-            &input.runtime.now[..input.runtime.now.len().min(10)]
-        );
+        let runtime = {
+            let date = format!(
+                "Current date: {}.",
+                &input.runtime.now[..input.runtime.now.len().min(10)]
+            );
+            if input.runtime.spoken {
+                format!(
+                    "{date} You are on a live voice call. Reply in 1-3 short spoken sentences. \
+No lists, markdown, or *stage directions*. You may use [chuckle], [whisper], or [pause] sparingly."
+                )
+            } else {
+                date
+            }
+        };
 
         let character = input
             .character

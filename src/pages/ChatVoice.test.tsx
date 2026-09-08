@@ -191,7 +191,7 @@ describe('ChatVoice', () => {
     pushState({ kind: 'Listening' });
     await waitFor(() => expect(mic.className).toMatch(/chat__mic--live/));
 
-    fireEvent.click(screen.getByRole('button', { name: /stop voice/i }));
+    fireEvent.click(screen.getByRole('button', { name: /hang up/i }));
     await waitFor(() => expect(ipc.voiceStop).toHaveBeenCalled());
   });
 });

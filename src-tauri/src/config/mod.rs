@@ -32,7 +32,7 @@ use crate::ipc::{AppError, AppResult};
 
 /// Schema version this binary understands. A file with a higher version is
 /// refused; a lower (or absent) version is migrated forward on load.
-pub const CURRENT_SCHEMA_VERSION: u32 = 9;
+pub const CURRENT_SCHEMA_VERSION: u32 = 10;
 
 const FILE_NAME: &str = "config.json";
 const TMP_NAME: &str = "config.json.tmp";
@@ -119,8 +119,8 @@ pub struct VoiceConfig {
     pub output_device: Option<String>,
     /// How long a silence must last (ms) before a spoken turn is considered
     /// finished — the VAD end-of-speech hang time. Higher = more room to pause
-    /// between sentences before the turn is sent. `300..=5000`, default 900
-    /// (schema v8). Applied at the next voice session.
+    /// between sentences before the turn is sent. `300..=5000`, default 1500
+    /// (schema v10). Applied at the next voice session.
     pub end_of_speech_ms: u32,
 }
 
@@ -128,7 +128,7 @@ pub struct VoiceConfig {
 pub const MIN_END_OF_SPEECH_MS: u32 = 300;
 /// See [`MIN_END_OF_SPEECH_MS`].
 pub const MAX_END_OF_SPEECH_MS: u32 = 5_000;
-const DEFAULT_END_OF_SPEECH_MS: u32 = 900;
+const DEFAULT_END_OF_SPEECH_MS: u32 = 1500;
 
 /// Location of the supervised runtime binaries (`llama-server`, later the image
 /// server + Python workers). Schema v5. See ADR-0003 / ADR-0013.
@@ -310,6 +310,18 @@ fn step_forward(raw: Value, app_data_root: &Path, from: u32) -> Value {
         .expect("defaults always serialize");
     deep_merge(&mut base, raw);
     base["version"] = Value::from(from + 1);
+    // v10: the v8 default hang (900 ms) cut people off mid-thought. Raise it
+    // only when the value is still that default — a user who set 700 or 2000
+    // keeps their choice.
+    if from == 9
+        && base
+            .get("voice")
+            .and_then(|v| v.get("end_of_speech_ms"))
+            .and_then(Value::as_u64)
+            == Some(900)
+    {
+        base["voice"]["end_of_speech_ms"] = Value::from(1500u64);
+    }
     base
 }
 

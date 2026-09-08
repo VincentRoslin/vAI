@@ -221,6 +221,35 @@ impl ConversationEngine {
     where
         F: Fn(GenerationEvent) + Send + Sync + 'static,
     {
+        self.generate_inner(conversation_id, model_id, false, sink)
+            .await
+    }
+
+    /// Like [`Self::generate`], but the prompt includes spoken-register
+    /// instructions and a shorter token cap — used by the voice loop.
+    pub async fn generate_spoken<F>(
+        self: &Arc<Self>,
+        conversation_id: ConversationId,
+        model_id: ModelId,
+        sink: F,
+    ) -> AppResult<TaskId>
+    where
+        F: Fn(GenerationEvent) + Send + Sync + 'static,
+    {
+        self.generate_inner(conversation_id, model_id, true, sink)
+            .await
+    }
+
+    async fn generate_inner<F>(
+        self: &Arc<Self>,
+        conversation_id: ConversationId,
+        model_id: ModelId,
+        spoken: bool,
+        sink: F,
+    ) -> AppResult<TaskId>
+    where
+        F: Fn(GenerationEvent) + Send + Sync + 'static,
+    {
         let mut guard = self.running.lock().await;
         if guard.is_some() {
             return Err(AppError::Conflict(
@@ -245,7 +274,7 @@ impl ConversationEngine {
         let this = Arc::clone(self);
         let tid = task_id.clone();
         tokio::spawn(async move {
-            this.run_generation(conversation_id, model_id, tid, cancel, sink)
+            this.run_generation(conversation_id, model_id, tid, cancel, spoken, sink)
                 .await;
         });
 
@@ -308,13 +337,14 @@ impl ConversationEngine {
         model_id: ModelId,
         task_id: TaskId,
         cancel: CancellationToken,
+        spoken: bool,
         sink: F,
     ) where
         F: Fn(GenerationEvent) + Send + Sync + 'static,
     {
         let op = crate::logging::operation(Some(&task_id), "conversation_generate");
         let status = match self
-            .stream_once(&conversation_id, &model_id, &cancel, &sink)
+            .stream_once(&conversation_id, &model_id, &cancel, spoken, &sink)
             .await
         {
             // The stream ran (possibly ending in Error/Cancelled) — persist the
@@ -374,7 +404,7 @@ impl ConversationEngine {
         conversation_id: &ConversationId,
         model_id: &ModelId,
     ) -> AppResult<crate::context::builder::BuiltPrompt> {
-        self.build_prompt(conversation_id, model_id).await
+        self.build_prompt(conversation_id, model_id, false).await
     }
 
     /// The deterministic context assembly shared by `stream_once` and
@@ -384,6 +414,7 @@ impl ConversationEngine {
         &self,
         conversation_id: &ConversationId,
         model_id: &ModelId,
+        spoken: bool,
     ) -> AppResult<crate::context::builder::BuiltPrompt> {
         let history = self.repo.messages(conversation_id).await?;
         let persona_id = self.repo.persona_id(conversation_id).await?;
@@ -428,7 +459,10 @@ impl ConversationEngine {
             character: None,
             memory: &memory,
             history: &history,
-            runtime: RuntimeContext::now(),
+            runtime: RuntimeContext {
+                now: RuntimeContext::now().now,
+                spoken,
+            },
             budget,
         }))
     }
@@ -472,6 +506,7 @@ impl ConversationEngine {
         conversation_id: &ConversationId,
         model_id: &ModelId,
         cancel: &CancellationToken,
+        spoken: bool,
         sink: &F,
     ) -> AppResult<(String, GenerationMeta)>
     where
@@ -487,7 +522,7 @@ impl ConversationEngine {
 
         // `build_prompt` -> `ContextBuilder::build` logs the provenance at
         // `target: "context"`.
-        let built = self.build_prompt(conversation_id, model_id).await?;
+        let built = self.build_prompt(conversation_id, model_id, spoken).await?;
         tracing::debug!(
             target: "context",
             conversation = %conversation_id,
@@ -499,7 +534,7 @@ impl ConversationEngine {
             temperature: Some(0.7),
             top_p: Some(0.95),
             top_k: Some(40),
-            max_tokens: Some(MAX_TOKENS),
+            max_tokens: Some(if spoken { 256 } else { MAX_TOKENS }),
             stop: vec!["<|im_end|>".to_owned()],
             seed: None,
         };

@@ -132,6 +132,13 @@ impl WorkerSupervisor {
         self
     }
 
+    /// Spawn the worker (and load its model) if it isn't running. Used to
+    /// overlap Chatterbox / faster-whisper load with the user's first utterance.
+    pub async fn warm(&self) -> AppResult<()> {
+        let mut inner = self.inner.lock().await;
+        self.ensure_running(&mut inner).await
+    }
+
     /// Send one job to the worker and await its terminal result.
     ///
     /// `cancel` abandons the wait (the worker keeps running; its late response is

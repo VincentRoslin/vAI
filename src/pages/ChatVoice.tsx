@@ -376,13 +376,13 @@ export function ChatVoice(): React.JSX.Element {
           className={`chat__mic ${voice !== 'Idle' ? 'chat__mic--live' : ''}`}
           disabled={!convo || (!!streaming && voice === 'Idle')}
           onClick={() => void toggleVoice()}
-          aria-label={voice === 'Idle' ? 'Start voice' : 'Stop voice'}
+          aria-label={voice === 'Idle' ? 'Start voice call' : 'Hang up'}
           title={
             voice === 'Idle'
               ? loaded
-                ? 'Voice chat — speak, get a spoken reply, talk over it to interrupt'
+                ? 'Start a voice call — speak freely, talk over the reply to interrupt, click to hang up'
                 : 'Voice input — speak one message'
-              : `Voice: ${voice} — click to stop`
+              : `Voice: ${voice} — click to hang up`
           }
         >
           {voice === 'Idle' ? '🎤' : voiceLabel(voice)}

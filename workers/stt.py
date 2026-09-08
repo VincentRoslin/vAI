@@ -4,7 +4,7 @@
 Protocol: ADR-0013 stdio JSON-lines. First line is a WorkerHello; then one
 WorkerResponse per WorkerRequest read from stdin.
 
-Request  payload: {"audio_path": "<abs 16 kHz mono WAV>", "language": null|"en"}
+Request  payload: {"audio_path": "<abs 16 kHz mono WAV>", "language": "en"}
 Response Ok.data: {"text", "language", "duration_s", "avg_logprob",
                    "no_speech_prob"}
 
@@ -90,13 +90,15 @@ def main():
 
         payload = req.get("payload") or {}
         audio_path = payload.get("audio_path")
-        language = payload.get("language")
+        language = payload.get("language") or "en"
 
         try:
             if not audio_path or not os.path.isfile(audio_path):
                 raise FileNotFoundError(f"audio_path not found: {audio_path!r}")
             t0 = _now()
-            segments, info = model.transcribe(audio_path, language=language, vad_filter=False)
+            segments, info = model.transcribe(
+                audio_path, language=language, vad_filter=False, beam_size=1
+            )
             seg_list = list(segments)
             text = "".join(s.text for s in seg_list).strip()
             avg_logprob = (

@@ -6,7 +6,10 @@ WorkerResponse per WorkerRequest.
 
 Request  payload: {"text": "one clause of assistant text.",
                    "out_path": "<abs WAV path the Rust core dictates>",
-                   "voice_wav": "<abs reference-WAV path, or null for the builtin>"}
+                   "voice_wav": "<abs reference-WAV path, or null for the builtin>",
+                   "exaggeration": 0.65, "cfg_weight": 0.3}
+              or  {"warm": true, "voice_wav": "<abs path or null>"}
+                   to load / `prepare_conditionals` without synthesising.
 Response Ok.data: {"sample_rate": 24000, "duration_s": 1.8}
 
 `voice_wav` clones a speaker from a reference clip (Chatterbox
@@ -106,8 +109,22 @@ def main():
         text = (payload.get("text") or "").strip()
         out_path = payload.get("out_path")
         voice_wav = payload.get("voice_wav") or None
+        exaggeration = float(payload.get("exaggeration") or 0.65)
+        cfg_weight = float(payload.get("cfg_weight") or 0.3)
 
         try:
+            if payload.get("warm"):
+                select_voice(voice_wav)
+                emit(
+                    {
+                        "id": job_id,
+                        "result": {
+                            "status": "Ok",
+                            "body": {"data": {"sample_rate": sr, "duration_s": 0.0}},
+                        },
+                    }
+                )
+                continue
             if not text:
                 raise ValueError("empty text")
             if not out_path:
@@ -116,7 +133,10 @@ def main():
                 raise ValueError(f"voice_wav not found: {voice_wav}")
             select_voice(voice_wav)
             t0 = time.monotonic()
-            wav = model.generate(text)
+            try:
+                wav = model.generate(text, exaggeration=exaggeration, cfg_weight=cfg_weight)
+            except TypeError:
+                wav = model.generate(text)
             audio = np.asarray(wav.squeeze().detach().cpu().numpy(), dtype=np.float32)
             os.makedirs(os.path.dirname(out_path), exist_ok=True)
             sf.write(out_path, audio, sr, subtype="PCM_16")

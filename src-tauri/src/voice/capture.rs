@@ -7,9 +7,11 @@
 //! [`super::SAMPLE_RATE`] with [`super::resample::ToMono16k`]).
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{Device, Host, SupportedStreamConfig};
 use tokio::sync::mpsc;
 
 use crate::ipc::{AppError, AppResult};
+use crate::voice::devices::names_match;
 
 /// One selectable input device.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
@@ -33,13 +35,21 @@ pub fn list_input_devices() -> Vec<InputDevice> {
     let Ok(devices) = host.input_devices() else {
         return Vec::new();
     };
-    devices
+    let mut list: Vec<InputDevice> = devices
         .filter_map(|d| d.name().ok())
         .map(|name| InputDevice {
             is_default: name == default_name,
             name,
         })
-        .collect()
+        .collect();
+    list.sort_by_key(|d| {
+        (
+            u8::from(!d.is_default),
+            super::devices::communications_rank(&d.name),
+            d.name.to_lowercase(),
+        )
+    });
+    list
 }
 
 /// A running capture. Dropping it stops the stream and joins the thread.
@@ -62,21 +72,8 @@ impl CaptureStream {
         frames: mpsc::UnboundedSender<Vec<f32>>,
     ) -> AppResult<Self> {
         let host = cpal::default_host();
-        let device = match device_name {
-            Some(name) => host
-                .input_devices()
-                .map_err(|e| AppError::BackendUnavailable(format!("enumerate input devices: {e}")))?
-                .find(|d| d.name().is_ok_and(|n| n == name))
-                .ok_or_else(|| {
-                    AppError::BackendUnavailable(format!("input device {name:?} not found"))
-                })?,
-            None => host.default_input_device().ok_or_else(|| {
-                AppError::BackendUnavailable("no default input device".to_owned())
-            })?,
-        };
-        let config = device
-            .default_input_config()
-            .map_err(|e| AppError::BackendUnavailable(format!("input config: {e}")))?;
+        let device = resolve_input(&host, device_name)?;
+        let config = input_config(&device)?;
         let sample_rate = config.sample_rate().0;
         let channels = config.channels();
 
@@ -194,6 +191,47 @@ fn build_stream(
     .map_err(|e| AppError::BackendUnavailable(format!("build input stream: {e}")))?;
     let _ = channels;
     Ok(stream)
+}
+
+fn resolve_input(host: &Host, want: Option<&str>) -> AppResult<Device> {
+    let mut devices: Vec<Device> = host
+        .input_devices()
+        .map_err(|e| AppError::BackendUnavailable(format!("enumerate input devices: {e}")))?
+        .collect();
+    if let Some(name) = want {
+        if let Some(i) = devices
+            .iter()
+            .position(|d| d.name().is_ok_and(|n| n == name))
+        {
+            return Ok(devices.swap_remove(i));
+        }
+        if let Some(i) = devices
+            .iter()
+            .position(|d| d.name().is_ok_and(|n| names_match(name, &n)))
+        {
+            tracing::info!(want = name, "voice: fuzzy-matched input device");
+            return Ok(devices.swap_remove(i));
+        }
+        return Err(AppError::BackendUnavailable(format!(
+            "input device {name:?} not found — pick it in Settings → Voice"
+        )));
+    }
+    host.default_input_device()
+        .ok_or_else(|| AppError::BackendUnavailable("no default input device".to_owned()))
+}
+
+fn input_config(device: &Device) -> AppResult<SupportedStreamConfig> {
+    if let Ok(c) = device.default_input_config() {
+        return Ok(c);
+    }
+    device
+        .supported_input_configs()
+        .map_err(|e| AppError::BackendUnavailable(format!("input config: {e}")))?
+        .max_by_key(|c| c.max_sample_rate().0)
+        .map(cpal::SupportedStreamConfigRange::with_max_sample_rate)
+        .ok_or_else(|| {
+            AppError::BackendUnavailable("input device has no usable config".to_owned())
+        })
 }
 
 #[cfg(test)]

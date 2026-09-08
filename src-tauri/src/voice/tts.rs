@@ -45,11 +45,11 @@ pub struct TtsOutput {
     worker: Arc<WorkerSupervisor>,
     playback: Mutex<Option<Playback>>,
     temp_dir: PathBuf,
-    output_device: Option<String>,
     /// Resolves the active cloned voice at each session start. `None` in tests
     /// that don't exercise voice selection.
     voices: Option<Arc<VoiceRepo>>,
     cancel: Mutex<Option<CancellationToken>>,
+    output_device: Mutex<Option<String>>,
 }
 
 impl TtsOutput {
@@ -66,10 +66,39 @@ impl TtsOutput {
             worker,
             playback: Mutex::new(None),
             temp_dir,
-            output_device,
             voices,
             cancel: Mutex::new(None),
+            output_device: Mutex::new(output_device),
         }
+    }
+
+    /// Swap the playback device; takes effect on the next `speak_stream`.
+    pub async fn set_output_device(&self, name: Option<String>) {
+        *self.output_device.lock().await = name;
+        *self.playback.lock().await = None;
+    }
+
+    /// Spawn the TTS worker (loads Chatterbox) without synthesising. Also
+    /// `prepare_conditionals` for the active cloned voice so the first clause
+    /// is not clone-prep-bound.
+    pub async fn warm(&self) -> AppResult<()> {
+        self.worker.warm().await?;
+        let voice_wav = match &self.voices {
+            Some(v) => v.active_path().await.unwrap_or(None),
+            None => None,
+        };
+        let Some(path) = voice_wav else {
+            return Ok(());
+        };
+        let cancel = CancellationToken::new();
+        let payload = serde_json::json!({
+            "warm": true,
+            "voice_wav": path,
+        });
+        if let Err(e) = self.worker.request(payload, &cancel, None).await {
+            e.log("tts: warm clone");
+        }
+        Ok(())
     }
 
     /// Synthesise + play every clause `rx` yields, in order, until the channel
@@ -157,7 +186,8 @@ impl TtsOutput {
     async fn ensure_playback(&self) -> AppResult<()> {
         let mut slot = self.playback.lock().await;
         if slot.is_none() {
-            *slot = Some(Playback::open(self.output_device.as_deref())?);
+            let name = self.output_device.lock().await.clone();
+            *slot = Some(Playback::open(name.as_deref())?);
         }
         Ok(())
     }
@@ -168,13 +198,19 @@ impl TtsOutput {
         voice_wav: Option<&std::path::Path>,
         cancel: &CancellationToken,
     ) -> AppResult<()> {
+        let text = crate::voice::chunker::ClauseChunker::for_tts(clause);
+        if text.is_empty() {
+            return Ok(());
+        }
         let _ = std::fs::create_dir_all(&self.temp_dir);
         let name = uuid::Uuid::new_v4().simple().to_string();
         let wav = self.temp_dir.join(format!("tts-{name}.wav"));
         let payload = serde_json::json!({
-            "text": clause,
+            "text": text,
             "out_path": wav,
             "voice_wav": voice_wav,
+            "exaggeration": 0.65,
+            "cfg_weight": 0.3,
         });
 
         let data = self.worker.request(payload, cancel, None).await?;

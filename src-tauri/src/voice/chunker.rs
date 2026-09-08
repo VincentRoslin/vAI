@@ -11,7 +11,7 @@
 /// Shortest clause worth emitting on its own — below this, keep accumulating
 /// (so "Yes." / "OK." merge into the next clause rather than becoming a
 /// stand-alone synthesis).
-const MIN_CHARS: usize = 12;
+const MIN_CHARS: usize = 24;
 /// Force a flush at the last space before this, even with no punctuation.
 const MAX_CHARS: usize = 240;
 
@@ -49,6 +49,40 @@ impl ClauseChunker {
         let tail = self.buf.trim().to_owned();
         self.buf.clear();
         (!tail.is_empty()).then_some(tail)
+    }
+
+    /// Strip roleplay `*stage directions*` so Chatterbox does not read them
+    /// aloud. Keeps `[chuckle]` / `[whisper]` / `[pause]` tags the model
+    /// understands.
+    #[must_use]
+    pub fn for_tts(text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        let mut chars = text.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '*' {
+                let mut inner = String::new();
+                let mut closed = false;
+                while let Some(&n) = chars.peek() {
+                    if n == '*' {
+                        let _ = chars.next();
+                        closed = true;
+                        break;
+                    }
+                    if n == '\n' || inner.len() >= 80 {
+                        break;
+                    }
+                    inner.push(n);
+                    let _ = chars.next();
+                }
+                if !closed {
+                    out.push('*');
+                    out.push_str(&inner);
+                }
+                continue;
+            }
+            out.push(c);
+        }
+        collapse_ws(&out)
     }
 
     /// Byte offset just past the end of the first complete clause, or `None`.
@@ -113,6 +147,23 @@ impl ClauseChunker {
     }
 }
 
+fn collapse_ws(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev_space = true;
+    for c in s.chars() {
+        if c.is_whitespace() {
+            if !prev_space {
+                out.push(' ');
+                prev_space = true;
+            }
+        } else {
+            out.push(c);
+            prev_space = false;
+        }
+    }
+    out.trim().to_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,8 +198,8 @@ mod tests {
     #[test]
     fn a_completed_sentence_mid_stream_is_emitted() {
         // The `.` is followed by more text → it splits without waiting.
-        let (clauses, tail) = all(&["First sentence here. Second sentence follows on."]);
-        assert_eq!(clauses, vec!["First sentence here."]);
+        let (clauses, tail) = all(&["First sentence is right here. Second sentence follows on."]);
+        assert_eq!(clauses, vec!["First sentence is right here."]);
         assert_eq!(tail.as_deref(), Some("Second sentence follows on."));
     }
 
@@ -217,5 +268,15 @@ mod tests {
             got.split_whitespace().collect::<Vec<_>>(),
             text.split_whitespace().collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn for_tts_strips_asterisk_stage_directions_but_keeps_tags() {
+        assert_eq!(
+            ClauseChunker::for_tts("*giggles* hey there [chuckle] you."),
+            "hey there [chuckle] you."
+        );
+        assert_eq!(ClauseChunker::for_tts("just text"), "just text");
+        assert_eq!(ClauseChunker::for_tts("*unclosed"), "*unclosed");
     }
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import type { AppConfig, Memory, Persona, PersonaDraft, Voice } from '../lib/contracts';
+import type { AppConfig, InputDevice, Memory, OutputDevice, Persona, PersonaDraft, Voice } from '../lib/contracts';
 import {
   configGet,
   configSet,
@@ -14,7 +14,9 @@ import {
   toAppError,
   voiceDelete,
   voiceImport,
+  voiceInputDevices,
   voiceList,
+  voiceOutputDevices,
   voiceSetActive,
 } from '../lib/ipc';
 import { log } from '../lib/log';
@@ -94,25 +96,47 @@ export function Settings(): React.JSX.Element {
   );
 }
 
-/** Voice tuning (Phase 19 / config v8). Currently just the end-of-speech pause
- * — how long a silence lasts before your spoken turn is sent. */
+/** Voice tuning: devices + end-of-speech hang. Applies at the next call. */
 function Voice({ config }: { config: AppConfig | null }): React.JSX.Element {
   const [ms, setMs] = useState('');
+  const [input, setInput] = useState('');
+  const [output, setOutput] = useState('');
+  const [inputs, setInputs] = useState<InputDevice[]>([]);
+  const [outputs, setOutputs] = useState<OutputDevice[]>([]);
   const [status, setStatus] = useState('');
 
   useEffect(() => {
-    if (config?.voice) setMs(String(config.voice.end_of_speech_ms));
+    if (config?.voice) {
+      setMs(String(config.voice.end_of_speech_ms));
+      setInput(config.voice.input_device ?? '');
+      setOutput(config.voice.output_device ?? '');
+    }
   }, [config]);
+
+  function loadDevices(): void {
+    void voiceInputDevices()
+      .then(setInputs)
+      .catch(() => setInputs([]));
+    void voiceOutputDevices()
+      .then(setOutputs)
+      .catch(() => setOutputs([]));
+  }
+
+  useEffect(() => {
+    loadDevices();
+  }, []);
 
   async function save(): Promise<void> {
     const n = Number(ms);
     if (!Number.isFinite(n) || n < 300 || n > 5000) {
-      setStatus('Enter a value between 300 and 5000 ms.');
+      setStatus('Enter a pause between 300 and 5000 ms.');
       return;
     }
     try {
       await configSet({ key: 'VoiceEndOfSpeechMs', value: String(Math.round(n)), persist: true });
-      setStatus('Saved — restart the app for it to take effect.');
+      await configSet({ key: 'VoiceInputDevice', value: input, persist: true });
+      await configSet({ key: 'VoiceOutputDevice', value: output, persist: true });
+      setStatus('Saved — applies the next time you start a voice call.');
     } catch (e) {
       setStatus(`Save failed: ${toAppError(e).kind}`);
     }
@@ -122,10 +146,36 @@ function Voice({ config }: { config: AppConfig | null }): React.JSX.Element {
     <div className="settings__section">
       <h2>Voice</h2>
       <p className="settings__hint">
-        End-of-speech pause — how long to wait after you stop talking before the turn is sent. Raise
-        it if you get cut off mid-thought; lower it for snappier replies. 300–5000&nbsp;ms.
+        Gaming headsets often appear twice (Chat / Headset vs Game / 7.1). For a
+        call, pick the <strong>Headset / Chat</strong> input and output — not Speakers
+        and not the Game endpoint. Headphones, not speakers, until echo cancellation
+        lands (the mic will otherwise hear the AI and interrupt itself).
       </p>
-      <div className="settings__form-actions">
+      <div className="settings__form-actions" style={{ flexWrap: 'wrap' }}>
+        <label className="settings__picker">
+          Microphone
+          <select value={input} onChange={(e) => setInput(e.target.value)}>
+            <option value="">System default</option>
+            {inputs.map((d) => (
+              <option key={d.name} value={d.name}>
+                {d.name}
+                {d.is_default ? ' (default)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="settings__picker">
+          Speakers / headset
+          <select value={output} onChange={(e) => setOutput(e.target.value)}>
+            <option value="">System default</option>
+            {outputs.map((d) => (
+              <option key={d.name} value={d.name}>
+                {d.name}
+                {d.is_default ? ' (default)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="settings__picker">
           Pause (ms)
           <input
@@ -141,7 +191,15 @@ function Voice({ config }: { config: AppConfig | null }): React.JSX.Element {
         <button type="button" onClick={() => void save()}>
           Apply
         </button>
+        <button type="button" onClick={loadDevices}>
+          Refresh devices
+        </button>
       </div>
+      <p className="settings__hint">
+        End-of-speech pause — how long to wait after you stop talking before the turn
+        is sent. Raise it if you get cut off; lower it for snappier replies. Default
+        1500&nbsp;ms.
+      </p>
       {status && <p className="settings__saved">{status}</p>}
     </div>
   );

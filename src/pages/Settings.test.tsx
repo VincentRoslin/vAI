@@ -46,6 +46,13 @@ vi.mock('../lib/ipc', async (importOriginal) => {
     voiceImport: vi.fn(async () => ({ id: 'v2', name: 'New', active: false, created_at: 't' })),
     voiceDelete: vi.fn(async () => undefined),
     voiceSetActive: vi.fn(async () => undefined),
+    voiceInputDevices: vi.fn(async () => [
+      { name: 'Headset Microphone (HyperX)', is_default: true },
+    ]),
+    voiceOutputDevices: vi.fn(async () => [
+      { name: 'Headset Earphone (HyperX Chat)', is_default: false },
+      { name: 'Speakers (Realtek)', is_default: true },
+    ]),
   };
 });
 
@@ -74,7 +81,24 @@ describe('Settings', () => {
         persist: true,
       }),
     );
-    expect(await screen.findByText(/restart the app/i)).toBeTruthy();
+    expect(await screen.findByText(/next time you start a voice call/i)).toBeTruthy();
+  });
+
+  it('lists headset endpoints so they can be picked', async () => {
+    render(<Settings />);
+    expect(await screen.findByRole('option', { name: /Headset Microphone \(HyperX\)/ })).toBeTruthy();
+    expect(await screen.findByRole('option', { name: /HyperX Chat/ })).toBeTruthy();
+
+    const mic = await screen.findByLabelText(/^microphone$/i);
+    fireEvent.change(mic, { target: { value: 'Headset Microphone (HyperX)' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() =>
+      expect(ipc.configSet).toHaveBeenCalledWith({
+        key: 'VoiceInputDevice',
+        value: 'Headset Microphone (HyperX)',
+        persist: true,
+      }),
+    );
   });
 
   it('creates a persona through the form', async () => {
@@ -120,7 +144,7 @@ describe('Settings', () => {
     render(<Settings />);
 
     // The Memories section: pick a persona → its memories load.
-    const picker = await screen.findByRole('combobox');
+    const picker = await screen.findByLabelText(/^persona$/i);
     fireEvent.change(picker, { target: { value: 'p1' } });
 
     const row = await screen.findByText(/keeps honeybees on a rooftop/);

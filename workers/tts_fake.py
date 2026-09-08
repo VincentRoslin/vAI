@@ -54,6 +54,18 @@ def main():
         text = payload.get("text", "")
         out_path = payload.get("out_path")
 
+        if payload.get("warm"):
+            emit(
+                {
+                    "id": job_id,
+                    "result": {
+                        "status": "Ok",
+                        "body": {"data": {"sample_rate": SR, "duration_s": 0.0}},
+                    },
+                }
+            )
+            continue
+
         if mode == "crash":
             sys.stderr.write("fake tts: simulated crash\n")
             sys.stderr.flush()

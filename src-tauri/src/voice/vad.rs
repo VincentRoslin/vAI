@@ -156,7 +156,7 @@ impl SileroVad {
         Ok(events)
     }
 
-    /// Force the current utterance to end now (push-to-talk release). Returns
+    /// Force the current utterance to end now (hang-up while speaking). Returns
     /// `SpeechEnd` if an utterance was in progress and long enough.
     pub fn force_endpoint(&mut self) -> Option<VadEvent> {
         if self.fsm == State::Speech && self.speech_windows >= self.min_utter_w {

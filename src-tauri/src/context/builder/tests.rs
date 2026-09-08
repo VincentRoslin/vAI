@@ -36,6 +36,7 @@ fn msg(role: Role, body: &str) -> Message {
 fn runtime() -> RuntimeContext {
     RuntimeContext {
         now: "2026-09-06T12:00:00Z".to_owned(),
+        spoken: false,
     }
 }
 
@@ -68,6 +69,19 @@ fn memitem(text: &str) -> MemoryItem {
     MemoryItem {
         text: text.to_owned(),
     }
+}
+
+#[test]
+fn spoken_register_is_injected_only_when_asked() {
+    let hist = [msg(Role::User, "hi")];
+    let text = ContextBuilder.build(&input(None, &hist, 2816)).text;
+    assert!(!text.contains("live voice call"));
+
+    let mut spoken_in = input(None, &hist, 2816);
+    spoken_in.runtime.spoken = true;
+    let spoken = ContextBuilder.build(&spoken_in).text;
+    assert!(spoken.contains("live voice call"));
+    assert!(spoken.contains("[chuckle]"));
 }
 
 #[test]

@@ -201,10 +201,32 @@ fn migration_v7_forward_adds_end_of_speech_ms() {
     let migrated = migrate(v7, &root()).expect("migrates");
     assert_eq!(migrated["version"], json!(CURRENT_SCHEMA_VERSION));
     assert_eq!(migrated["voice"]["input_device"], json!("USB Mic")); // kept
-    assert_eq!(migrated["voice"]["end_of_speech_ms"], json!(900)); // v8 default
+    assert_eq!(migrated["voice"]["end_of_speech_ms"], json!(1500)); // v10 default
 
     let cfg: AppConfig = serde_json::from_value(migrated).expect("deserializes");
     cfg.validate().expect("valid after migration");
+}
+
+#[test]
+fn migration_v9_raises_the_default_hang_but_keeps_a_custom_value() {
+    let path = if cfg!(windows) { r"C:\m" } else { "/m" };
+    let mut v9 = json!({
+        "version": 9,
+        "models": { "dir": path, "budget_gb": 50, "min_free_gb": 20 },
+        "logging": { "level": "info" },
+        "resources": { "vram_safety_margin_mb": 800 },
+        "runtimes": { "dir": path },
+        "workers": { "dir": path, "python": path },
+        "voice": { "input_device": null, "output_device": null, "end_of_speech_ms": 900 },
+        "image": { "loras_dir": null, "quant_cache_dir": null, "idle_shutdown_s": 300 },
+    });
+    let migrated = migrate(v9.clone(), &root()).expect("migrates");
+    assert_eq!(migrated["version"], json!(CURRENT_SCHEMA_VERSION));
+    assert_eq!(migrated["voice"]["end_of_speech_ms"], json!(1500));
+
+    v9["voice"]["end_of_speech_ms"] = json!(700);
+    let kept = migrate(v9, &root()).expect("migrates");
+    assert_eq!(kept["voice"]["end_of_speech_ms"], json!(700));
 }
 
 #[test]

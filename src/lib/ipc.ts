@@ -284,7 +284,7 @@ export async function voiceStart(
   return call('voice_start', { conversationId, modelId, events });
 }
 
-/** Release push-to-talk / stop the session — transcribe an utterance in
+/** Hang up / stop the session — transcribe an utterance in
  * progress, or barge-in on the assistant, then stop. */
 export const voiceStop = (): Promise<void> => call('voice_stop');
 
