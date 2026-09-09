@@ -340,6 +340,7 @@ fn start_image(
         // (`<models.dir>/image/outputs/`), next to the LoRAs + quant cache —
         // not the app-data folder. The blob store stays under `data_root`.
         effective.models.dir.join("image").join("outputs"),
+        effective.image.idle_shutdown_s,
     ));
     (orchestrator, blob)
 }

@@ -466,6 +466,7 @@ async fn harness() -> Option<Harness> {
         Arc::clone(&blob),
         repo.clone(),
         tmp.path().join("images"),
+        300,
     ));
     let _ = krea2_id;
     Some(Harness {

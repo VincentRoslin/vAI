@@ -21,8 +21,12 @@ pub const PERSONA_SYSTEM: &str = "You are the persona described below. Stay in c
 
 /// Tokens held back from the context window for the model's own response.
 pub const RESPONSE_RESERVE: u32 = 1024;
-/// Extra headroom for estimate error vs the real tokenizer.
-pub const BUDGET_MARGIN: u32 = 256;
+/// Extra headroom for estimate error vs the real tokenizer. `estimate_tokens`
+/// is a heuristic (chars/4 or words*0.75); over a long conversation the drift
+/// against the real tokenizer count can exceed a small margin, pushing the
+/// true prompt past the model's actual `--ctx-size`. Widened from 256 (2026-09)
+/// after diagnosing long-session stalls traced to this drift.
+pub const BUDGET_MARGIN: u32 = 512;
 
 /// A retrieved memory item (Phase 21 populates these; empty until then).
 #[derive(Debug, Clone)]

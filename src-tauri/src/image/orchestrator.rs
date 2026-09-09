@@ -10,7 +10,15 @@
 //! The orchestrator never calls the resource manager's mutating methods — the
 //! lifecycle manager owns the VRAM reservation (acquired before the backend
 //! load, released on every exit path, Phase 14). Here we only *read* the
-//! resource snapshot for the WDDM settle-wait between unload and load.
+//! resource snapshot for the WDDM settle-wait between unload and load — and
+//! that wait checks the **probed** free VRAM, not the reservation ledger
+//! (`unload` clears the ledger synchronously, well before the driver has
+//! necessarily reclaimed the physical memory).
+//!
+//! A generation that evicted nothing (the image model was already warm, or
+//! nothing else was resident) leaves it loaded and schedules an idle unload
+//! (`ImageConfig::idle_shutdown_s`) instead of tearing it down immediately —
+//! back-to-back image requests no longer pay a full reload each time.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -39,9 +47,13 @@ use crate::resources::ResourceManager;
 /// Krea 2's model defaults (ADR-0006): 8 steps, `guidance_scale` 0.0.
 const DEFAULT_STEPS: u32 = 8;
 const DEFAULT_GUIDANCE: f32 = 0.0;
-/// How long to wait for freed VRAM to settle before loading the image model.
+/// How long to wait for freed VRAM to settle before loading a model.
 const SETTLE_TIMEOUT: Duration = Duration::from_secs(20);
 const SETTLE_POLL: Duration = Duration::from_millis(400);
+/// Fallback VRAM estimate for the image model when its registry row carries
+/// none — roughly the Phase 22.C measured Krea 2 NF4 peak (≈11.45 GB) plus
+/// headroom.
+const FALLBACK_IMAGE_VRAM_MB: u32 = 12_000;
 
 /// `20260906-221530` — local time, for the browsable PNG copies.
 const STAMP: &[FormatItem<'_>] = format_description!("[year][month][day]-[hour][minute][second]");
@@ -64,10 +76,17 @@ pub struct ImageOrchestrator {
     output_dir: PathBuf,
     running: Mutex<Option<Running>>,
     settle_timeout: Duration,
+    /// How long the image sidecar stays resident after a generation with
+    /// nothing evicted, before an idle unload (`ImageConfig::idle_shutdown_s`,
+    /// `0` = unload immediately — the old unconditional behaviour).
+    idle_shutdown_s: u64,
+    /// Cancels the pending idle-unload timer when a new request arrives.
+    idle_cancel: Mutex<Option<CancellationToken>>,
 }
 
 impl ImageOrchestrator {
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         lifecycle: Arc<LifecycleManager>,
         resources: Arc<ResourceManager>,
@@ -76,6 +95,7 @@ impl ImageOrchestrator {
         blob: Arc<BlobStore>,
         repo: ImageRepo,
         output_dir: PathBuf,
+        idle_shutdown_s: u64,
     ) -> Self {
         Self {
             lifecycle,
@@ -87,6 +107,8 @@ impl ImageOrchestrator {
             output_dir,
             running: Mutex::new(None),
             settle_timeout: SETTLE_TIMEOUT,
+            idle_shutdown_s,
+            idle_cancel: Mutex::new(None),
         }
     }
 
@@ -187,7 +209,7 @@ impl ImageOrchestrator {
     }
 
     async fn run<F>(
-        &self,
+        self: &Arc<Self>,
         req: &ImageRequest,
         cancel: &CancellationToken,
         sink: &F,
@@ -195,13 +217,21 @@ impl ImageOrchestrator {
     where
         F: Fn(ImageEvent) + Send + Sync,
     {
+        // We're about to (re)use the image model — cancel any pending
+        // idle-unload timer from a previous request so it doesn't tear the
+        // model down out from under this one.
+        if let Some(old) = self.idle_cancel.lock().await.take() {
+            old.cancel();
+        }
+
         let image_model = self.resolve_image_model().await?;
         let lora = self.resolve_lora(req).await?;
 
         emit(sink, ImagePhase::Evicting, 0, 0, req.batch_count);
         let evicted = self.evict_others(&image_model).await;
         if !evicted.is_empty() {
-            self.settle_wait(cancel).await;
+            let needed_mb = self.estimated_vram_mb(&image_model).await;
+            self.settle_wait(cancel, needed_mb).await;
         }
 
         // Everything from here restores the evicted models on the way out.
@@ -210,13 +240,78 @@ impl ImageOrchestrator {
             .await;
 
         emit(sink, ImagePhase::Restoring, 0, 0, req.batch_count);
-        let _ = self.lifecycle.unload(&image_model).await;
-        for id in evicted {
-            if let Err(e) = self.lifecycle.load(&id).await {
-                tracing::warn!(model = %id, error = %e, "failed to restore an evicted model");
+        if evicted.is_empty() {
+            // Nothing else needed the GPU — keep the (already-loaded) image
+            // model warm instead of reloading it from scratch on every
+            // request; an idle timer tears it down after `idle_shutdown_s`.
+            self.schedule_idle_unload(image_model).await;
+        } else {
+            let _ = self.lifecycle.unload(&image_model).await;
+            // Symmetric to the eviction settle-wait above: give the driver a
+            // moment to actually reclaim the image model's VRAM before
+            // reloading what we evicted for it.
+            let needed_mb = self.estimated_vram_mb_for(&evicted).await;
+            self.settle_wait(cancel, needed_mb).await;
+            for id in evicted {
+                if let Err(e) = self.lifecycle.load(&id).await {
+                    tracing::warn!(model = %id, error = %e, "failed to restore an evicted model");
+                }
             }
         }
         result
+    }
+
+    /// `image_model`'s registered VRAM estimate, or a conservative fallback.
+    async fn estimated_vram_mb(&self, image_model: &ModelId) -> u32 {
+        self.registry
+            .get(image_model)
+            .await
+            .ok()
+            .and_then(|m| m.metadata.estimated_vram_mb)
+            .unwrap_or(FALLBACK_IMAGE_VRAM_MB)
+    }
+
+    /// Total registered VRAM estimate across `ids` (what we need free again to
+    /// safely reload everything we evicted).
+    async fn estimated_vram_mb_for(&self, ids: &[ModelId]) -> u32 {
+        let mut total: u32 = 0;
+        for id in ids {
+            let mb = self
+                .registry
+                .get(id)
+                .await
+                .ok()
+                .and_then(|m| m.metadata.estimated_vram_mb)
+                .unwrap_or(crate::lifecycle::FALLBACK_VRAM_ESTIMATE_MB);
+            total = total.saturating_add(mb);
+        }
+        total
+    }
+
+    /// Schedule an idle unload of `image_model` after `idle_shutdown_s`
+    /// seconds, cancellable by the next `run()` (or immediate, when
+    /// `idle_shutdown_s == 0`, matching the old unconditional-unload
+    /// behaviour).
+    async fn schedule_idle_unload(self: &Arc<Self>, image_model: ModelId) {
+        if self.idle_shutdown_s == 0 {
+            let _ = self.lifecycle.unload(&image_model).await;
+            return;
+        }
+        let token = CancellationToken::new();
+        *self.idle_cancel.lock().await = Some(token.clone());
+        let this = Arc::clone(self);
+        let idle_s = self.idle_shutdown_s;
+        tokio::spawn(async move {
+            tokio::select! {
+                () = token.cancelled() => {}
+                () = tokio::time::sleep(Duration::from_secs(idle_s)) => {
+                    if this.running.lock().await.is_none() {
+                        let _ = this.lifecycle.unload(&image_model).await;
+                        tracing::info!(model = %image_model, "image model unloaded after idle timeout");
+                    }
+                }
+            }
+        });
     }
 
     async fn load_generate_store<F>(
@@ -390,16 +485,33 @@ impl ImageOrchestrator {
         evicted
     }
 
-    /// Poll the resource snapshot until outstanding GPU reservations clear (or
-    /// timeout). A no-op when the probe is unavailable.
-    async fn settle_wait(&self, cancel: &CancellationToken) {
+    /// Poll the **probed** GPU snapshot until at least `needed_mb` is
+    /// reported free (or cancelled, or timeout).
+    ///
+    /// This deliberately does not look at the reservation ledger's
+    /// `reserved_gpu_mb` — `LifecycleManager::unload` releases that
+    /// synchronously, before the OS/driver has necessarily reclaimed the
+    /// physical VRAM (WDDM reclaim can lag process exit). Checking our own
+    /// bookkeeping there made this wait a no-op in practice: it always read
+    /// zero on the very first iteration. Checking the freshly-probed
+    /// `free_mb` instead makes this an actual wait for the real signal.
+    async fn settle_wait(&self, cancel: &CancellationToken, needed_mb: u32) {
         let deadline = tokio::time::Instant::now() + self.settle_timeout;
         loop {
             let snap = self.resources.observe().await;
-            if snap.reserved_gpu_mb == 0
-                || cancel.is_cancelled()
-                || tokio::time::Instant::now() >= deadline
-            {
+            let free_mb = snap.gpu.map_or(0, |g| g.free_mb);
+            if free_mb >= u64::from(needed_mb) {
+                return;
+            }
+            if cancel.is_cancelled() {
+                return;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                tracing::warn!(
+                    free_mb,
+                    needed_mb,
+                    "settle-wait timed out before the driver reported enough free VRAM"
+                );
                 return;
             }
             tokio::time::sleep(SETTLE_POLL).await;

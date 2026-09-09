@@ -11,10 +11,8 @@
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
-use super::retrieve::fts_query_for;
 use super::{
     MemoryRepo, NewMemory, DEDUP_JACCARD, MAX_CONTENT_CHARS, MIN_CONTENT_CHARS, MIN_IMPORTANCE,
-    RETRIEVE_K,
 };
 use crate::context::sanitize::strip_control;
 use crate::contracts::generation::SamplingParams;
@@ -175,8 +173,9 @@ fn kind_from_str(s: &str) -> Option<MemoryKind> {
     }
 }
 
-/// The validation gate — importance, length, and FTS5 dedup against `scope`.
-/// Returns the row to store, or `None` (with the reason logged at debug).
+/// The validation gate — importance, length, and word-overlap dedup against
+/// every existing memory in `scope`. Returns the row to store, or `None`
+/// (with the reason logged at debug).
 pub async fn validate(
     candidate: &MemoryCandidate,
     repo: &MemoryRepo,
@@ -193,11 +192,18 @@ pub async fn validate(
         tracing::debug!(target: "memory", chars, "candidate content length out of range");
         return None;
     }
-    if let Some(query) = fts_query_for(&content) {
-        if let Ok(hits) = repo.search(scope, &query, RETRIEVE_K).await {
-            if let Some(sim) = hits
+    // Dedup scans the *whole* scope (bounded by PER_SCOPE_CAP=500, cheap),
+    // not just an FTS keyword top-K — a keyword search can rank a genuine
+    // near-duplicate outside a small K when other rows share more common
+    // words, letting reworded repeats of the same fact pile up. This does
+    // not catch paraphrases with near-zero word overlap ("loves cats" vs.
+    // "is a big fan of felines") — that needs semantic (embedding) dedup,
+    // deferred per ADR-0012.
+    match repo.list(scope).await {
+        Ok(existing) => {
+            if let Some(sim) = existing
                 .iter()
-                .map(|h| word_jaccard(&content, &h.memory.content))
+                .map(|m| word_jaccard(&content, &m.content))
                 .reduce(f64::max)
             {
                 if sim >= DEDUP_JACCARD {
@@ -205,6 +211,11 @@ pub async fn validate(
                     return None;
                 }
             }
+        }
+        Err(err) => {
+            // Fail open but *visibly* — better a rare stored duplicate than a
+            // silently swallowed error (the previous behaviour).
+            tracing::warn!(target: "memory", %err, "dedup scope scan failed — storing candidate unchecked");
         }
     }
     Some(NewMemory {

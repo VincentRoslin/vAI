@@ -746,7 +746,85 @@ Qwen 0.5B (~1.4 GB) is a stand-in.
   synth RTF ≈ 0.45 still applies to every later clause.
 - **WDDM hang** on the first sustained `llama-server` generation (Hyper-V enabled
   on host) → Phase 15, 3-step mitigation ladder in
-  `docs/verification/02_phase3_probes.md`.
+  `docs/verification/02_phase3_probes.md`. **Partially mitigated
+  (2026-09-09, see below):** a stalled generation is now detected and the
+  backend forced to restart on the *next* message instead of repeating the
+  same hang forever; the underlying driver-level cause is unchanged.
+- **Chat/voice/memory/image reliability pass (2026-09-09 debugging session,
+  owner-reported: voice laggy, chat stops responding after a while, memories
+  pile up, image generator reloads every request and fails on VRAM).**
+  Diagnosed via 3 parallel code-reading passes (no live hardware — this ran in
+  a sandboxed session); fixes applied, **not yet live-verified on the RTX
+  5080** (owner to confirm). Root causes + fixes:
+  1. **Chat/voice going permanently silent after one stall.** `llm/client.rs`'s
+     SSE per-chunk wait reused the 300s whole-call deadline, so a stalled
+     `llama-server` (the WDDM hang above) surfaced only after 5 minutes —
+     and `check_liveness`'s `/health` poll doesn't catch it (a WDDM hang can
+     freeze the compute path while `/health` keeps answering), so the *same*
+     wedged process kept getting reused. **Fixed:** a dedicated 30s
+     `STREAM_IDLE_TIMEOUT` for the per-chunk wait (`llm/client.rs`), plus
+     `LifecycleManager::report_unhealthy` (`lifecycle/mod.rs`) called from
+     `ConversationEngine::run_generation` on any `StopReason::Error` — forces
+     the model to `Failed` so the next message spawns a fresh backend
+     instead of hitting the same one. Also: `WorkerSupervisor::request` has
+     no timeout of its own (documented, by design — callers apply one); the
+     STT/TTS callers never did. **Fixed:** bounded timeouts (30s STT, 60s
+     TTS) in `voice/mod.rs`/`voice/tts.rs`, restarting the worker on timeout.
+     Also widened `context::builder::BUDGET_MARGIN` 256→512 (the token-count
+     heuristic can drift past the real tokenizer over a long conversation,
+     overflowing `--ctx-size`). Also dropped `--no-warmup` from
+     `llm/server.rs` (skipped llama.cpp's own warm-up, adding latency to
+     every first prompt after a load).
+  2. **Memories work "sometimes," then pile up.** `run_extraction_task`
+     (`memory/mod.rs`) called `begin_use` once and gave up on `Conflict` —
+     but `BusyGuard::drop` (`lifecycle/mod.rs`) frees the model via a
+     *separately spawned* task, not inline, so extraction could lose that
+     race and silently skip. **Fixed:** `acquire_for_extraction` retries up
+     to 8× / 25ms. Separately, `extract::validate`'s dedup only
+     Jaccard-compared a candidate against an FTS keyword top-8
+     (`RETRIEVE_K`) — a real near-duplicate ranked outside that top-8 (other
+     rows sharing more common words) was never caught, so reworded repeats
+     of the same fact piled up. **Fixed:** dedup now scans the whole scope
+     (`repo.list`, bounded by `PER_SCOPE_CAP=500`, cheap) instead of a
+     keyword-limited top-K. Does **not** fix true paraphrase dedup ("loves
+     cats" vs. "a big fan of felines" — near-zero word overlap either way);
+     that needs embeddings, still deferred per ADR-0012. FTS5 self-heal
+     (below) remains **not implemented**.
+  3. **Image generator reloads every request; fails on VRAM despite being
+     "standalone."** `ImageOrchestrator::run` (`image/orchestrator.rs`)
+     unconditionally unloaded the Krea 2 sidecar after *every* generation —
+     `ImageConfig::idle_shutdown_s` was dead config, read nowhere.
+     **Fixed:** a generation that evicted nothing now leaves the image model
+     loaded and schedules an idle unload after `idle_shutdown_s` (cancelled
+     by the next request); `idle_shutdown_s == 0` keeps the old immediate-
+     unload behavior. Separately, `settle_wait`'s "wait for VRAM to settle
+     after eviction" checked the *reservation ledger* (`reserved_gpu_mb`),
+     which `LifecycleManager::unload` already zeroes synchronously — well
+     before the OS/driver has necessarily reclaimed the physical VRAM (WDDM
+     reclaim lags process exit). In practice this made the wait a no-op,
+     exactly matching "fails cause of too low VRAM." **Fixed:** it now polls
+     the **probed** `free_mb` against the actually-needed estimate (the
+     evicted model's `estimated_vram_mb`, or the image model's for the
+     restore direction), with the same 20s cap — logging a warning if the
+     driver never reports enough free VRAM in that window, so a real
+     shortfall is now visible in the logs instead of masquerading as a
+     "settled" false-positive.
+  **Not addressed this pass** (found but out of scope / higher-risk / needs
+  owner input): the VAD end-of-speech hang timer (1500ms, deliberately raised
+  2026-09-08 to fix cutoff — left alone to avoid reintroducing that
+  regression); FTS5 self-heal (§ above, still open); the `windows` crate
+  dependency (`Cargo.toml`) is not platform-gated under
+  `[target.'cfg(windows)'.dependencies]`, so it (and its `windows-future`
+  sub-crate) breaks a from-scratch Linux build with an unrelated upstream
+  version-skew error — harmless on the real Windows target, noticed only
+  because this debugging session had no Windows machine to verify on and had
+  to fight a Linux sandbox's own package mirror to get even a partial
+  `cargo check` running. **Verification status:** every file parses
+  (`rustfmt --check`) and was hand-reviewed against existing, already-
+  compiling patterns in the same files; a full `cargo check`/test run could
+  not complete here due to the `windows-future` issue above. **Needs a real
+  `cargo check` / `node scripts/check.mjs` + live re-test on the RTX 5080
+  before any of this is called fixed.**
 - **Local-deploy robustness (2026-09-07 debugging session).** A prod-binary
   startup crash-loop on the owner's machine, run to ground. Root causes:
   1. `%APPDATA%\com.localai.app\config.json` was **missing on the real disk** →

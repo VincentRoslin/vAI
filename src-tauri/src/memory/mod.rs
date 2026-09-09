@@ -24,8 +24,8 @@ use tokio_util::sync::CancellationToken;
 use crate::contracts::ids::{MemoryId, ModelId, PersonaId};
 use crate::contracts::memory::Memory;
 use crate::db::Db;
-use crate::ipc::AppResult;
-use crate::lifecycle::LifecycleManager;
+use crate::ipc::{AppError, AppResult};
+use crate::lifecycle::{BusyGuard, LifecycleManager};
 
 pub use extract::Exchange;
 pub use repo::{MemoryRepo, NewMemory, Scored};
@@ -179,6 +179,37 @@ impl MemoryService {
     }
 }
 
+/// How many times to retry `begin_use` before giving up on extraction. The
+/// caller's own generation just released its busy guard, but `BusyGuard::drop`
+/// hands the actual `end_use` off to a *separately spawned* task rather than
+/// doing it inline — so the model can still read `Busy` for a tick after
+/// `stream_once` returns. Losing that race used to skip extraction outright
+/// ("memory works sometimes"); a few short retries absorb it cheaply.
+const BEGIN_USE_RETRIES: u32 = 8;
+const BEGIN_USE_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(25);
+
+async fn acquire_for_extraction(
+    lifecycle: &Arc<LifecycleManager>,
+    model_id: &ModelId,
+) -> Option<BusyGuard> {
+    for attempt in 0..BEGIN_USE_RETRIES {
+        match lifecycle.begin_use(model_id).await {
+            Ok(guard) => return Some(guard),
+            // `Conflict` covers both "still Busy from the drop race" and
+            // "mid Loading/Unloading transition" — both are worth a short
+            // retry. Anything else (NotFound) won't resolve by waiting.
+            Err(AppError::Conflict(_)) if attempt + 1 < BEGIN_USE_RETRIES => {
+                tokio::time::sleep(BEGIN_USE_RETRY_DELAY).await;
+            }
+            Err(err) => {
+                tracing::debug!(target: "memory", %err, attempt, "extraction skipped — model unavailable");
+                return None;
+            }
+        }
+    }
+    None
+}
+
 async fn run_extraction_task(
     lifecycle: &Arc<LifecycleManager>,
     repo: &MemoryRepo,
@@ -187,12 +218,8 @@ async fn run_extraction_task(
     exchange: &Exchange,
     cancel: CancellationToken,
 ) -> usize {
-    let _busy = match lifecycle.begin_use(model_id).await {
-        Ok(guard) => guard,
-        Err(err) => {
-            tracing::debug!(target: "memory", %err, "extraction skipped — model unavailable");
-            return 0;
-        }
+    let Some(_busy) = acquire_for_extraction(lifecycle, model_id).await else {
+        return 0;
     };
     let Some(instance) = lifecycle.instance(model_id).await else {
         tracing::debug!(target: "memory", "extraction skipped — model not loaded");

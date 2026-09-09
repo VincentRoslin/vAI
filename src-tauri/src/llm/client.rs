@@ -14,6 +14,14 @@ use crate::contracts::generation::{GenerationEvent, StopReason};
 use crate::ipc::{AppError, AppResult};
 use crate::lifecycle::backend::Completion;
 
+/// How long we wait for the *next* SSE chunk once a stream is under way.
+/// Deliberately much shorter than `deadline` (which covers the initial
+/// connect and whole non-streaming calls): during active generation a new
+/// chunk arrives every few tens of ms, so this many seconds of silence
+/// already means the backend is stalled (e.g. a WDDM hang) — surface that in
+/// well under a minute instead of waiting out the full call deadline.
+const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Talks to one `llama-server` instance.
 pub struct LlamaClient {
     base_url: String,
@@ -148,7 +156,7 @@ impl LlamaClient {
         loop {
             let next = tokio::select! {
                 () = cancel.cancelled() => return Err(AppError::Cancelled),
-                n = tokio::time::timeout(self.deadline, body.next()) => n
+                n = tokio::time::timeout(STREAM_IDLE_TIMEOUT, body.next()) => n
                     .map_err(|_| AppError::Timeout("llama-server stream idle".to_owned()))?,
             };
             let Some(bytes) = next else { break };

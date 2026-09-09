@@ -91,7 +91,9 @@ fn server_argv_carries_the_essentials() {
     assert!(joined.contains("--n-gpu-layers -1"));
     assert!(joined.contains("--ctx-size 8192"));
     assert!(joined.contains("--no-webui"));
-    assert!(joined.contains("--no-warmup"));
+    // `--no-warmup` was intentionally dropped — llama.cpp's own warm-up pass
+    // now runs, avoiding an extra latency spike on the first prompt.
+    assert!(!joined.contains("--no-warmup"));
     assert_eq!(spec.base_url(), "http://127.0.0.1:55123");
 }
 

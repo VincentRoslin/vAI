@@ -50,6 +50,12 @@ pub const SAMPLE_RATE: u32 = 16_000;
 /// tail of the user's own utterance is still in flight right after we start.
 const BARGE_IN_GRACE: Duration = Duration::from_millis(500);
 
+/// Bound on one STT job. `WorkerSupervisor::request` applies no timeout of its
+/// own (callers are expected to bring one) — without this, a hung worker
+/// (CUDA stall, an uncaught exception mid-inference) would block the voice
+/// session forever. 30s is generous for one endpointed utterance.
+const STT_CALL_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// What the UI shows (Tauri `Channel<VoiceState>`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
 #[serde(tag = "kind")]
@@ -581,7 +587,21 @@ impl VoiceInput {
             "language": "en",
             "initial_prompt": "The following is an English conversation.",
         });
-        let result = self.stt.request(payload, &cancel, None).await;
+        let result = match tokio::time::timeout(
+            STT_CALL_TIMEOUT,
+            self.stt.request(payload, &cancel, None),
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(_) => {
+                cancel.cancel();
+                tracing::warn!(target: "voice", "stt: request timed out — restarting worker");
+                self.stt.shutdown().await;
+                segment::cleanup(&wav);
+                return None;
+            }
+        };
         segment::cleanup(&wav);
 
         match result.and_then(|v| {

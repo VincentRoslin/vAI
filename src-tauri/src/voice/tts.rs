@@ -21,6 +21,12 @@ use crate::voice::resample::Resampler16;
 use crate::voice::voices::VoiceRepo;
 use crate::worker::WorkerSupervisor;
 
+/// Bound on one TTS job. `WorkerSupervisor::request` applies no timeout of its
+/// own — without this, a hung Chatterbox call (CUDA stall, a wedged
+/// `prepare_conditionals`) would silently stop playback forever. Generous
+/// enough to cover a cold Chatterbox load (~5-6s) plus one clause's synthesis.
+const TTS_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
 /// The TTS worker's `Ok.data` shape (this phase owns it — `docs/contracts.md`).
 #[derive(Debug, Clone, Deserialize)]
 pub struct TtsResult {
@@ -95,8 +101,19 @@ impl TtsOutput {
             "warm": true,
             "voice_wav": path,
         });
-        if let Err(e) = self.worker.request(payload, &cancel, None).await {
-            e.log("tts: warm clone");
+        match tokio::time::timeout(
+            TTS_CALL_TIMEOUT,
+            self.worker.request(payload, &cancel, None),
+        )
+        .await
+        {
+            Ok(Err(e)) => e.log("tts: warm clone"),
+            Err(_) => {
+                cancel.cancel();
+                tracing::warn!(target: "voice", "tts: warm clone timed out — restarting worker");
+                self.worker.shutdown().await;
+            }
+            Ok(Ok(_)) => {}
         }
         Ok(())
     }
@@ -213,7 +230,19 @@ impl TtsOutput {
             "cfg_weight": 0.3,
         });
 
-        let data = self.worker.request(payload, cancel, None).await?;
+        let data = match tokio::time::timeout(
+            TTS_CALL_TIMEOUT,
+            self.worker.request(payload, cancel, None),
+        )
+        .await
+        {
+            Ok(r) => r?,
+            Err(_) => {
+                tracing::warn!(target: "voice", "tts: request timed out — restarting worker");
+                self.worker.shutdown().await;
+                return Err(AppError::Timeout("tts worker call".to_owned()));
+            }
+        };
         let meta: TtsResult =
             serde_json::from_value(data).map_err(|e| AppError::internal("parse TTS result", e))?;
 

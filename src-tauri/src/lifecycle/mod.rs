@@ -41,7 +41,9 @@ use backend::{LoadRequest, LoadedInstance, ModelBackend};
 
 /// Used as the reservation estimate when a model carries no
 /// `estimated_vram_mb` — conservative so a guess never over-commits into an OOM.
-const FALLBACK_VRAM_ESTIMATE_MB: u32 = 6_144;
+/// `pub(crate)` so other VRAM-aware callers (e.g. the image orchestrator's
+/// eviction settle-wait) can reuse the same fallback instead of duplicating it.
+pub(crate) const FALLBACK_VRAM_ESTIMATE_MB: u32 = 6_144;
 
 /// How the manager retries a failing backend load within one `load` call.
 #[derive(Debug, Clone, Copy)]
@@ -444,6 +446,38 @@ impl LifecycleManager {
                 entry.notify.notify_waiters();
             }
         }
+    }
+
+    /// Force `id` straight to `Failed` without a health probe — for a caller
+    /// that has direct evidence the backend is misbehaving (e.g. a generation
+    /// that stalled) even though `/health` might still answer (a WDDM hang
+    /// can freeze the compute path while the lightweight health endpoint
+    /// keeps responding). Shuts the instance down and releases its
+    /// reservation so the *next* `load` starts a fresh backend instead of
+    /// reusing the same wedged process. A no-op if `id` is not `Loaded`/`Busy`.
+    pub async fn report_unhealthy(&self, id: &ModelId, reason: &str) {
+        let (instance, reservation) = {
+            let mut entries = self.entries.lock().await;
+            let Some(entry) = entries.get_mut(id) else {
+                return;
+            };
+            if !matches!(entry.state, ModelState::Loaded | ModelState::Busy) {
+                return;
+            }
+            entry.state = ModelState::Failed;
+            entry.last_error = Some(reason.to_owned());
+            let reservation = entry.reservation.take();
+            let instance = entry.instance.take();
+            entry.notify.notify_waiters();
+            (instance, reservation)
+        };
+        if let Some(instance) = instance {
+            instance.shutdown().await;
+        }
+        if let Some(reservation) = reservation {
+            self.resources.release(&reservation).await;
+        }
+        tracing::warn!(model = %id, reason, "model marked unhealthy — next load will restart it");
     }
 
     /// Health-check every `Loaded`/`Busy` instance. A failed check → `Failed`,

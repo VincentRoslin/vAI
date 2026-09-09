@@ -355,6 +355,18 @@ impl ConversationEngine {
                     StopReason::Cancelled => crate::logging::Status::Cancelled,
                     _ => crate::logging::Status::Ok,
                 };
+                if status == crate::logging::Status::Failed {
+                    // The backend itself misbehaved mid-stream (a timeout or a
+                    // transport failure — the only ways `stream_once` reaches
+                    // `StopReason::Error` once streaming has started). `/health`
+                    // may still report fine (a WDDM hang can freeze the compute
+                    // path without killing the process), so without this the
+                    // *next* message would hit the same wedged backend and
+                    // stall again. Force a fresh backend on the next `load`.
+                    self.lifecycle
+                        .report_unhealthy(&model_id, "generation ended in StopReason::Error")
+                        .await;
+                }
                 let persisted = self
                     .repo
                     .append(

@@ -75,8 +75,12 @@ impl ServerArgs {
             self.ctx_size.to_string(),
             // Flash Attention: default 'auto' (enabled where the model supports
             // it) — do not force it, older/edge models fail with it 'on'.
+            //
+            // `--no-warmup` was dropped (2026-09): it skipped llama.cpp's own
+            // warm-up pass, so the *first* prompt after every load paid an
+            // extra one-time kernel/graph-build latency spike on top of the
+            // model load itself.
             "--no-webui".into(),
-            "--no-warmup".into(),
         ]
     }
 
